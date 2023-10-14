@@ -1,10 +1,16 @@
 use std::{fs, error::Error, io::Write};
+extern crate crypto;
+use crypto::sha1::Sha1;
+use crypto::digest::Digest;
+
 const GIT: &str = ".git";
 const OBJECT: &str = ".git/objects";
 const REFS: &str = ".git/refs";
 const R_HEADS: &str = ".git/refs/heads";
 const HEAD: &str = ".git/HEAD";
 const R_TAGS: &str = ".git/refs/tags";
+const DEFAULT_BRANCH_NAME: &str = "main";
+
 pub struct Init {
 
 }
@@ -37,22 +43,51 @@ impl Head {
 
 impl Command for Init {
     fn execute(&self, head: &mut Head) -> Result<(), Box<dyn Error>>{
-        let _dir = fs::create_dir(GIT)?;
-        let _refs = fs::create_dir(REFS)?;
+        // let _dir = fs::create_dir(GIT)?;
+        // let _refs = fs::create_dir(REFS)?;
+        // let _obj = fs::create_dir(OBJECT)?;
+        // let _refs_heads = fs::create_dir(R_HEADS)?;
+        // head.add_branch("main");
+        // let mut head_file = fs::File::create(HEAD)?;
+        // head_file.write_all(b"ref: refs/heads/main")?;
+        // let _refs_tags = fs::create_dir(R_TAGS)?;
+
+        // Ok(())
+        // usando create_dir_all() se puede evitar crear a todos uno por uno
+        let _refs_heads = fs::create_dir_all(R_HEADS);
+        let _refs_tags = fs::create_dir(R_TAGS)?;
         let _obj = fs::create_dir(OBJECT)?;
-        let _refs_heads = fs::create_dir(R_HEADS)?;
-        head.add_branch("main");
+
+        create_new_branch(DEFAULT_BRANCH_NAME)?;
+
         let mut head_file = fs::File::create(HEAD)?;
         head_file.write_all(b"ref: refs/heads/main")?;
-        let _refs_tags = fs::create_dir(R_TAGS)?;
+        
+        Ok(())    
 
-        Ok(())
-    
+        
     }
 }
 
 pub trait Command {
     fn execute(&self, head: &mut Head) -> Result<(), Box<dyn Error>>;
+}
+
+fn generate_sha1_string(branch_name: &str) -> String {
+    let mut hasher = Sha1::new();
+    hasher.input_str(branch_name);
+    hasher.result_str()
+}
+
+fn create_new_branch(branch_name: &str) -> Result<(), Box<dyn Error>> { 
+    let branch_path = format!("{}/{}", R_HEADS, branch_name);
+
+    let mut branch_file = fs::File::create(&branch_path)?;
+
+    write!(branch_file, "{}", generate_sha1_string(branch_name))?;
+    head.add_branch(branch_name);
+
+    Ok(())
 }
 
 fn main() {
