@@ -43,22 +43,15 @@ impl Head {
 
 impl Command for Init {
     fn execute(&self, head: &mut Head) -> Result<(), Box<dyn Error>>{
-        // let _dir = fs::create_dir(GIT)?;
-        // let _refs = fs::create_dir(REFS)?;
-        // let _obj = fs::create_dir(OBJECT)?;
-        // let _refs_heads = fs::create_dir(R_HEADS)?;
-        // head.add_branch("main");
-        // let mut head_file = fs::File::create(HEAD)?;
-        // head_file.write_all(b"ref: refs/heads/main")?;
-        // let _refs_tags = fs::create_dir(R_TAGS)?;
-
-        // Ok(())
         // usando create_dir_all() se puede evitar crear a todos uno por uno
+        // asi que podemos borrar algunas de las ctes
+        // tambien usando format!() se podria ir uniendo los paths 
         let _refs_heads = fs::create_dir_all(R_HEADS);
         let _refs_tags = fs::create_dir(R_TAGS)?;
         let _obj = fs::create_dir(OBJECT)?;
 
-        create_new_branch(DEFAULT_BRANCH_NAME)?;
+        let mut head = Head::new();
+        create_new_branch(DEFAULT_BRANCH_NAME, &mut head)?;
 
         let mut head_file = fs::File::create(HEAD)?;
         head_file.write_all(b"ref: refs/heads/main")?;
@@ -79,7 +72,7 @@ fn generate_sha1_string(branch_name: &str) -> String {
     hasher.result_str()
 }
 
-fn create_new_branch(branch_name: &str) -> Result<(), Box<dyn Error>> { 
+fn create_new_branch(branch_name: &str, head: &mut Head) -> Result<(), Box<dyn Error>> {
     let branch_path = format!("{}/{}", R_HEADS, branch_name);
 
     let mut branch_file = fs::File::create(&branch_path)?;
