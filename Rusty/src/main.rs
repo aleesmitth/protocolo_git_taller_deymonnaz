@@ -50,8 +50,8 @@ impl Command for Init {
         let _refs_tags = fs::create_dir(R_TAGS)?;
         let _obj = fs::create_dir(OBJECT)?;
 
-        let mut head = Head::new();
-        create_new_branch(DEFAULT_BRANCH_NAME, &mut head)?;
+        //let mut head = Head::new();
+        create_new_branch(DEFAULT_BRANCH_NAME, head)?;
 
         let mut head_file = fs::File::create(HEAD)?;
         head_file.write_all(b"ref: refs/heads/main")?;
