@@ -44,9 +44,10 @@ impl Head {
 	}
 
 	pub fn delete_branch(&mut self, name: &str) -> Result<(), Box<dyn Error>> {
-		println!("TODO delete branch {}", name);
-		//TODO
-		Ok(())
+	    // Use the retain method to remove branches with the specified name
+	    self.branches.retain( | branch | branch != name);
+
+	    Ok(())
 	}
 
 	pub fn rename_branch(&mut self, old_name: &str, new_name: &str) -> Result<(), Box<dyn Error>> {
@@ -193,6 +194,12 @@ fn main() {
 		eprintln!("{}", error);
         return;
 	}
+
+	if let Err(error) = branch.execute(&mut head, Some(&["-d", "branch-name"])){
+		eprintln!("{}", error);
+        return;
+	}
+
 	if let Err(error) = branch.execute(&mut head, Some(&["-m", "branch-name", "new_branch_name"])){
 		eprintln!("{}", error);
         return;
