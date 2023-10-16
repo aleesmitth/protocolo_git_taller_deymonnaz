@@ -3,6 +3,8 @@ extern crate crypto;
 use crypto::sha1::Sha1;
 use crypto::digest::Digest;
 
+const DELETE_FLAG: &str = "-d";
+const RENAME_FLAG: &str = "-m";
 //const GIT: &str = ".git";
 const OBJECT: &str = ".git/objects";
 //const REFS: &str = ".git/refs";
@@ -140,8 +142,8 @@ impl Command for Branch {
 
 	    for &arg in arg_slice { // Note the & in for &arg
 	        match arg {
-	            "-d" => delete_flag = true,
-	            "-m" => rename_flag = true,
+	            DELETE_FLAG => delete_flag = true,
+	            RENAME_FLAG => rename_flag = true,
 	            _ => {
 	            	if first_branch_name.is_none() {
 	                    first_branch_name = Some(arg.to_string());
