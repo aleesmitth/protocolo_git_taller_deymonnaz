@@ -152,6 +152,12 @@ impl Command for Branch {
 	        }
 	    }
 
+	    /*
+			- if there are no args, print list of branches
+			- if there is "-d" flag, and a branch name, delete it
+			- if there is "-m" flag, and there isn't "-d" flag, and 2 branch names, rename the "first branch name" to the "second branch name"
+			- if there is no flags and a branch name, create a branch with that name
+	    */
 	    match (list_branches_flag, delete_flag, rename_flag, first_branch_name, second_branch_name) {
 	        (true, _, _, _, _) => head.print_all(),
 	        (_, true, _, Some(name), _) => head.delete_branch(&name)?,
