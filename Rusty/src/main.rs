@@ -40,7 +40,10 @@ impl Head {
 	}
 
 	pub fn add_branch(&mut self, name: &str) {
-		self.branches.push(name.to_string());
+		// Check if the branch name is not already in the vector
+	    if !self.branches.iter().any(| branch | branch == name) {
+	        self.branches.push(name.to_string());
+	    }
 	}
 
 	pub fn delete_branch(&mut self, name: &str) -> Result<(), Box<dyn Error>> {
@@ -51,10 +54,14 @@ impl Head {
 	}
 
 	pub fn rename_branch(&mut self, old_name: &str, new_name: &str) -> Result<(), Box<dyn Error>> {
-		println!("TODO rename branch {} to {}", old_name, new_name);
-		//TODO
-		Ok(())
+	    // Find the branch with the old name and rename it to the new name
+	    if let Some(branch) = self.branches.iter_mut().find( | branch | *branch == old_name) {
+	        *branch = new_name.to_string();
+	    }
+
+	    Ok(())
 	}
+
 
 	pub fn print_all(&self) {
 		for s in self.branches.iter() {
@@ -196,6 +203,11 @@ fn main() {
 	}
 
 	if let Err(error) = branch.execute(&mut head, Some(&["-d", "branch-name"])){
+		eprintln!("{}", error);
+        return;
+	}
+
+	if let Err(error) = branch.execute(&mut head, Some(&["branch-name"])){
 		eprintln!("{}", error);
         return;
 	}
