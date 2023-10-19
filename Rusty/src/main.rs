@@ -37,6 +37,15 @@ impl HashObject {
     }
 }
 
+enum ObjectType {
+    Blob,
+    Commit,
+    Tree,
+    Tag,
+}
+
+
+
 impl Head {	
 	pub fn new() -> Self {
 		Head { branches: Vec::new() }
@@ -75,7 +84,7 @@ impl Command for HashObject {
         match args {
             Some(args) => {
                 let mut path: &str = "";
-                let mut obj_type = "blob";
+                let mut obj_type = ObjectType::Blob;
                 let mut write = false;
                 for &arg in args {
                     match arg {
@@ -84,12 +93,10 @@ impl Command for HashObject {
                         _ => path = arg,
                     }
                 }                
-
                 if path.is_empty() {
                     println!("Please provide a file path or data to hash.");
                     return Ok(());
                 }
-
                 let content = read_file_content(path)?;
                 if write {
                     let data = format!("{} {}\0{}", obj_type, get_file_length(path)?, content);
