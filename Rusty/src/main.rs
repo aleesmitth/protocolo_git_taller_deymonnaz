@@ -6,7 +6,6 @@ use crypto::digest::Digest;
 const DELETE_FLAG: &str = "-d";
 const RENAME_FLAG: &str = "-m";
 //const GIT: &str = ".git";
-const OBJECT: &str = ".git/objects";
 //const REFS: &str = ".git/refs";
 const R_HEADS: &str = ".git/refs/heads";
 const HEAD: &str = ".git/HEAD";
@@ -73,10 +72,8 @@ impl Head {
 }
 
 impl Command for Init {
+
     fn execute(&self, head: &mut Head, _: Option<&[&str]>) -> Result<(), Box<dyn Error>>{
-        // usando create_dir_all() se puede evitar crear a todos uno por uno
-        // asi que podemos borrar algunas de las ctes
-        // tambien usando format!() se podria ir uniendo los paths 
         let _refs_heads = fs::create_dir_all(R_HEADS);
         let _refs_tags = fs::create_dir(R_TAGS)?;
         let _obj = fs::create_dir(OBJECT)?;
@@ -185,6 +182,23 @@ fn generate_sha1_string(branch_name: &str) -> String {
 }
 
 fn create_new_branch(branch_name: &str, head: &mut Head) -> Result<(), Box<dyn Error>> {
+    let branch_path = format!("{}/{}", R_HEADS, branch_name);
+
+    let mut branch_file = fs::File::create(&branch_path)?;
+
+    write!(branch_file, "{}", generate_sha1_string(branch_name))?;
+    head.add_branch(branch_name);
+
+    Ok(())
+}
+
+fn generate_sha1_string(branch_name: &str) -> String {
+    let mut hasher = Sha1::new();
+    hasher.input_str(branch_name);
+    hasher.result_str()
+}
+
+fn create_new_branch(branch_name: &str) -> Result<(), Box<dyn Error>> { 
     let branch_path = format!("{}/{}", R_HEADS, branch_name);
 
     let mut branch_file = fs::File::create(&branch_path)?;
