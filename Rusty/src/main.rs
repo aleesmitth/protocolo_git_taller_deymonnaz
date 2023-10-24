@@ -1,6 +1,3 @@
-
-use std::{fs, error::Error, io::Write, io::Read};
-
 use std::{fs, error::Error, io, io::Write, io::Read};
 extern crate crypto;
 extern crate libflate;
@@ -9,8 +6,6 @@ use crypto::sha1::Sha1;
 use crypto::digest::Digest;
 use libflate::zlib::{Encoder, Decoder};
 use std::str;
-
-use libflate::zlib::Encoder;
 use std::fmt;
 
 const TYPE_FLAG: &str = "-t";
@@ -260,8 +255,6 @@ fn compress_content(content: &str) -> Result<Vec<u8>, io::Error> {
     encoder.finish().into_result()
 }
 
-pub trait Command {
-    fn execute(&self, head: &mut Head, _: Option<&[&str]>) -> Result<(), Box<dyn Error>>;
 /// Implementation of the `Command` trait for the `Branch` type.
 ///
 /// This implementation defines the behavior of the `execute` method for the `Branch` type.
@@ -378,42 +371,36 @@ fn main() {
         eprintln!("{}", error);
         return; 
     }
-}
 
     let hash_obj = HashObject::new();
     if let Err(error) = hash_obj.execute(&mut head, Some(&["-w", "-t", "tree", "hola.txt"])){
-      eprintln!("{}", error);
+        eprintln!("{}", error);
         return;
+    }
 
-  }
+	// if let Err(error) = branch.execute(&mut head, Some(&["branch-name"])){
+	// 	eprintln!("{}", error);
+    //     return;
+	// }
 
+	// if let Err(error) = branch.execute(&mut head, Some(&["-d", "branch-name"])){
+	// 	eprintln!("{}", error);
+    //     return;
+	// }
 
-	if let Err(error) = branch.execute(&mut head, Some(&["branch-name"])){
-		eprintln!("{}", error);
-        return;
-	}
+	// if let Err(error) = branch.execute(&mut head, Some(&["branch-name"])){
+	// 	eprintln!("{}", error);
+    //     return;
+	// }
 
-	if let Err(error) = branch.execute(&mut head, Some(&["-d", "branch-name"])){
-		eprintln!("{}", error);
-        return;
-	}
-
-	if let Err(error) = branch.execute(&mut head, Some(&["branch-name"])){
-		eprintln!("{}", error);
-        return;
-	}
-
-	if let Err(error) = branch.execute(&mut head, Some(&["-m", "branch-name", "new_branch_name"])){
-		eprintln!("{}", error);
-        return;
-	}
+	// if let Err(error) = branch.execute(&mut head, Some(&["-m", "branch-name", "new_branch_name"])){
+	// 	eprintln!("{}", error);
+    //     return;
+	// }
     
-	if let Err(error) = branch.execute(&mut head, None){
-		eprintln!("{}", error);
-        return;
-	}
-
-
-
+	// if let Err(error) = branch.execute(&mut head, None){
+	// 	eprintln!("{}", error);
+    //     return;
+	// }
 }
 
