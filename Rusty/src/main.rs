@@ -7,6 +7,7 @@ use crypto::digest::Digest;
 use libflate::zlib::{Encoder, Decoder};
 use std::str;
 use std::fmt;
+use std::collections::HashMap;
 
 const TYPE_FLAG: &str = "-t";
 const WRITE_FLAG: &str = "-w";
@@ -23,18 +24,14 @@ const DEFAULT_BRANCH_NAME: &str = "main";
 const TYPE: &str = "-t";
 const SIZE: &str = "-s";
 
-pub struct Init {
-
-}
+pub struct Init;
 
 impl Init {
     pub fn new() -> Self {
         Init {  }
     }
 }
-pub struct Branch {
-
-}
+pub struct Branch;
 
 impl Branch {
     pub fn new() -> Self {
