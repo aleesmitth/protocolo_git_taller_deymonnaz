@@ -7,7 +7,6 @@ use crypto::digest::Digest;
 use libflate::zlib::{Encoder, Decoder};
 use std::str;
 use std::fmt;
-use std::collections::HashMap;
 
 const TYPE_FLAG: &str = "-t";
 const WRITE_FLAG: &str = "-w";
@@ -173,7 +172,7 @@ impl Command for Init {
         let mut head_file = fs::File::create(HEAD_FILE)?;
         head_file.write_all(b"ref: refs/heads/main")?;
 
-        let mut index_file = fs::File::create(INDEX_FILE)?;
+        let index_file = fs::File::create(INDEX_FILE)?;
         
         Ok(String::new())    
     }
@@ -220,15 +219,19 @@ fn write_object_file(content: String, obj_type: ObjectType, path: &str) -> Resul
     let data = format!("{} {}\0{}", obj_type, get_file_length(path)?, content);
     let hashed_data = generate_sha1_string(data.as_str());
     let compressed_content = compress_content(content.as_str())?;
-
+    
     let obj_directory_path = format!("{}/{}", OBJECT, &hashed_data[0..2]);
-    fs::create_dir(&obj_directory_path)?;
+    let _ = fs::create_dir(&obj_directory_path);
 
     let object_file_path = format!("{}/{}", obj_directory_path, &hashed_data[2..]);
+    if fs::metadata(object_file_path.clone()).is_ok() {
+        return Ok(hashed_data)
+    }
+    
     let mut object_file = fs::File::create(object_file_path.clone())?;
     write!(object_file, "{:?}", compressed_content)?;    
 
-    Ok(object_file_path)
+    Ok(hashed_data)
 }
 
 /// Returns lenght of the a given file's content
@@ -402,7 +405,6 @@ fn remove_object_from_file(file_path: &str) -> io::Result<()> {
         
         if line.starts_with(file_path) {
             found_index = Some(index);
-            println!("{:?}", found_index);
             break;
         }
     }
@@ -414,7 +416,7 @@ fn remove_object_from_file(file_path: &str) -> io::Result<()> {
     else {
         return Err(io::Error::new(
             io::ErrorKind::Other,
-            "fatal: path did not match any files",
+            "path did not match any files",
         ));
     }
 
@@ -443,9 +445,10 @@ impl StagingArea {
     }
 
     fn add_file(&mut self, head: &mut Head, path: &str) -> Result<(), Box<dyn Error>> {
-        println!("b");
         let hash_object = HashObject::new();
-        let object_path = hash_object.execute(head, Some(&["-w", path]))?;
+        let object_hash = hash_object.execute(head, Some(&["-w", path]))?;
+
+        let object_path = format!("{}/{}/{}", OBJECT, &object_hash[0..2], &object_hash[2..]);
 
         update_file_with_hash(object_path.as_str(), "2", path)?;
 
@@ -453,7 +456,6 @@ impl StagingArea {
     }
 
     fn remove_file(&mut self, path: &str) -> Result<(), Box<dyn Error>> {
-        println!("a");
         remove_object_from_file(path)?;
         Ok(())
     }
@@ -484,20 +486,20 @@ fn main() {
 
 
     let mut stg_area = StagingArea::new();
-    // if let Err(error) = stg_area.add_file(&mut head, "a.txt") {
-    //     println!("a {}", error);
-    //     return;
-    // }
-    // if let Err(error) = stg_area.add_file(&mut head, "b.txt") {
-    //     println!("b {}", error);
-    //     return;
-    // }
-    // if let Err(error) = stg_area.add_file(&mut head, "a.txt") {
-    //     println!("a {}", error);
-    //     return;
-    // }
+    if let Err(error) = stg_area.add_file(&mut head, "a.txt") {
+        println!("a1 {}", error);
+        return;
+    }
+    if let Err(error) = stg_area.add_file(&mut head, "b.txt") {
+        println!("b {}", error);
+        return;
+    }
+    if let Err(error) = stg_area.add_file(&mut head, "a.txt") {
+        println!("a2 {}", error);
+        return;
+    }
 
-    if let Err(error) = stg_area.remove_file("b.txt") {
+    if let Err(error) = stg_area.remove_file("a.txt") {
         println!("rm b{}", error);
         return;
     }
