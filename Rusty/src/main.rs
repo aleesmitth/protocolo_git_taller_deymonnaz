@@ -7,7 +7,6 @@ use crypto::digest::Digest;
 use libflate::zlib::{Encoder, Decoder};
 use std::str;
 use std::fmt;
-use std::collections::HashMap;
 
 const TYPE_FLAG: &str = "-t";
 const WRITE_FLAG: &str = "-w";
@@ -20,6 +19,7 @@ const R_HEADS: &str = ".git/refs/heads";
 const HEAD_FILE: &str = ".git/HEAD";
 const R_TAGS: &str = ".git/refs/tags";
 const DEFAULT_BRANCH_NAME: &str = "main";
+const INDEX_FILE: &str = ".git/index";
 
 const TYPE: &str = "-t";
 const SIZE: &str = "-s";
@@ -128,7 +128,7 @@ impl CatFile {
 }
 
 impl Command for CatFile {
-    fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<(), Box<dyn Error>> {
+    fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
         match args {
             Some(args) => {
 
@@ -156,12 +156,12 @@ impl Command for CatFile {
             None => eprintln!("")
         }
 
-        Ok(())
+        Ok(String::new())
     }
 }
 
 impl Command for Init {
-    fn execute(&self, head: &mut Head, _: Option<&[&str]>) -> Result<(), Box<dyn Error>>{
+    fn execute(&self, head: &mut Head, _: Option<&[&str]>) -> Result<String, Box<dyn Error>>{
 
         let _refs_heads = fs::create_dir_all(R_HEADS);
         let _refs_tags = fs::create_dir(R_TAGS)?;
@@ -171,16 +171,16 @@ impl Command for Init {
 
         let mut head_file = fs::File::create(HEAD_FILE)?;
         head_file.write_all(b"ref: refs/heads/main")?;
-        
-        Ok(())    
 
+        let index_file = fs::File::create(INDEX_FILE)?;
         
+        Ok(String::new())    
     }
 }
 
 
 impl Command for HashObject {
-    fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<(), Box<dyn Error>> {
+    fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
         let arg_slice = args.unwrap_or(&[]);
         let mut path: &str = "";
         let mut obj_type = ObjectType::Blob;
@@ -193,7 +193,7 @@ impl Command for HashObject {
                         obj_type = new_obj_type;
                     } else {
                         eprintln!("Unknown object type for input: {}", arg_slice[i]);
-                        return Ok(());
+                        return Ok(String::new());
                     }
                 }
                 WRITE_FLAG => write = true,
@@ -202,32 +202,36 @@ impl Command for HashObject {
         }  
         if path.is_empty() {
             eprintln!("Please provide a file path or data to hash.");
-            return Ok(());
+            return Ok(String::new());
         }
         let content = read_file_content(path)?;
         if write {
-            write_object_file(content, obj_type, path)?;
+            return write_object_file(content, obj_type, path);
         }
         else {
             println!("{}", generate_sha1_string(content.as_str()));
         }
-        Ok(())
+        Ok(String::new())
     }
 }
 
-fn write_object_file(content: String, obj_type: ObjectType, path: &str) -> Result<(), Box<dyn Error>> {
+fn write_object_file(content: String, obj_type: ObjectType, path: &str) -> Result<String, Box<dyn Error>> {
     let data = format!("{} {}\0{}", obj_type, get_file_length(path)?, content);
     let hashed_data = generate_sha1_string(data.as_str());
     let compressed_content = compress_content(content.as_str())?;
-
+    
     let obj_directory_path = format!("{}/{}", OBJECT, &hashed_data[0..2]);
-    fs::create_dir(&obj_directory_path)?;
+    let _ = fs::create_dir(&obj_directory_path);
 
     let object_file_path = format!("{}/{}", obj_directory_path, &hashed_data[2..]);
-    let mut object_file = fs::File::create(object_file_path)?;
+    if fs::metadata(object_file_path.clone()).is_ok() {
+        return Ok(hashed_data)
+    }
+    
+    let mut object_file = fs::File::create(object_file_path.clone())?;
     write!(object_file, "{:?}", compressed_content)?;    
 
-    Ok(())
+    Ok(hashed_data)
 }
 
 /// Returns lenght of the a given file's content
@@ -290,7 +294,7 @@ fn compress_content(content: &str) -> Result<Vec<u8>, io::Error> {
 /// assert!(result2.is_ok());
 /// ```
 impl Command for Branch {
-    fn execute(&self, head: &mut Head, args: Option<&[&str]>) -> Result<(), Box<dyn Error>> {
+    fn execute(&self, head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
 	    let list_branches_flag = args.is_none();
 	    let mut delete_flag = false;
 	    let mut rename_flag = false;
@@ -326,7 +330,7 @@ impl Command for Branch {
 	        (false, false, false, Some(name), _) => create_new_branch(&name, head)?,
 	        _ => {}
 	    }
-	    Ok(())
+	    Ok(String::new())
 	}
 
 
@@ -334,7 +338,7 @@ impl Command for Branch {
 }
 
 pub trait Command {
-    fn execute(&self, head: &mut Head, args: Option<&[&str]>) -> Result<(), Box<dyn Error>>;
+    fn execute(&self, head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>>;
 }
 
 fn generate_sha1_string(branch_name: &str) -> String {
@@ -354,6 +358,123 @@ fn create_new_branch(branch_name: &str, head: &mut Head) -> Result<(), Box<dyn E
     Ok(())
 }
 
+
+fn update_file_with_hash(object_path: &str, new_status: &str, file_path: &str) -> io::Result<()> {
+    // Read the file into a vector of lines.
+    let file_contents = fs::read_to_string(INDEX_FILE)?;
+
+    // Split the file contents into lines.
+    let mut lines: Vec<String> = file_contents.lines().map(|s| s.to_string()).collect();
+
+    // Search for the hash in the lines.
+    let mut found = false;
+    for line in &mut lines {
+        if line.starts_with(file_path) {
+            found = true;
+            // Replace the existing line with the hash and "1".
+            *line = format!("{};{};{}", file_path, object_path, new_status);
+            break;
+        }
+    }
+
+    // If the hash was not found, add a new line.
+    if !found {
+        lines.push(format!("{};{};{}", file_path, object_path, new_status));
+    }
+
+    // Join the lines back into a single string.
+    let updated_contents = lines.join("\n");
+
+    // Write the updated contents back to the file.
+    fs::write(INDEX_FILE, updated_contents)?;
+
+    Ok(())
+}
+
+fn remove_object_from_file(file_path: &str) -> io::Result<()> {
+    // Read the file into a vector of lines.
+    
+    let file_contents = fs::read_to_string(INDEX_FILE)?;
+    
+    // Split the file contents into lines.
+    let mut lines: Vec<String> = file_contents.lines().map(|s| s.to_string()).collect();
+
+    // Search for the hash in the lines.
+    let mut found_index: Option<usize> = None;
+    for (index, line) in lines.iter().enumerate() {
+        
+        if line.starts_with(file_path) {
+            found_index = Some(index);
+            break;
+        }
+    }
+
+    // If the hash was found, remove the line.
+    if let Some(index) = found_index {
+        lines.remove(index);
+    }
+    else {
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            "path did not match any files",
+        ));
+    }
+
+    // Join the lines back into a single string.
+    let updated_contents = lines.join("\n");
+
+    // Write the updated contents back to the file.
+    fs::write(INDEX_FILE, updated_contents)?;
+
+    Ok(())
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+enum FileStatus {
+    Untracked,
+    Modified,
+    Staged,
+}
+
+#[derive(Debug)]
+struct StagingArea;
+
+impl StagingArea {
+    fn new() -> Self {
+        StagingArea {}
+    }
+
+    fn add_file(&mut self, head: &mut Head, path: &str) -> Result<(), Box<dyn Error>> {
+        let hash_object = HashObject::new();
+        let object_hash = hash_object.execute(head, Some(&["-w", path]))?;
+
+        let object_path = format!("{}/{}/{}", OBJECT, &object_hash[0..2], &object_hash[2..]);
+
+        update_file_with_hash(object_path.as_str(), "2", path)?;
+
+        Ok(())
+    }
+
+    fn remove_file(&mut self, path: &str) -> Result<(), Box<dyn Error>> {
+        remove_object_from_file(path)?;
+        Ok(())
+    }
+
+    // fn unstage_file(&mut self, path: &str) {
+    //     if let Some(status) = self.files.get_mut(path) {
+    //         *status = FileStatus::Modified;
+    //     }
+    // }
+
+    // fn list_stagedfiles(&self) -> Vec<&str> {
+    //     self.files
+    //         .iter()
+    //         .filter(|&(, status)|status == FileStatus::Staged)
+    //         .map(|(path, _)| path.as_str())
+    //         .collect()
+    // }
+}
+
 fn main() {
     let mut head = Head::new();
     // let init = Init::new();
@@ -363,17 +484,36 @@ fn main() {
     // }
     head.print_all();
 
-    let mut cat = CatFile::new();
-    if let Err(error) = cat.execute(&mut head, Some(&["-t", "000142551ee3ec5d88c405cc048e1d5460795102"])){
-        eprintln!("{}", error);
-        return; 
-    }
 
-    let hash_obj = HashObject::new();
-    if let Err(error) = hash_obj.execute(&mut head, Some(&["-w", "-t", "tree", "hola.txt"])){
-        eprintln!("{}", error);
+    let mut stg_area = StagingArea::new();
+    if let Err(error) = stg_area.add_file(&mut head, "a.txt") {
+        println!("a1 {}", error);
         return;
     }
+    if let Err(error) = stg_area.add_file(&mut head, "b.txt") {
+        println!("b {}", error);
+        return;
+    }
+    if let Err(error) = stg_area.add_file(&mut head, "a.txt") {
+        println!("a2 {}", error);
+        return;
+    }
+
+    if let Err(error) = stg_area.remove_file("a.txt") {
+        println!("rm b{}", error);
+        return;
+    }
+    // let mut cat = CatFile::new();
+    // if let Err(error) = cat.execute(&mut head, Some(&["-t", "000142551ee3ec5d88c405cc048e1d5460795102"])){
+    //     eprintln!("{}", error);
+    //     return; 
+    // }
+
+    // let hash_obj = HashObject::new();
+    // if let Err(error) = hash_obj.execute(&mut head, Some(&["-w", "-t", "tree", "hola.txt"])){
+    //     eprintln!("{}", error);
+    //     return;
+    // }
 
 	// if let Err(error) = branch.execute(&mut head, Some(&["branch-name"])){
 	// 	eprintln!("{}", error);
