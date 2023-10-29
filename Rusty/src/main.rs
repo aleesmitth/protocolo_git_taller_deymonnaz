@@ -82,6 +82,30 @@ impl fmt::Display for ObjectType {
     }
 }
 
+pub struct Add {
+    stg_area: StagingArea,
+}
+
+impl Add {
+    fn new(stg_area: StagingArea) -> Self {
+        Add { stg_area }
+    }
+}
+
+impl Command for Add {
+    fn execute(&self, head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
+        match args {
+            Some(args) => {
+                self.stg_area.add_file(head, args[0]);
+            }
+            None => return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "Did not receive a file path",
+            ))),
+        }
+        Ok(String::new())
+    }
+}
 
 impl Head {	
 	pub fn new() -> Self {
@@ -444,8 +468,8 @@ impl StagingArea {
         StagingArea {}
     }
 
-    fn add_file(&mut self, head: &mut Head, path: &str) -> Result<(), Box<dyn Error>> {
-        let hash_object = HashObject::new();
+    fn add_file(&self, head: &mut Head, path: &str) -> Result<(), Box<dyn Error>> {
+        let mut hash_object = HashObject::new();
         let object_hash = hash_object.execute(head, Some(&["-w", path]))?;
 
         let object_path = format!("{}/{}/{}", OBJECT, &object_hash[0..2], &object_hash[2..]);
@@ -477,32 +501,21 @@ impl StagingArea {
 
 fn main() {
     let mut head = Head::new();
-    // let init = Init::new();
-    // if let Err(error) = init.execute(&mut head, None){
-    //     eprintln!("{}", error);
-    //     return; 
-    // }
+    let init = Init::new();
+    if let Err(error) = init.execute(&mut head, None){
+        eprintln!("{}", error);
+        return; 
+    }
     head.print_all();
 
 
     let mut stg_area = StagingArea::new();
-    if let Err(error) = stg_area.add_file(&mut head, "a.txt") {
+    let mut add = Add::new(stg_area);
+    if let Err(error) = add.execute(&mut head, Some(&["a.txt"])) {
         println!("a1 {}", error);
         return;
     }
-    if let Err(error) = stg_area.add_file(&mut head, "b.txt") {
-        println!("b {}", error);
-        return;
-    }
-    if let Err(error) = stg_area.add_file(&mut head, "a.txt") {
-        println!("a2 {}", error);
-        return;
-    }
-
-    if let Err(error) = stg_area.remove_file("a.txt") {
-        println!("rm b{}", error);
-        return;
-    }
+    
     // let mut cat = CatFile::new();
     // if let Err(error) = cat.execute(&mut head, Some(&["-t", "000142551ee3ec5d88c405cc048e1d5460795102"])){
     //     eprintln!("{}", error);
