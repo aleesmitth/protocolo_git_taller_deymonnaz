@@ -87,8 +87,8 @@ pub struct Add {
 }
 
 impl Add {
-    fn new(stg_area: StagingArea) -> Self {
-        Add { stg_area }
+    fn new() -> Self {
+        Add { stg_area: StagingArea::new() }
     }
 }
 
@@ -100,7 +100,32 @@ impl Command for Add {
             }
             None => return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
-                "Did not receive a file path",
+                "Did not receive a file path to add",
+            ))),
+        }
+        Ok(String::new())
+    }
+}
+
+pub struct Rm {
+    stg_area: StagingArea,
+}
+
+impl Rm {
+    fn new() -> Self {
+        Rm { stg_area: StagingArea::new() }
+    }
+}
+
+impl Command for Rm {
+    fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
+        match args {
+            Some(args) => {
+                self.stg_area.remove_file(args[0]);
+            }
+            None => return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "Did not receive a file path to remove",
             ))),
         }
         Ok(String::new())
@@ -479,7 +504,7 @@ impl StagingArea {
         Ok(())
     }
 
-    fn remove_file(&mut self, path: &str) -> Result<(), Box<dyn Error>> {
+    fn remove_file(&self, path: &str) -> Result<(), Box<dyn Error>> {
         remove_object_from_file(path)?;
         Ok(())
     }
@@ -501,18 +526,23 @@ impl StagingArea {
 
 fn main() {
     let mut head = Head::new();
-    let init = Init::new();
-    if let Err(error) = init.execute(&mut head, None){
-        eprintln!("{}", error);
-        return; 
-    }
+    // let init = Init::new();
+    // if let Err(error) = init.execute(&mut head, None){
+    //     eprintln!("{}", error);
+    //     return; 
+    // }
     head.print_all();
 
 
-    let mut stg_area = StagingArea::new();
-    let mut add = Add::new(stg_area);
+    let mut add = Add::new();
     if let Err(error) = add.execute(&mut head, Some(&["a.txt"])) {
-        println!("a1 {}", error);
+        println!("{}", error);
+        return;
+    }
+
+    let mut rm = Rm::new();
+    if let Err(error) = rm.execute(&mut head, Some(&["a.txt"])) {
+        println!("{}", error);
         return;
     }
     
