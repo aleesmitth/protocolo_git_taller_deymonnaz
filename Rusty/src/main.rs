@@ -8,12 +8,14 @@ use libflate::zlib::{Encoder, Decoder};
 use std::str;
 use std::fmt;
 
-const TYPE_FLAG: &str = "-t";
-const WRITE_FLAG: &str = "-w";
 const OBJECT: &str = ".git/objects";
 
 const DELETE_FLAG: &str = "-d";
 const RENAME_FLAG: &str = "-m";
+const TYPE_FLAG: &str = "-t";
+const WRITE_FLAG: &str = "-w";
+const SIZE_FLAG: &str = "-s";
+const MESSAGE_FLAG: &str = "-m";
 
 const R_HEADS: &str = ".git/refs/heads";
 const HEAD_FILE: &str = ".git/HEAD";
@@ -21,8 +23,7 @@ const R_TAGS: &str = ".git/refs/tags";
 const DEFAULT_BRANCH_NAME: &str = "main";
 const INDEX_FILE: &str = ".git/index";
 
-const TYPE: &str = "-t";
-const SIZE: &str = "-s";
+
 
 pub struct Init;
 
@@ -132,30 +133,46 @@ impl Command for Rm {
     }
 }
 
-pub struct Commit;
+pub struct Commit {
+    stg_area: StagingArea,
+}
 
 impl Commit {
     fn new() -> Self {
-        Commit {}
+        Commit { stg_area: StagingArea::new() }
     }
 
-    fn generate_commit_content(&self, tree_hash: String, message: &str, branch_path: &str) -> Result<String, Box<dyn Error>> {
+    fn generate_commit_content(&self, tree_hash: String, message: Option<&str>, branch_path: &str) -> Result<String, Box<dyn Error>> {
         let head_commit = read_file_content(branch_path)?;
         
         let mut content = String::new();
         content.push_str(&tree_hash);
         content.push_str(&head_commit);
-        content.push_str(message);
+        if let Some(message) = message {
+            content.push_str(message);
+        }
         Ok(content)
     }
 }
 
 impl Command for Commit {
     fn execute(&self, head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
-        let mut message;
-        match args {
-            Some(args) =>  message = args[1],
-            None => message = "",
+        if get_file_length(INDEX_FILE)? == 0 {
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "No changes staged for commit",
+            )))
+        } 
+
+        let mut message: Option<&str> = None;
+        let mut message_flag = false;
+        let arg_slice = args.unwrap_or(&[]);
+
+	    for &arg in arg_slice { // Note the & in for &arg
+	        match arg { 
+                MESSAGE_FLAG => message_flag = true,
+                _ => message = Some(arg),
+            }
         }
         let hash_obj = HashObject::new();
         let tree_hash = hash_obj.execute(head, Some(&[WRITE_FLAG, TYPE_FLAG, "tree", INDEX_FILE]))?;
@@ -164,6 +181,7 @@ impl Command for Commit {
 
         if let Some(branch_path) = split_head_content.get(1) {
             let full_branch_path = format!(".git/{}", branch_path);
+            message = if message_flag { message } else { None };
             let commit_content = self.generate_commit_content(tree_hash, message, &full_branch_path)?;
 
             let commit_object_hash = HashObjectCreator::write_object_file(commit_content.clone(), ObjectType::Commit, commit_content.as_bytes().len() as u64)?;
@@ -172,6 +190,7 @@ impl Command for Commit {
             branch_file.write_all(commit_object_hash.as_bytes())?;
         }
 
+        self.stg_area.clear_index_file()?;
         Ok(String::new())
     }
 }
@@ -204,7 +223,6 @@ impl Head {
 
 	    Ok(())
 	}
-
 
 	pub fn print_all(&self) {
 		for s in self.branches.iter() {
@@ -239,8 +257,8 @@ impl Command for CatFile {
                 let parts: Vec<&str> = header_str.trim_end().split(' ').collect();
 
                 match args[0] {
-                    TYPE => println!("{}", parts[0]),
-                    SIZE => println!("{}", parts[1]),
+                    TYPE_FLAG => println!("{}", parts[0]),
+                    SIZE_FLAG => println!("{}", parts[1]),
                     _ => eprintln!(""),
                 }
             }
@@ -563,6 +581,11 @@ impl StagingArea {
         Ok(())
     }
 
+    fn clear_index_file(&self) -> Result<(), Box<dyn Error>> {
+        fs::File::create(INDEX_FILE)?;
+        Ok(())
+    }
+
     // fn unstage_file(&mut self, path: &str) {
     //     if let Some(status) = self.files.get_mut(path) {
     //         *status = FileStatus::Modified;
@@ -588,11 +611,11 @@ fn main() {
     //head.print_all();
 
 
-    let mut add = Add::new();
-    if let Err(error) = add.execute(&mut head, Some(&["a/a.txt"])) {
-        println!("{}", error);
-        return;
-    }
+    // let mut add = Add::new();
+    // if let Err(error) = add.execute(&mut head, Some(&["a/a.txt"])) {
+    //     println!("{}", error);
+    //     return;
+    // }
 
     let mut commit = Commit::new();
     if let Err(error) = commit.execute(&mut head, Some(&["-m", "message"])) {
