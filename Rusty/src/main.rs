@@ -153,6 +153,15 @@ impl Commit {
         }
         Ok(content)
     }
+
+    // fn get_last_commit(&self) -> String {
+    //     let head_file_content = read_file_content(HEAD_FILE)?;
+    //     let split_head_content: Vec<&str> = head_file_content.split(" ").collect();
+
+    //     if let Some(branch_path) = split_head_content.get(1) {
+
+    //     }
+    // }
 }
 
 impl Command for Commit {
@@ -473,7 +482,12 @@ fn create_new_branch(branch_name: &str, head: &mut Head) -> Result<(), Box<dyn E
 
     let mut branch_file = fs::File::create(&branch_path)?;
 
-    write!(branch_file, "{}", generate_sha1_string(branch_name))?;
+    if branch_name == DEFAULT_BRANCH_NAME {
+        write!(branch_file, "");
+    }
+    else {
+        write!(branch_file, "{}", generate_sha1_string(branch_name))?; //aca necesito buscar el ultimo commit del branch anterior
+    }
     head.add_branch(branch_name);
 
     Ok(())
@@ -611,17 +625,17 @@ fn main() {
     //head.print_all();
 
 
-    // let mut add = Add::new();
-    // if let Err(error) = add.execute(&mut head, Some(&["a/a.txt"])) {
-    //     println!("{}", error);
-    //     return;
-    // }
-
-    let mut commit = Commit::new();
-    if let Err(error) = commit.execute(&mut head, Some(&["-m", "message"])) {
+    let mut add = Add::new();
+    if let Err(error) = add.execute(&mut head, Some(&["a/a.txt"])) {
         println!("{}", error);
         return;
     }
+
+    // let mut commit = Commit::new();
+    // if let Err(error) = commit.execute(&mut head, Some(&["-m", "message"])) {
+    //     println!("{}", error);
+    //     return;
+    // }
 
     // let mut cat = CatFile::new();
     // if let Err(error) = cat.execute(&mut head, Some(&["-t", "000142551ee3ec5d88c405cc048e1d5460795102"])){
