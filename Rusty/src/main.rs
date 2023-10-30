@@ -97,7 +97,7 @@ impl Command for Add {
     fn execute(&self, head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
         match args {
             Some(args) => {
-                self.stg_area.add_file(head, args[0]);
+                self.stg_area.add_file(head, args[0])?;
             }
             None => return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
@@ -122,7 +122,7 @@ impl Command for Rm {
     fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
         match args {
             Some(args) => {
-                self.stg_area.remove_file(args[0]);
+                self.stg_area.remove_file(args[0])?;
             }
             None => return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
@@ -144,24 +144,18 @@ impl Commit {
 
     fn generate_commit_content(&self, tree_hash: String, message: Option<&str>, branch_path: &str) -> Result<String, Box<dyn Error>> {
         let head_commit = read_file_content(branch_path)?;
-        
-        let mut content = String::new();
-        content.push_str(&tree_hash);
-        content.push_str(&head_commit);
+        println!("commit");
+        //let mut content = String::new();
+        // content.push_str(&tree_hash);
+        // content.push_str(&head_commit);
+        let mut content = format!("{}\n{}", tree_hash, head_commit);
         if let Some(message) = message {
-            content.push_str(message);
+            // content.push_str(message);
+            content = format!("{}\n{}", content, message);
         }
         Ok(content)
     }
 
-    // fn get_last_commit(&self) -> String {
-    //     let head_file_content = read_file_content(HEAD_FILE)?;
-    //     let split_head_content: Vec<&str> = head_file_content.split(" ").collect();
-
-    //     if let Some(branch_path) = split_head_content.get(1) {
-
-    //     }
-    // }
 }
 
 impl Command for Commit {
@@ -185,25 +179,75 @@ impl Command for Commit {
         }
         let hash_obj = HashObject::new();
         let tree_hash = hash_obj.execute(head, Some(&[WRITE_FLAG, TYPE_FLAG, "tree", INDEX_FILE]))?;
-        let head_file_content = read_file_content(HEAD_FILE)?;
-        let split_head_content: Vec<&str> = head_file_content.split(" ").collect();
+    
+        let branch_path = get_current_branch_path()?;
+        message = if message_flag { message } else { None };
+        let commit_content = self.generate_commit_content(tree_hash, message, &branch_path)?;
 
-        if let Some(branch_path) = split_head_content.get(1) {
-            let full_branch_path = format!(".git/{}", branch_path);
-            message = if message_flag { message } else { None };
-            let commit_content = self.generate_commit_content(tree_hash, message, &full_branch_path)?;
+        let commit_object_hash = HashObjectCreator::write_object_file(commit_content.clone(), ObjectType::Commit, commit_content.as_bytes().len() as u64)?;
 
-            let commit_object_hash = HashObjectCreator::write_object_file(commit_content.clone(), ObjectType::Commit, commit_content.as_bytes().len() as u64)?;
-
-            let mut branch_file = fs::File::create(full_branch_path)?;
-            branch_file.write_all(commit_object_hash.as_bytes())?;
-        }
+        let mut branch_file = fs::File::create(branch_path)?;
+        branch_file.write_all(commit_object_hash.as_bytes())?;
 
         self.stg_area.clear_index_file()?;
         Ok(String::new())
     }
 }
 
+fn get_current_branch_path() -> Result<String, Box<dyn Error>> {
+    let head_file_content = read_file_content(HEAD_FILE)?;
+    let split_head_content: Vec<&str> = head_file_content.split(" ").collect();
+    if let Some(branch_path) = split_head_content.get(1) { 
+        let full_branch_path = format!(".git/{}", branch_path);
+        return Ok(full_branch_path);
+    }
+    Err(Box::new(io::Error::new(
+        io::ErrorKind::Other,
+        "Eror reading branch path",
+    )))
+}
+
+pub struct Status;
+
+impl Status {
+    fn new() -> Self {
+        Status {}
+    }
+}
+
+impl Command for Status {
+    fn execute(&self, _head: &mut Head, _args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
+        let branch_path = get_current_branch_path()?;
+        let last_commit_hash: String = read_file_content(&branch_path)?;
+        let last_commit_path = format!("{}/{}/{}", OBJECT, &last_commit_hash[..2], &last_commit_hash[2..]);
+
+        println!("Last Commit Path: {}", last_commit_path);
+
+        let mut commit_file = fs::File::open(&last_commit_path)?;
+
+        // Lee el contenido del archivo en un búfer
+        // let mut buf = Vec::new();
+        // commit_file.read_to_end(&mut buf)?;
+
+        // println!("{:?}", buf);
+        let buf = [120, 156, 5, 192, 177, 17, 192, 32, 12, 3, 192, 158, 105, 68, 236, 224, 48, 14, 56, 18, 21, 21, 251, 223, 241, 33, 180, 238, 166, 207, 146, 45, 164, 234, 249, 24, 28, 157, 85, 226, 244, 156, 248, 223, 192, 40, 101, 243, 156, 177, 120, 1, 78, 167, 14, 28];
+
+        // Utiliza Decoder para descomprimir el contenido del búfer
+        let mut decoder = Decoder::new(&buf[..])?;
+        let mut last_commit_content_bytes = Vec::new();
+        println!("{:?}", last_commit_content_bytes);
+
+        if decoder.read_to_end(&mut last_commit_content_bytes).is_err() {
+            return Err("Failed to read commit content".into());
+        }
+
+        let last_commit_content = String::from_utf8(last_commit_content_bytes)?;
+
+        println!("Last Commit Content: {:?}", last_commit_content);
+
+        Ok(String::new())
+    }
+}
 
 impl Head {	
 	pub fn new() -> Self {
@@ -325,7 +369,6 @@ impl Command for HashObject {
         let content = read_file_content(path)?;
         if write {
             let file_len = get_file_length(path)?;
-            //let hash_obj_creator = HashObjectCreator::new();
             return HashObjectCreator::write_object_file(content, obj_type, file_len);
         }
         else {
@@ -346,7 +389,7 @@ impl HashObjectCreator {
         let data = format!("{} {}\0{}", obj_type, file_len, content);
         let hashed_data = generate_sha1_string(data.as_str());
         let compressed_content = compress_content(content.as_str())?;
-        
+        println!("{:?}", compressed_content);
         let obj_directory_path = format!("{}/{}", OBJECT, &hashed_data[0..2]);
         let _ = fs::create_dir(&obj_directory_path);
     
@@ -370,7 +413,7 @@ fn get_file_length(path: &str) -> Result<u64, Box<dyn Error>> {
     Ok(metadata.len())
 }
 
-/// Give a  file's path it reads it's lines and returns them as a String
+/// Give a file's path it reads it's lines and returns them as a String
 fn read_file_content(path: &str) -> Result<String, io::Error> {
     let mut file = fs::File::open(path)?;
     let mut content = String::new();
@@ -380,12 +423,32 @@ fn read_file_content(path: &str) -> Result<String, io::Error> {
 
 /// Given a file's content it compresses it using an encoder from the libflate external crate and
 /// returns a Vec<u8> containing the encoded content
+// fn compress_content(content: &str) -> Result<Vec<u8>, io::Error> {
+//     let mut encoder = Encoder::new(Vec::new())?;
+//     encoder.write_all(content.as_bytes())?;
+//     encoder.finish().into_result()
+// }
+
 fn compress_content(content: &str) -> Result<Vec<u8>, io::Error> {
+    // Crea un nuevo `Encoder` y un vector para almacenar los datos comprimidos.
     let mut encoder = Encoder::new(Vec::new())?;
+
+    // Escribe el contenido (en bytes) en el `Encoder`.
     encoder.write_all(content.as_bytes())?;
-    encoder.finish().into_result()
+
+    // Finaliza la compresión y obtiene el resultado comprimido.
+    let compressed_data = encoder.finish().into_result()?;
+
+    // Devuelve el resultado comprimido.
+    Ok(compressed_data)
 }
 
+fn decompress_data(compressed_data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let mut decoder = Decoder::new(compressed_data)?;
+    let mut decompressed_data = Vec::new();
+    decoder.read_to_end(&mut decompressed_data)?;
+    Ok(decompressed_data)
+}
 /// Implementation of the `Command` trait for the `Branch` type.
 ///
 /// This implementation defines the behavior of the `execute` method for the `Branch` type.
@@ -483,7 +546,7 @@ fn create_new_branch(branch_name: &str, head: &mut Head) -> Result<(), Box<dyn E
     let mut branch_file = fs::File::create(&branch_path)?;
 
     if branch_name == DEFAULT_BRANCH_NAME {
-        write!(branch_file, "");
+        write!(branch_file, "")?;
     }
     else {
         write!(branch_file, "{}", generate_sha1_string(branch_name))?; //aca necesito buscar el ultimo commit del branch anterior
@@ -494,7 +557,7 @@ fn create_new_branch(branch_name: &str, head: &mut Head) -> Result<(), Box<dyn E
 }
 
 
-fn update_file_with_hash(object_path: &str, new_status: &str, file_path: &str) -> io::Result<()> {
+fn update_file_with_hash(object_hash: &str, new_status: &str, file_path: &str) -> io::Result<()> {
     // Read the file into a vector of lines.
     let file_contents = fs::read_to_string(INDEX_FILE)?;
 
@@ -507,14 +570,14 @@ fn update_file_with_hash(object_path: &str, new_status: &str, file_path: &str) -
         if line.starts_with(file_path) {
             found = true;
             // Replace the existing line with the hash and "1".
-            *line = format!("{};{};{}", file_path, object_path, new_status);
+            *line = format!("{};{};{}", file_path, object_hash, new_status);
             break;
         }
     }
 
     // If the hash was not found, add a new line.
     if !found {
-        lines.push(format!("{};{};{}", file_path, object_path, new_status));
+        lines.push(format!("{};{};{}", file_path, object_hash, new_status));
     }
 
     // Join the lines back into a single string.
@@ -583,9 +646,7 @@ impl StagingArea {
         let hash_object = HashObject::new();
         let object_hash = hash_object.execute(head, Some(&["-w", path]))?;
 
-        let object_path = format!("{}/{}/{}", OBJECT, &object_hash[0..2], &object_hash[2..]);
-
-        update_file_with_hash(object_path.as_str(), "2", path)?;
+        update_file_with_hash(&object_hash.as_str(), "2", path)?;
 
         Ok(())
     }
@@ -625,17 +686,23 @@ fn main() {
     //head.print_all();
 
 
-    let mut add = Add::new();
+    let add = Add::new();
     if let Err(error) = add.execute(&mut head, Some(&["a/a.txt"])) {
         println!("{}", error);
         return;
     }
 
-    // let mut commit = Commit::new();
-    // if let Err(error) = commit.execute(&mut head, Some(&["-m", "message"])) {
-    //     println!("{}", error);
-    //     return;
-    // }
+    let mut commit = Commit::new();
+    if let Err(error) = commit.execute(&mut head, Some(&["-m", "message"])) {
+        println!("{}", error);
+        return;
+    }
+
+    let mut status = Status::new();
+    if let Err(error) = status.execute(&mut head, None) {
+        println!("{}", error);
+        return;
+    }
 
     // let mut cat = CatFile::new();
     // if let Err(error) = cat.execute(&mut head, Some(&["-t", "000142551ee3ec5d88c405cc048e1d5460795102"])){
