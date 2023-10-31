@@ -256,8 +256,7 @@ impl Remote {
     fn new() -> Self {
         Remote {}
     }
-    /// Given the remote_name and a url the function writes in the config file this repository as remote.
-    /// If it is already defined in the file, it throws an error.
+    /// Adds a new remote repository configuration to the Git configuration file.
     fn add_new_remote(&self, remote_name: String, url: String) -> Result<(), Box<dyn Error>> {
         let config_content = read_file_content(CONFIG_FILE)?;
 
@@ -277,8 +276,7 @@ impl Remote {
         Ok(())
     }
 
-    /// Given a remote_name, the function searches for said remote repository in the config file. If it 
-    /// is contained in the file, it removes it. 
+    /// Removes a specified remote repository configuration from the Git configuration file.
     fn remove_remote(&self, remote_name: String) -> Result<(), Box<dyn Error>> {
         let config_content = read_file_content(CONFIG_FILE)?;
 
@@ -305,6 +303,7 @@ impl Remote {
         Ok(())
     }
 
+    /// Lists and prints the names of remote repositories configured in the Git configuration.
     fn list_remotes(&self) -> Result<(), Box<dyn Error>> {
         let config_content = read_file_content(CONFIG_FILE)?;
 
@@ -323,17 +322,16 @@ impl Remote {
 
 impl Command for Remote {
     fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
-        let mut add_flag = false;
-        let mut remove_flag = false;
-        let mut name = None;
-        let mut url = None;
-        
         if args.is_none() {
             self.list_remotes()?;
             return Ok(String::new());
         }
-
+        let mut add_flag = false;
+        let mut remove_flag = false;
+        let mut name = None;
+        let mut url = None;
         let arg_slice = args.unwrap_or(&[]);
+
 	    for &arg in arg_slice {
 	        match arg { 
                 ADD_FLAG => add_flag = true,
@@ -345,7 +343,6 @@ impl Command for Remote {
                     },
             }
         }
-    
         match (add_flag, remove_flag, name, url) {
 	        (true, _, Some(name), Some(url)) => self.add_new_remote(name, url)?,
 	        (_, true, Some(name), _) => self.remove_remote(name)?,
