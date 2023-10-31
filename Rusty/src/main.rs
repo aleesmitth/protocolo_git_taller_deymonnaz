@@ -16,14 +16,15 @@ const TYPE_FLAG: &str = "-t";
 const WRITE_FLAG: &str = "-w";
 const SIZE_FLAG: &str = "-s";
 const MESSAGE_FLAG: &str = "-m";
+const ADD_FLAG: &str = "add";
+const REMOVE_FLAG: &str = "remove";
 
 const R_HEADS: &str = ".git/refs/heads";
 const HEAD_FILE: &str = ".git/HEAD";
 const R_TAGS: &str = ".git/refs/tags";
 const DEFAULT_BRANCH_NAME: &str = "main";
 const INDEX_FILE: &str = ".git/index";
-
-
+const CONFIG_FILE: &str = ".git/config";
 
 pub struct Init;
 
@@ -249,6 +250,111 @@ impl Command for Status {
     }
 }
 
+pub struct Remote;
+
+impl Remote {
+    fn new() -> Self {
+        Remote {}
+    }
+    /// Given the remote_name and a url the function writes in the config file this repository as remote.
+    /// If it is already defined in the file, it throws an error.
+    fn add_new_remote(&self, remote_name: String, url: String) -> Result<(), Box<dyn Error>> {
+        let config_content = read_file_content(CONFIG_FILE)?;
+
+        let section_header = format!("[remote '{}']", remote_name);
+        let new_config_content = format!("{}{}\nurl = {}\n", config_content, section_header, url);
+
+        if config_content.contains(&section_header) { //en git permite agregar mas de un remote con mismo nombre si su config o url son distintos, me parece que complejiza mucho y por ahora mejor no poder agregar dos de mismo nombre
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "Remote already exists in the configuration.",
+            )));
+        }
+
+        let mut config_file = fs::File::create(CONFIG_FILE)?;
+        config_file.write_all(new_config_content.as_bytes())?;
+
+        Ok(())
+    }
+
+    /// Given a remote_name, the function searches for said remote repository in the config file. If it 
+    /// is contained in the file, it removes it. 
+    fn remove_remote(&self, remote_name: String) -> Result<(), Box<dyn Error>> {
+        let config_content = read_file_content(CONFIG_FILE)?;
+
+        let remote_header = format!("[remote '{}']", remote_name);
+        let mut new_config_content = String::new();
+        let mut is_inside_remote_section = false;
+
+        for line in config_content.lines() {
+            if line == remote_header {
+                is_inside_remote_section = true;
+            }
+            else if line.starts_with("[") {
+                is_inside_remote_section = false;
+            }
+            if !is_inside_remote_section {
+                new_config_content.push_str(line);
+                new_config_content.push('\n');
+            }
+        }
+
+        let mut config_file = fs::File::create(CONFIG_FILE)?;
+        config_file.write_all(new_config_content.as_bytes())?;
+
+        Ok(())
+    }
+
+    fn list_remotes(&self) -> Result<(), Box<dyn Error>> {
+        let config_content = read_file_content(CONFIG_FILE)?;
+
+        for line in config_content.lines() {
+            if line.starts_with("[remote '") {
+                let remote_name = line
+                .trim_start_matches("[remote '")
+                .trim_end_matches("']");
+                println!("{}", remote_name);
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl Command for Remote {
+    fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
+        let mut add_flag = false;
+        let mut remove_flag = false;
+        let mut name = None;
+        let mut url = None;
+        
+        if args.is_none() {
+            self.list_remotes()?;
+            return Ok(String::new());
+        }
+
+        let arg_slice = args.unwrap_or(&[]);
+	    for &arg in arg_slice {
+	        match arg { 
+                ADD_FLAG => add_flag = true,
+                REMOVE_FLAG => remove_flag = true,
+                _ => if name.is_none() {
+                        name = Some(arg.to_string());
+                    } else if url.is_none() {
+                        url = Some(arg.to_string());
+                    },
+            }
+        }
+    
+        match (add_flag, remove_flag, name, url) {
+	        (true, _, Some(name), Some(url)) => self.add_new_remote(name, url)?,
+	        (_, true, Some(name), _) => self.remove_remote(name)?,
+	        _ => {}
+	    }
+        Ok(String::new())
+    }
+}
+
 impl Head {	
 	pub fn new() -> Self {
 		Head { branches: Vec::new() }
@@ -334,6 +440,7 @@ impl Command for Init {
         let mut head_file = fs::File::create(HEAD_FILE)?;
         head_file.write_all(b"ref: refs/heads/main")?;
 
+        let _config_file = fs::File::create(CONFIG_FILE)?;
         let _index_file = fs::File::create(INDEX_FILE)?;
         
         Ok(String::new())    
@@ -683,26 +790,46 @@ fn main() {
     //     eprintln!("{}", error);
     //     return; 
     // }
-    //head.print_all();
+    head.print_all();
 
-
-    let add = Add::new();
-    if let Err(error) = add.execute(&mut head, Some(&["a/a.txt"])) {
+    let remote = Remote::new();
+    // if let Err(error) = remote.execute(&mut head, Some(&["add", "hola", "hola.com"])) {
+    //     println!("{}", error);
+    //     return;
+    // }
+    // if let Err(error) = remote.execute(&mut head, Some(&["add", "chau", "chau.com"])) {
+    //     println!("{}", error);
+    //     return;
+    // }
+    if let Err(error) = remote.execute(&mut head, None) {
         println!("{}", error);
         return;
     }
-
-    let mut commit = Commit::new();
-    if let Err(error) = commit.execute(&mut head, Some(&["-m", "message"])) {
+    if let Err(error) = remote.execute(&mut head, Some(&["remove", "hola"])) {
         println!("{}", error);
         return;
     }
-
-    let mut status = Status::new();
-    if let Err(error) = status.execute(&mut head, None) {
+    if let Err(error) = remote.execute(&mut head, None) {
         println!("{}", error);
         return;
     }
+    // let add = Add::new();
+    // if let Err(error) = add.execute(&mut head, Some(&["a/a.txt"])) {
+    //     println!("{}", error);
+    //     return;
+    // }
+
+    // let mut commit = Commit::new();
+    // if let Err(error) = commit.execute(&mut head, Some(&["-m", "message"])) {
+    //     println!("{}", error);
+    //     return;
+    // }
+
+    // let mut status = Status::new();
+    // if let Err(error) = status.execute(&mut head, None) {
+    //     println!("{}", error);
+    //     return;
+    // }
 
     // let mut cat = CatFile::new();
     // if let Err(error) = cat.execute(&mut head, Some(&["-t", "000142551ee3ec5d88c405cc048e1d5460795102"])){
