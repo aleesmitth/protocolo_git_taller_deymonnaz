@@ -1,32 +1,33 @@
 mod commands;
+use crate::commands::Command;
 use crate::commands::structs::Head;
 
 fn main() {
-    // let mut head = Head::new();
+    let mut head = Head::new();
     // let init = commands::Init::new();
     // if let Err(error) = init.execute(&mut head, None){
     //     eprintln!("{}", error);
     //     return; 
     // }
-    head.print_all();
+    // head.print_all();
 
-    // let add = Add::new();
+    // let add = commands::Add::new();
     // if let Err(error) = add.execute(&mut head, Some(&["a/a.txt"])) {
     //     println!("{}", error);
     //     return;
     // }
 
-    // let mut commit = Commit::new();
+    // let mut commit = commands::Commit::new();
     // if let Err(error) = commit.execute(&mut head, Some(&["-m", "message"])) {
     //     println!("{}", error);
     //     return;
     // }
 
-    // let mut status = Status::new();
-    // if let Err(error) = status.execute(&mut head, None) {
-    //     println!("{}", error);
-    //     return;
-    // }
+    let mut status: commands::Status = commands::Status::new();
+    if let Err(error) = status.execute(&mut head, None) {
+        println!("{}", error);
+        return;
+    }
 
     // let mut cat = CatFile::new();
     // if let Err(error) = cat.execute(&mut head, Some(&["-t", "000142551ee3ec5d88c405cc048e1d5460795102"])){

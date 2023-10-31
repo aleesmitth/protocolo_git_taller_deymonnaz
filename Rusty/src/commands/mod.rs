@@ -17,6 +17,7 @@ const HEAD_FILE: &str = ".git/HEAD";
 const R_TAGS: &str = ".git/refs/tags";
 const DEFAULT_BRANCH_NAME: &str = "main";
 const INDEX_FILE: &str = ".git/index";
+const CONFIG_FILE: &str = ".git/config";
 
 pub mod structs;
 // use structs::GitObjectType;
@@ -350,21 +351,23 @@ impl Command for Status {
     fn execute(&self, _head: &mut Head, _args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
         let branch_path = helpers::get_current_branch_path()?;
         let last_commit_hash: String = helpers::read_file_content(&branch_path)?;
-        let last_commit_path = format!("{}/{}/{}", OBJECT, &last_commit_hash[..2], &last_commit_hash[2..]);
-
+        // let last_commit_path = format!("{}/{}/{}", OBJECT, &last_commit_hash[..2], &last_commit_hash[2..]);
+        let last_commit_path = ".git/objects/03/5cf091b7daf887159b0610a24d40ed20e820c2";
         println!("Last Commit Path: {}", last_commit_path);
 
-        let commit_file = fs::File::open(&last_commit_path)?;
+        let mut commit_file = fs::File::open(last_commit_path)?;
 
         // Lee el contenido del archivo en un búfer
-        // let mut buf = Vec::new();
-        // commit_file.read_to_end(&mut buf)?;
+        let mut buf = Vec::new();
+        commit_file.read_to_end(&mut buf)?;
 
-        // println!("{:?}", buf);
-        let buf = [120, 156, 5, 192, 177, 17, 192, 32, 12, 3, 192, 158, 105, 68, 236, 224, 48, 14, 56, 18, 21, 21, 251, 223, 241, 33, 180, 238, 166, 207, 146, 45, 164, 234, 249, 24, 28, 157, 85, 226, 244, 156, 248, 223, 192, 40, 101, 243, 156, 177, 120, 1, 78, 167, 14, 28];
+        println!("buf: {:?}", buf);
+        //let buf = [120, 156, 5, 192, 177, 17, 192, 32, 12, 3, 192, 158, 105, 68, 236, 224, 48, 14, 56, 18, 21, 21, 251, 223, 241, 33, 180, 238, 166, 207, 146, 45, 164, 234, 249, 24, 28, 157, 85, 226, 244, 156, 248, 223, 192, 40, 101, 243, 156, 177, 120, 1, 78, 167, 14, 28];
 
         // Utiliza Decoder para descomprimir el contenido del búfer
+        println!("antes");
         let mut decoder = Decoder::new(&buf[..])?;
+        println!("despues");
         let mut last_commit_content_bytes = Vec::new();
         println!("{:?}", last_commit_content_bytes);
 
@@ -386,9 +389,10 @@ impl Remote {
     fn new() -> Self {
         Remote {}
     }
+
     /// Adds a new remote repository configuration to the Git configuration file.
     fn add_new_remote(&self, remote_name: String, url: String) -> Result<(), Box<dyn Error>> {
-        let config_content = read_file_content(CONFIG_FILE)?;
+        let config_content = helpers::read_file_content(CONFIG_FILE)?;
 
         let section_header = format!("[remote '{}']", remote_name);
         let new_config_content = format!("{}{}\nurl = {}\n", config_content, section_header, url);
@@ -408,7 +412,7 @@ impl Remote {
 
     /// Removes a specified remote repository configuration from the Git configuration file.
     fn remove_remote(&self, remote_name: String) -> Result<(), Box<dyn Error>> {
-        let config_content = read_file_content(CONFIG_FILE)?;
+        let config_content = helpers::read_file_content(CONFIG_FILE)?;
 
         let remote_header = format!("[remote '{}']", remote_name);
         let mut new_config_content = String::new();
@@ -435,7 +439,7 @@ impl Remote {
 
     /// Lists and prints the names of remote repositories configured in the Git configuration.
     fn list_remotes(&self) -> Result<(), Box<dyn Error>> {
-        let config_content = read_file_content(CONFIG_FILE)?;
+        let config_content = helpers::read_file_content(CONFIG_FILE)?;
 
         for line in config_content.lines() {
             if line.starts_with("[remote '") {
