@@ -17,6 +17,7 @@ const HEAD_FILE: &str = ".git/HEAD";
 const R_TAGS: &str = ".git/refs/tags";
 const DEFAULT_BRANCH_NAME: &str = "main";
 const INDEX_FILE: &str = ".git/index";
+const CONFIG_FILE: &str = ".git/config";
 
 pub mod structs;
 // use structs::GitObjectType;
@@ -142,6 +143,45 @@ impl Command for Branch {
 	    }
 	    Ok(String::new())
 	}
+}
+
+pub struct Checkout;
+
+impl Checkout {
+    pub fn new() -> Self {
+        Checkout {}
+    }
+}
+
+impl Command for Checkout {
+    fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
+        match args {
+            Some(args) => {
+    
+                let branch_path = format!("{}/{}", R_HEADS, args[0]);
+
+                let new_head_content = format!("ref: refs/heads/{}", args[0]);
+        
+                let mut head_file_content = helpers::read_file_content(HEAD_FILE)?;
+        
+                if head_file_content == new_head_content {
+                    return Err(Box::new(io::Error::new(
+                        io::ErrorKind::Other,
+                        "Already on specified branch",
+                    )))
+                }
+                
+                let mut head_file = fs::File::create(HEAD_FILE)?;
+                head_file.write_all(new_head_content.as_bytes())?;
+            }
+            None => return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "No branch name was provided",
+            ))),
+        }
+
+        Ok(String::new())
+    }
 }
 
 pub struct CatFile;
@@ -388,7 +428,7 @@ impl Remote {
     }
     /// Adds a new remote repository configuration to the Git configuration file.
     fn add_new_remote(&self, remote_name: String, url: String) -> Result<(), Box<dyn Error>> {
-        let config_content = read_file_content(CONFIG_FILE)?;
+        let config_content = helpers::read_file_content(CONFIG_FILE)?;
 
         let section_header = format!("[remote '{}']", remote_name);
         let new_config_content = format!("{}{}\nurl = {}\n", config_content, section_header, url);
@@ -408,7 +448,7 @@ impl Remote {
 
     /// Removes a specified remote repository configuration from the Git configuration file.
     fn remove_remote(&self, remote_name: String) -> Result<(), Box<dyn Error>> {
-        let config_content = read_file_content(CONFIG_FILE)?;
+        let config_content = helpers::read_file_content(CONFIG_FILE)?;
 
         let remote_header = format!("[remote '{}']", remote_name);
         let mut new_config_content = String::new();
@@ -435,7 +475,7 @@ impl Remote {
 
     /// Lists and prints the names of remote repositories configured in the Git configuration.
     fn list_remotes(&self) -> Result<(), Box<dyn Error>> {
-        let config_content = read_file_content(CONFIG_FILE)?;
+        let config_content = helpers::read_file_content(CONFIG_FILE)?;
 
         for line in config_content.lines() {
             if line.starts_with("[remote '") {
