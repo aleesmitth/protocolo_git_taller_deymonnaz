@@ -1,14 +1,29 @@
 mod commands;
+
+use commands::Checkout;
 use crate::commands::structs::Head;
+use crate::commands::Command;
 
 fn main() {
-    // let mut head = Head::new();
+    let mut head = Head::new();
     // let init = commands::Init::new();
     // if let Err(error) = init.execute(&mut head, None){
     //     eprintln!("{}", error);
     //     return; 
     // }
-    head.print_all();
+    // head.print_all();
+
+    // let branch = commands::Branch::new();
+    // if let Err(error) = branch.execute(&mut head, Some(&["new"])) {
+    //     println!("{}", error);
+    //     return;
+    // }
+
+    let checkout = Checkout::new();
+    if let Err(error) = checkout.execute(&mut head, Some(&["new"])) {
+        println!("{}", error);
+        return;
+    }
 
     // let add = Add::new();
     // if let Err(error) = add.execute(&mut head, Some(&["a/a.txt"])) {
