@@ -42,6 +42,10 @@ impl Init {
 }
 
 impl Command for Init {
+    /// Executes the `git init` command, initializing a new Git repository in the current directory.
+    /// This function initializes a new Git repository by creating the necessary directory structure
+    /// for branches, tags, and objects. It also sets the default branch to 'main' and creates an empty
+    ///  index file. If successful, it returns an empty string; otherwise, it returns an error message.
     fn execute(&self, head: &mut Head, _: Option<&[&str]>) -> Result<String, Box<dyn Error>>{
 
         let _refs_heads = fs::create_dir_all(R_HEADS);
@@ -154,6 +158,9 @@ impl Checkout {
 }
 
 impl Command for Checkout {
+    /// Executes the `git checkout` command, which changes the current branch to the specified one.
+    /// It updates the `HEAD` file to point to the new branch if it's different from the current branch.
+    /// If successful, it returns an empty string; otherwise, it returns an error message.
     fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
         match args {
             Some(args) => {
@@ -193,6 +200,7 @@ impl CatFile {
 }
 
 impl Command for CatFile {
+    /// Executes the `cat-file` command, which displays information about a Git object's type or size.
     fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
         match args {
             Some(args) => {
@@ -231,6 +239,9 @@ impl HashObject {
 }
 
 impl Command for HashObject {
+    /// Executes the `hash-object` command, which calculates the hash of a given file or data.
+    /// If the write flag is specified, the object is created as a file in the objects subdirectory.
+    /// Default object type is "blob" but can be specified with type flag.
     fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
         let arg_slice = args.unwrap_or(&[]);
         let mut path: &str = "";
@@ -276,6 +287,7 @@ impl Commit {
         Commit { stg_area: StagingArea::new() }
     }
 
+    /// Generates the content for a new commit.    
     fn generate_commit_content(&self, tree_hash: String, message: Option<&str>, branch_path: &str) -> Result<String, Box<dyn Error>> {
         let head_commit = helpers::read_file_content(branch_path)?;
         println!("commit");
@@ -293,6 +305,10 @@ impl Commit {
 }
 
 impl Command for Commit {
+    /// Executes the `commit` command, creating a new commit for the changes in the staging area.
+    /// To achieve this, it creates a "tree" which is the index file turned into a tree object.
+    /// Then it creates a commit file, which contains the tree object hash, the commit's parent
+    /// commits and the given message with the message flag.
     fn execute(&self, head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
         if helpers::get_file_length(INDEX_FILE)? == 0 {
             return Err(Box::new(io::Error::new(
@@ -339,6 +355,7 @@ impl Rm {
 }
 
 impl Command for Rm {
+    /// Receives a file path and removes it from the staging area.
     fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
         match args {
             Some(args) => {
@@ -364,6 +381,7 @@ impl Add {
 }
 
 impl Command for Add {
+    /// Receives a file path and adds it to the staging area.
     fn execute(&self, head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
         match args {
             Some(args) => {
@@ -491,6 +509,9 @@ impl Remote {
 }
 
 impl Command for Remote {
+    /// Executes Command for Remote. When no flags are received, all remotes are listed. If the add flag is received
+    /// with a name and a new url, a remote is added to the config file. If a remove flag and a name is received, 
+    /// the remote with said name will be removed from the config file.
     fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
         if args.is_none() {
             self.list_remotes()?;

@@ -5,6 +5,8 @@ const INDEX_FILE: &str = ".git/index";
 use crate::commands::helpers;
 
 use super::helpers::get_file_length;
+
+/// Abstract struct for creating new objects in git repository
 pub struct HashObjectCreator;
 
 impl HashObjectCreator {
@@ -12,6 +14,12 @@ impl HashObjectCreator {
         HashObjectCreator {}
     }
 
+    /// Writes an object file to the Git repository.
+    ///
+    /// This function takes the provided content, object type, and file length, and writes the object
+    /// data to a file in the Git repository. The content is first formatted with object type and file
+    /// length, hashed, and then compressed before being written to the repository.
+    /// Returns a Result that may contain a string of the hash of the written object.
     pub fn write_object_file(content: String, obj_type: ObjectType, file_len: u64) -> Result<String, Box<dyn Error>> {
         let data = format!("{} {}\0{}", obj_type, file_len, content);
         let hashed_data = helpers::generate_sha1_string(data.as_str());
@@ -39,6 +47,8 @@ enum FileStatus {
     Staged,
 }
 
+/// Represents the staging area for Git. Where files can be added and removed. They can have 3 possible states,
+/// stage, modified and untracked. 
 #[derive(Debug)]
 pub struct StagingArea;
 
@@ -47,6 +57,8 @@ impl StagingArea {
         StagingArea {}
     }
 
+    /// Adds a file to the staging area. Creating a git object and saving the object's path, hash and state in the
+    /// index file, following the format: file_path;hash;state.
     pub fn add_file(&self, _head: &mut Head, path: &str) -> Result<(), Box<dyn Error>> {
         // let hash_object = HashObject::new();
         // let object_hash = hash_object.execute(head, Some(&["-w", path]))?;
@@ -59,11 +71,13 @@ impl StagingArea {
         Ok(())
     }
 
+    /// Removes a file from the staging area.
     pub fn remove_file(&self, path: &str) -> Result<(), Box<dyn Error>> {
         helpers::remove_object_from_file(path)?;
         Ok(())
     }
 
+    /// Clears the contents of the index file in the staging area.
     pub fn clear_index_file(&self) -> Result<(), Box<dyn Error>> {
         fs::File::create(INDEX_FILE)?;
         Ok(())
@@ -123,6 +137,7 @@ impl Head {
 	}
 }
 
+/// Represents the type of a Git object.
 pub enum ObjectType {
     Blob,
     Commit,

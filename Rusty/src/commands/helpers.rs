@@ -13,7 +13,7 @@ const HEAD_FILE: &str = ".git/HEAD";
 const DEFAULT_BRANCH_NAME: &str = "main";
 const INDEX_FILE: &str = ".git/index";
 
-
+/// Retrieves the path to the current branch from the Git HEAD file.
 pub fn get_current_branch_path() -> Result<String, Box<dyn Error>> {
     let head_file_content = read_file_content(HEAD_FILE)?;
     let split_head_content: Vec<&str> = head_file_content.split(" ").collect();
@@ -27,7 +27,7 @@ pub fn get_current_branch_path() -> Result<String, Box<dyn Error>> {
     )))
 }
 
-/// Returns lenght of the a given file's content
+/// Returns length of a file's content
 pub fn get_file_length(path: &str) -> Result<u64, Box<dyn Error>> {
     let metadata = fs::metadata(path)?;
     Ok(metadata.len())
@@ -48,7 +48,6 @@ pub fn read_file_content(path: &str) -> Result<String, io::Error> {
 //     encoder.write_all(content.as_bytes())?;
 //     encoder.finish().into_result()
 // }
-
 pub fn compress_content(content: &str) -> Result<Vec<u8>, io::Error> {
     // Crea un nuevo `Encoder` y un vector para almacenar los datos comprimidos.
     let mut encoder = Encoder::new(Vec::new())?;
@@ -63,6 +62,8 @@ pub fn compress_content(content: &str) -> Result<Vec<u8>, io::Error> {
     Ok(compressed_data)
 }
 
+/// Decompresses the given compressed data using a zlib decoder.
+///Returns the decompressed data as a vector of bytes on success or an error if the decompression fails.
 pub fn decompress_data(compressed_data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut decoder = Decoder::new(compressed_data)?;
     let mut decompressed_data = Vec::new();
@@ -70,12 +71,14 @@ pub fn decompress_data(compressed_data: &[u8]) -> Result<Vec<u8>, Box<dyn std::e
     Ok(decompressed_data)
 }
 
-pub fn generate_sha1_string(branch_name: &str) -> String {
+/// Generates a SHA-1 hash as a hexadecimal string from the provided string
+pub fn generate_sha1_string(str: &str) -> String {
     let mut hasher = Sha1::new();
-    hasher.input_str(branch_name);
+    hasher.input_str(str);
     hasher.result_str()
 }
 
+/// Creates a new branch with the specified name. Creates branch file.
 pub fn create_new_branch(branch_name: &str, head: &mut Head) -> Result<(), Box<dyn Error>> { 
     let branch_path = format!("{}/{}", R_HEADS, branch_name);
 
@@ -92,6 +95,8 @@ pub fn create_new_branch(branch_name: &str, head: &mut Head) -> Result<(), Box<d
     Ok(())
 }
 
+/// Updates the index file with a new file path, object hash and status for a specific file.
+/// If the file was already contained in the index file, it replaces it.
 pub fn update_file_with_hash(object_hash: &str, new_status: &str, file_path: &str) -> io::Result<()> {
     // Read the file into a vector of lines.
     let file_contents = fs::read_to_string(INDEX_FILE)?;
@@ -124,6 +129,7 @@ pub fn update_file_with_hash(object_hash: &str, new_status: &str, file_path: &st
     Ok(())
 }
 
+/// Removes an object's entry from the index file by its file path.
 pub fn remove_object_from_file(file_path: &str) -> io::Result<()> {
     // Read the file into a vector of lines.
     
