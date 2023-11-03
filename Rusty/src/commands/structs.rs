@@ -26,8 +26,8 @@ impl HashObjectCreator {
         }
         
         let mut object_file = fs::File::create(object_file_path.clone())?;
-        write!(object_file, "{:?}", compressed_content)?;    
-    
+        object_file.write_all(&compressed_content)?;
+
         Ok(hashed_data)
     }
 }

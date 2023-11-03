@@ -1,11 +1,11 @@
-use std::{fs, error::Error, io, io::Write, io::Read};
+use std::{fs, error::Error, io, io::Write, io::Read, str::FromStr, io::BufRead};
 extern crate crypto;
 extern crate libflate;
 
 use crypto::sha1::Sha1;
 use crypto::digest::Digest;
 use libflate::zlib::{Encoder, Decoder};
-use std::str;
+// use std::str;
 use crate::commands::structs::Head;
 
 const R_HEADS: &str = ".git/refs/heads";
@@ -63,12 +63,13 @@ pub fn compress_content(content: &str) -> Result<Vec<u8>, io::Error> {
     Ok(compressed_data)
 }
 
-pub fn decompress_data(compressed_data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let mut decoder = Decoder::new(compressed_data)?;
-    let mut decompressed_data = Vec::new();
-    decoder.read_to_end(&mut decompressed_data)?;
+pub fn decompress_file_content(content: Vec<u8>) -> Result<String, io::Error> {
+    let mut decompressed_data= String::new();
+    
+    let mut decoder = Decoder::new(&content[..])?;
+    decoder.read_to_string(&mut decompressed_data)?;
     Ok(decompressed_data)
-}
+} 
 
 pub fn generate_sha1_string(branch_name: &str) -> String {
     let mut hasher = Sha1::new();

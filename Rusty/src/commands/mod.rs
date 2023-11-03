@@ -1,7 +1,9 @@
-use std::{fs, error::Error, io, io::Write, io::Read, str};
+use std::fmt::format;
+use std::{fs, error::Error, io, io::Write, io::Read, str, io::BufRead, io::BufReader};
 
 extern crate libflate;
 use libflate::zlib::Decoder;
+use std::str::FromStr;
 
 const OBJECT: &str = ".git/objects";
 
@@ -272,8 +274,8 @@ impl Command for Commit {
                 _ => message = Some(arg),
             }
         }
-        let hash_obj = HashObject::new();
-        let tree_hash = hash_obj.execute(head, Some(&[WRITE_FLAG, TYPE_FLAG, "tree", INDEX_FILE]))?;
+        let index_file_content = helpers::read_file_content(INDEX_FILE)?;
+        let tree_hash = HashObjectCreator::write_object_file(index_file_content.clone(), ObjectType::Tree, index_file_content.as_bytes().len() as u64)?;
     
         let branch_path = helpers::get_current_branch_path()?;
         message = if message_flag { message } else { None };
@@ -351,34 +353,33 @@ impl Command for Status {
     fn execute(&self, _head: &mut Head, _args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
         let branch_path = helpers::get_current_branch_path()?;
         let last_commit_hash: String = helpers::read_file_content(&branch_path)?;
-        // let last_commit_path = format!("{}/{}/{}", OBJECT, &last_commit_hash[..2], &last_commit_hash[2..]);
-        let last_commit_path = ".git/objects/03/5cf091b7daf887159b0610a24d40ed20e820c2";
-        println!("Last Commit Path: {}", last_commit_path);
+        let last_commit_path = format!("{}/{}/{}", OBJECT, &last_commit_hash[..2], &last_commit_hash[2..]);
 
+        // let mut decode_file = fs::File::open(last_commit_path)?;
+        // let mut decompressed_data= String::new();
+        
+        // let mut decoder = Decoder::new(decode_file)?;
+        // decoder.read_to_string(&mut decompressed_data)?;
+        let mut commit_file_content: Vec<u8> = Vec::new();
         let mut commit_file = fs::File::open(last_commit_path)?;
+        commit_file.read_to_end(&mut commit_file_content)?;
+        let decompressed_data = helpers::decompress_file_content(commit_file_content)?;
+        println!("{}", decompressed_data);
+        let commit_file_lines: Vec<String> = decompressed_data.lines().map(|s| s.to_string()).collect();
+        
+        let tree_hash = &commit_file_lines[0];
+        let tree_object_path = format!("{}/{}/{}", OBJECT, &tree_hash[..2], &tree_hash[2..]);
+        println!("{}", tree_object_path);
 
-        // Lee el contenido del archivo en un búfer
-        let mut buf = Vec::new();
-        commit_file.read_to_end(&mut buf)?;
+        let mut tree_file_content: Vec<u8> = Vec::new();
+        let mut tree_file = fs::File::open(tree_object_path)?;
+        tree_file.read_to_end(&mut tree_file_content)?;
+        let tree_content = helpers::decompress_file_content(tree_file_content)?;
+        let 
 
-        println!("buf: {:?}", buf);
-        //let buf = [120, 156, 5, 192, 177, 17, 192, 32, 12, 3, 192, 158, 105, 68, 236, 224, 48, 14, 56, 18, 21, 21, 251, 223, 241, 33, 180, 238, 166, 207, 146, 45, 164, 234, 249, 24, 28, 157, 85, 226, 244, 156, 248, 223, 192, 40, 101, 243, 156, 177, 120, 1, 78, 167, 14, 28];
+        let index_file_content = helpers::read_file_content(INDEX_FILE)?;
 
-        // Utiliza Decoder para descomprimir el contenido del búfer
-        println!("antes");
-        let mut decoder = Decoder::new(&buf[..])?;
-        println!("despues");
-        let mut last_commit_content_bytes = Vec::new();
-        println!("{:?}", last_commit_content_bytes);
-
-        if decoder.read_to_end(&mut last_commit_content_bytes).is_err() {
-            return Err("Failed to read commit content".into());
-        }
-
-        let last_commit_content = String::from_utf8(last_commit_content_bytes)?;
-
-        println!("Last Commit Content: {:?}", last_commit_content);
-
+        println!("{:?}", tree_content);
         Ok(String::new())
     }
 }
