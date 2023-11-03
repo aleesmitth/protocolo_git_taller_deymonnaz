@@ -82,13 +82,16 @@ pub fn generate_sha1_string(str: &str) -> String {
 pub fn create_new_branch(branch_name: &str, head: &mut Head) -> Result<(), Box<dyn Error>> { 
     let branch_path = format!("{}/{}", R_HEADS, branch_name);
 
+    let previous_branch_path = get_current_branch_path()?;
+    let last_commit_hash = read_file_content(&previous_branch_path)?;
+
     let mut branch_file = fs::File::create(&branch_path)?;
 
     if branch_name == DEFAULT_BRANCH_NAME {
         write!(branch_file, "")?;
     }
     else {
-        write!(branch_file, "{}", generate_sha1_string(branch_name))?; //aca necesito buscar el ultimo commit del branch anterior
+        write!(branch_file, "{}", last_commit_hash)?;
     }
     head.add_branch(branch_name);
 
