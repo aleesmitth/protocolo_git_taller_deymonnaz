@@ -4,7 +4,7 @@ const INDEX_FILE: &str = ".git/index";
 
 use crate::commands::helpers;
 
-use super::helpers::get_file_length;
+use super::helpers::{get_file_length, read_file_content};
 pub struct HashObjectCreator;
 
 impl HashObjectCreator {
@@ -13,8 +13,9 @@ impl HashObjectCreator {
     }
 
     pub fn write_object_file(content: String, obj_type: ObjectType, file_len: u64) -> Result<String, Box<dyn Error>> {
-        let data = format!("{} {}\0{}", obj_type, file_len, content);
-        let hashed_data = helpers::generate_sha1_string(data.as_str());
+        // let data = format!("{} {}\0{}", obj_type, file_len, content);
+        // let hashed_data = helpers::generate_sha1_string(data.as_str());
+        let hashed_data = Self::generate_object_hash(obj_type, file_len, &content);
         let compressed_content = helpers::compress_content(content.as_str())?;
         println!("{:?}", compressed_content);
         let obj_directory_path = format!("{}/{}", OBJECT, &hashed_data[0..2]);
@@ -29,6 +30,11 @@ impl HashObjectCreator {
         object_file.write_all(&compressed_content)?;
 
         Ok(hashed_data)
+    }
+
+    pub fn generate_object_hash(obj_type: ObjectType, file_len: u64, content: &str) -> String {
+        let data = format!("{} {}\0{}", obj_type, file_len, content);
+        helpers::generate_sha1_string(data.as_str())
     }
 }
 
@@ -64,8 +70,21 @@ impl StagingArea {
         Ok(())
     }
 
-    pub fn clear_index_file(&self) -> Result<(), Box<dyn Error>> {
-        fs::File::create(INDEX_FILE)?;
+    pub fn unstage_index_file(&self) -> Result<(), Box<dyn Error>> {
+        let index_file_content = helpers::read_file_content(INDEX_FILE)?;
+        let mut lines: Vec<String> = index_file_content.lines().map(|s| s.to_string()).collect();
+        let mut new_index_file_content = String::new();
+
+        for line in lines.iter_mut() {
+            line.pop();
+            line.push_str("0");
+            new_index_file_content.push_str(line);
+            new_index_file_content.push('\n'); // Add a newline between lines
+        } 
+        
+        let mut index_file = fs::File::create(INDEX_FILE)?;
+        index_file.write_all(new_index_file_content.as_bytes())?;
+
         Ok(())
     }
 

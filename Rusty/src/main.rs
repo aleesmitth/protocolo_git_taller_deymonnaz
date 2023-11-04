@@ -49,6 +49,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // return;
     }
 
+    if let Err(error) = add.execute(&mut head, Some(&["b.txt"])) {
+        println!("{}", error);
+        // return;
+    }
+
     // if let Err(error) = add.execute(&mut head, Some(&["b.txt"])) {
     //     println!("{}", error);
     //     // return;
@@ -59,6 +64,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("{}", error);
         // return;
     }
+
+    if let Err(error) = add.execute(&mut head, Some(&["b.txt"])) {
+        println!("{}", error);
+        // return;
+    }
+
+    let mut file = fs::File::create("a/a.txt")?;
+    file.write_all("hola".as_bytes())?;
 
     let mut status: commands::Status = commands::Status::new();
     if let Err(error) = status.execute(&mut head, None) {
