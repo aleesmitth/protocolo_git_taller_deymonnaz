@@ -351,58 +351,47 @@ impl Status {
 }
 
 impl Command for Status {
+    /// Execute the "status" command to check the status of the Git repository.
+    /// This command checks the status of the current Git repository and prints the
+    /// status of files in the working directory, indicating whether they are
+    /// modified, staged, or unstaged.
     fn execute(&self, _head: &mut Head, _args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
         let branch_path = helpers::get_current_branch_path()?;
         let last_commit_hash: String = helpers::read_file_content(&branch_path)?;
         let last_commit_path = format!("{}/{}/{}", OBJECT, &last_commit_hash[..2], &last_commit_hash[2..]);
 
-        let mut commit_file_content: Vec<u8> = Vec::new();
-        let mut commit_file = fs::File::open(last_commit_path)?;
-        commit_file.read_to_end(&mut commit_file_content)?;
-        let decompressed_data = helpers::decompress_file_content(commit_file_content)?;
+        let decompressed_data = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&last_commit_path)?)?;
         let commit_file_lines: Vec<String> = decompressed_data.lines().map(|s| s.to_string()).collect();
 
         let tree_hash = &commit_file_lines[0];
         let tree_object_path = format!("{}/{}/{}", OBJECT, &tree_hash[..2], &tree_hash[2..]);
-        println!("{}", tree_object_path);
 
-        let mut tree_file_content: Vec<u8> = Vec::new();
-        let mut tree_file = fs::File::open(tree_object_path)?;
-        tree_file.read_to_end(&mut tree_file_content)?;
-
-        let tree_content = helpers::decompress_file_content(tree_file_content)?;
-        println!("tree content: {:?}", tree_content);
-
+        let tree_content = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&tree_object_path)?)?;
         let tree_objects: Vec<String> = tree_content.lines().map(|s| s.to_string()).collect(); //aca esta todo el contenido del arbol en un vector de strings de la forma: file_path;object_hash;state
-        println!("tree content vec: {:?}", tree_objects);
 
         let index_file_content = helpers::read_file_content(INDEX_FILE)?; 
-        println!("index content: {:?}", index_file_content);
         let index_objects: Vec<String> = index_file_content.lines().map(|s| s.to_string()).collect(); //aca esta todo el contenido del index file en un vector de strings de la forma: file_path;object_hash;state
-        println!("index content vec: {:?}", index_objects);
 
         for pos in 0..(index_objects.len()) {
-            let index_line: Vec<&str> = index_objects[pos].split(';').collect();
+            let index_file_line: Vec<&str> = index_objects[pos].split(';').collect();
             
             if pos < tree_objects.len() {
                 //creo que se puede asumir que los objetos siempre van a estar en la misma posicion en el index y el tree
                 // porque en vez de eliminarlo cuando commiteamos, solo los unstageamos, entonces queda en el mismo lugar que en el tree
-                let tree_line: Vec<&str> = tree_objects[pos].split(';').collect();
-                if tree_line[1] != index_line[1] && index_line[2] == "2" {
-                    println!("Modified: {} (Staged)", index_line[0]);
+                let tree_file_line: Vec<&str> = tree_objects[pos].split(';').collect();
+                if tree_file_line[1] != index_file_line[1] && index_file_line[2] == "2" {
+                    println!("Modified: {} (Staged)", index_file_line[0]);
                     continue;
                 }
-                let current_object_content = helpers::read_file_content(index_line[0])?;
-                let current_object_hash = HashObjectCreator::generate_object_hash(ObjectType::Blob, get_file_length(index_line[0])?, &current_object_content);
+                let current_object_content = helpers::read_file_content(index_file_line[0])?;
+                let current_object_hash = HashObjectCreator::generate_object_hash(ObjectType::Blob, get_file_length(index_file_line[0])?, &current_object_content);
                 println!("{} {}", pos, current_object_hash);
-                if current_object_hash != tree_line[1] && index_line[2] == "0" {
-                    println!("Modified: {} (Unstaged)", index_line[0]);
+                if current_object_hash != tree_file_line[1] && index_file_line[2] == "0" {
+                    println!("Modified: {} (Unstaged)", index_file_line[0]);
                 }
-
             }
             else {
-                println!("Added: {} (Staged)", index_line[0]);
-                //aca el objecto contenido en el index es nuevo y nunca fue commiteado antes
+                println!("Added: {} (Staged)", index_file_line[0]);
             }
         }
         Ok(String::new())

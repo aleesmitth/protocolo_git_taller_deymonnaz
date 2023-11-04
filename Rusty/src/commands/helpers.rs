@@ -41,6 +41,14 @@ pub fn read_file_content(path: &str) -> Result<String, io::Error> {
     Ok(content)
 }
 
+/// Give a file's path it reads it's lines and returns them as a Vec<u8>
+pub fn read_file_content_to_bytes(path: &str) -> Result<Vec<u8>, io::Error> {
+    let mut file_content: Vec<u8> = Vec::new();
+    let mut file = fs::File::open(path)?;
+    file.read_to_end(&mut file_content)?;
+    Ok(file_content)
+}
+
 /// Given a file's content it compresses it using an encoder from the libflate external crate and
 /// returns a Vec<u8> containing the encoded content
 // pub fn compress_content(content: &str) -> Result<Vec<u8>, io::Error> {
@@ -63,6 +71,8 @@ pub fn compress_content(content: &str) -> Result<Vec<u8>, io::Error> {
     Ok(compressed_data)
 }
 
+/// This function takes a `Vec<u8>` containing compressed data, decompresses it using
+/// the zlib decoder, and returns the decompressed content as a `String`.
 pub fn decompress_file_content(content: Vec<u8>) -> Result<String, io::Error> {
     let mut decompressed_data= String::new();
     
