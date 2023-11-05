@@ -14,6 +14,8 @@ const TYPE_FLAG: &str = "-t";
 const WRITE_FLAG: &str = "-w";
 const SIZE_FLAG: &str = "-s";
 const MESSAGE_FLAG: &str = "-m";
+const EXCLUDE_LOG_ENTRY: char = '^';
+const HEAD: &str = "HEAD";
 
 const R_HEADS: &str = ".git/refs/heads";
 const HEAD_FILE: &str = ".git/HEAD";
@@ -613,6 +615,123 @@ impl Command for PackObjects {
         for info in object_info_list {
             index_file.write_all(info.as_bytes())?;
         }
+        Ok(String::new())
+    }
+}
+
+/// This module defines the `Log` struct, which is responsible for implementing the "git log" command.
+/// It provides methods to generate log entries and execute the command.
+
+pub struct Log;
+
+impl Log {
+    /// Creates a new `Log` instance.
+    pub fn new() -> Self {
+        Log {}
+    }
+
+    /// Generates log entries for a given base commit and stores them in the provided `entries` vector.
+    /// If the base commit ID is too short, it returns an error.
+    ///
+    /// # Arguments
+    ///
+    /// * `entries` - A mutable reference to a vector to store log entries.
+    /// * `base_commit` - The base commit ID to start generating logs from./// # Returns
+    ///
+    /// A `Result` containing the execution result or an error message.    
+    fn generate_log_entries(&self, entries: &mut Vec<String>, base_commit: String) -> Result<String, Box<dyn Error>> {
+        if base_commit.len() < 4 {
+            return Err(Box::new(io::Error::new(
+                        io::ErrorKind::Other,
+                        "Error: Invalid Commit ID. It's too short",
+                    )))
+        }
+
+        let current_commit = if base_commit == HEAD { helpers::get_head_commit()? } else { base_commit };
+        println!("starting to generate logs for {:?}", current_commit.clone());
+        let commit_path = format!("{}/{}/{}", OBJECT, &current_commit[..2], &current_commit[2..]);
+        println!("going to {:?}", commit_path.clone());
+        let decompressed_data = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&commit_path)?)?;
+        println!("decompressed data {:?}", decompressed_data.clone());
+        
+        // trim header
+        let commit_file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
+
+        let commit_file_lines: Vec<String> = commit_file_content[1].lines().map(|s| s.to_string()).collect();
+        
+        let parent_commit_trimmed = &commit_file_lines[1];
+
+        entries.push(current_commit);
+
+        if parent_commit_trimmed.is_empty() {            
+            //root commit
+            println!("returning, found root commit");
+            return Ok(String::new())
+        }
+
+        println!("parent commit {:?}", parent_commit_trimmed.clone());
+        self.generate_log_entries(entries, parent_commit_trimmed.clone())?;
+        Ok(String::new())
+    }
+}
+
+impl Command for Log {
+    /// Executes the "git log" command.
+    ///
+    /// # Arguments
+    ///
+    /// * `_head` - A mutable reference to the `Head` structure (not used in this implementation).
+    /// * `args` - An optional slice of arguments passed to the command.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the execution result or an error message. 
+    fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
+        // Extract the arguments from the provided slice or use an empty slice if none is provided
+        let arg_slice = args.unwrap_or(&[]);
+
+        // Initialize vectors to store log entries (included and excluded)        
+        let mut log_entries = Vec::new();
+        let mut log_entries_excluded = Vec::new();
+
+
+        // Iterate through the provided arguments
+        for &arg in arg_slice { // Note the & in for &arg
+            // Check the first character of each argument
+            if let Some(first_char) = arg.chars().next() {
+                match first_char {
+                    EXCLUDE_LOG_ENTRY => {
+                        // Generate log entries for exclusion and store them in the excluded entries vector
+                        self.generate_log_entries(&mut log_entries_excluded, arg[1..].to_string())?;
+                        println!("exclude {:?}", log_entries_excluded);
+
+                    },
+                    _ => {
+                        // Generate log entries for inclusion and store them in the included entries vector
+                        self.generate_log_entries(&mut log_entries, arg.to_string())?;
+                        println!("include {:?}", log_entries);
+
+                    }
+                }
+            }
+        }
+        /*println!("result {:?}", log_entries.iter()
+            .filter(| entry | !log_entries_excluded.contains(entry))
+            .cloned()
+            .collect::<Vec<String>>());*/
+
+        // Filter out log entries that are in the excluded entries vector
+        log_entries = log_entries.iter()
+            .filter(| entry | !log_entries_excluded.contains(entry))
+            .cloned()
+            .collect::<Vec<String>>();
+
+        // Display the resulting log entries
+        for entry in &log_entries {
+            println!("{:?}", entry);
+        }
+        
+        // Return a successful result (an empty string in this case)
         Ok(String::new())
     }
 }
