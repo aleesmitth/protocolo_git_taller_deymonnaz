@@ -8,7 +8,7 @@ use std::fs;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut head = Head::new();
-    let init = commands::Init::new();
+    /*let init = commands::Init::new();
     if let Err(error) = init.execute(&mut head, None){
         eprintln!("{}", error);
         //return; 
@@ -36,8 +36,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // return;
     }
 
+    let mut commit = commands::Commit::new();
+    if let Err(error) = commit.execute(&mut head, Some(&["-m", "message"])) {
+        println!("{}", error);
+        // return;
+    }
+
     let mut status: commands::Status = commands::Status::new();
     if let Err(error) = status.execute(&mut head, None) {
+        println!("{}", error);
+        // return;
+    }*/
+
+    let mut log: commands::Log = commands::Log::new();
+    if let Err(error) = log.execute(&mut head, Some(&["HEAD", "^609c3030bc134b38ebb13634408278003f2f50d8"])) {
         println!("{}", error);
         // return;
     }
@@ -92,7 +104,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     return;
 	// }
 
-    fs::remove_dir_all(".git")?;
+    //fs::remove_dir_all(".git")?;
 
     Ok(())
 }
