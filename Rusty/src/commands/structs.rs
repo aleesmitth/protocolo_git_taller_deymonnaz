@@ -22,10 +22,9 @@ impl HashObjectCreator {
     /// length, hashed, and then compressed before being written to the repository.
     /// Returns a Result that may contain a string of the hash of the written object.
     pub fn write_object_file(content: String, obj_type: ObjectType, file_len: u64) -> Result<String, Box<dyn Error>> {
-        // let data = format!("{} {}\0{}", obj_type, file_len, content);
-        // let hashed_data = helpers::generate_sha1_string(data.as_str());
+        let data = format!("{} {}\0{}", obj_type, file_len, content);
         let hashed_data = Self::generate_object_hash(obj_type, file_len, &content);
-        let compressed_content = helpers::compress_content(content.as_str())?;
+        let compressed_content = helpers::compress_content(data.as_str())?;
         let obj_directory_path = format!("{}/{}", OBJECT, &hashed_data[0..2]);
         let _ = fs::create_dir(&obj_directory_path);
     

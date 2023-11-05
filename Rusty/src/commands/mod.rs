@@ -296,7 +296,6 @@ impl Commit {
     /// Generates the content for a new commit.    
     fn generate_commit_content(&self, tree_hash: String, message: Option<&str>, branch_path: &str) -> Result<String, Box<dyn Error>> {
         let head_commit = helpers::read_file_content(branch_path)?;
-        println!("commit");
         //let mut content = String::new();
         // content.push_str(&tree_hash);
         // content.push_str(&head_commit);
@@ -421,11 +420,11 @@ impl Command for Status {
         let last_commit_path = format!("{}/{}/{}", OBJECT, &last_commit_hash[..2], &last_commit_hash[2..]);
 
         let decompressed_data = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&last_commit_path)?)?;
-        let commit_file_lines: Vec<String> = decompressed_data.lines().map(|s| s.to_string()).collect();
-
+        let commit_file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
+        let commit_file_lines: Vec<String> = commit_file_content[1].lines().map(|s| s.to_string()).collect();
+        
         let tree_hash = &commit_file_lines[0];
         let tree_object_path = format!("{}/{}/{}", OBJECT, &tree_hash[..2], &tree_hash[2..]);
-
         let tree_content = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&tree_object_path)?)?;
         let tree_objects: Vec<String> = tree_content.lines().map(|s| s.to_string()).collect(); //aca esta todo el contenido del arbol en un vector de strings de la forma: file_path;object_hash;state
 
@@ -572,53 +571,48 @@ impl PackObjects {
 }
 
 impl Command for PackObjects {
-    /// Executes Command for Remote. When no flags are received, all remotes are listed. If the add flag is received
-    /// with a name and a new url, a remote is added to the config file. If a remove flag and a name is received, 
-    /// the remote with said name will be removed from the config file.
+    /// Execute the `PackObjects` command.
+    /// This command generates a Git pack file that contains compressed Git objects.
+    /// The pack file format is used to efficiently store objects and their history.
+    /// It also creates an index file that helps locate objects in the pack file.
     fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
-        println!("packObejcts");
         let header = "0x50 0x41 0x43 0x4B 0x00 0x00 0x00 0x02"; //podria incluirse version pero no parece necesario
 
-        let pack_file = fs::File::create(".git/pack/pack_file.pack")?; //ver que nombre tiene que tener varios identificadores y hash
-        let index_file = fs::File::create(".git/pack/pack_file.idx")?; //tambien ver nomber
-        
+        let mut pack_file = fs::File::create(".git/pack/pack_file.pack")?; //ver que nombre tiene que tener varios identificadores y hash
+        let mut uncompressed_pack_file = fs::File::create(".git/pack/uncompressed_pack_file")?;
+        let mut index_file = fs::File::create(".git/pack/pack_file.idx")?; //tambien ver nomber
+        uncompressed_pack_file.write_all(header.as_bytes())?;
+        pack_file.write_all(&helpers::compress_content(header)?)?;
         let mut objects_list = Vec::new();
         helpers::list_files_recursively(".git/objects", &mut objects_list)?;
-        println!("objects: {:?}", objects_list);
+              
+        let mut object_info_list: Vec<String> = Vec::new();
+        let mut offset = header.len() as u64;
+
         //ver que en esta lista no se este guardando el pack file, por ahora si se guarda CORREGIR
         let pack_file_content = String::new();
         for object_path in objects_list {
-            println!("iter: {}", object_path);
-            //let compressed_file_content = helpers::read_file_content_to_bytes(&object_path)?;
-            // let object_content = helpers::decompress_file_content(compressed_file_content)?;
-            // println!("object_content: {}", object_content);
-            let file = fs::File::open(object_path)?;
-            let mut decoder = Decoder::new(file)?;
+            let compressed_file_content = helpers::read_file_content_to_bytes(&object_path)?;
+            let object_content = helpers::decompress_file_content(compressed_file_content.clone())?;
 
-            // Read the header from the zlib decoder
-            let mut header = [0u8; 8];
-            decoder.read_exact(&mut header)?;
+            // let object_lines: Vec<String> = object_content.split('\0').map(String::from).collect();
+            // let object_data: Vec<String> = object_lines[1].lines().map(|s| s.to_string()).collect();
+            // let header_str = &object_lines[0];
 
-            // Convert the header bytes to a string
-            let header_str = String::from_utf8_lossy(&header).to_string();
-            println!("{}", header_str);
+            let object_info = format!("{} {} {}\n", helpers::generate_sha1_string(&object_content), object_content.len(), offset);
+            object_info_list.push(object_info);
+            offset += compressed_file_content.len() as u64;
 
-            // object_data.write_all(b"blob ")?;
-
-            // // Write the object size
-            // object_data.write_all(&(BLOB_DATA.len() as u64).to_be_bytes())?;
-        
-            // // Write null byte separator
-            // object_data.push(0);
-        
-            // // Write the blob data
-            // object_data.write_all(BLOB_DATA)?;
-        
-            // // Write the packed object data to the packfile
-            // packfile.write_all(&object_data)?;
+            uncompressed_pack_file.write_all(&object_content.as_bytes())?;
+            pack_file.write_all(&compressed_file_content)?;
         }
+        // Sort the object information by SHA-1 hash
+        object_info_list.sort();
 
-
+        // Write the sorted object information to the index file
+        for info in object_info_list {
+            index_file.write_all(info.as_bytes())?;
+        }
         Ok(String::new())
     }
 }
