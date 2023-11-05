@@ -1,54 +1,49 @@
 mod commands;
-
 use crate::commands::structs::Head;
 use crate::commands::Command;
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+
     let mut head = Head::new();
-    // let init = commands::Init::new();
-    // if let Err(error) = init.execute(&mut head, None){
-    //     eprintln!("{}", error);
-    //     return; 
-    // }
-    // head.print_all();\
+    let init = commands::Init::new();
+    if let Err(error) = init.execute(&mut head, None){
+        eprintln!("{}", error);
+        //return; 
+    }
+    // head.print_all();
 
     let add = commands::Add::new();
     if let Err(error) = add.execute(&mut head, Some(&["a/a.txt"])) {
         println!("{}", error);
-        return;
+        // return;
     }
+
+    if let Err(error) = add.execute(&mut head, Some(&["b.txt"])) {
+        println!("{}", error);
+        // return;
+    }
+
+    // if let Err(error) = add.execute(&mut head, Some(&["b.txt"])) {
 
     let mut commit = commands::Commit::new();
     if let Err(error) = commit.execute(&mut head, Some(&["-m", "message"])) {
         println!("{}", error);
-        return;
+        // return;
     }
 
-    let branch = commands::Branch::new();
-    if let Err(error) = branch.execute(&mut head, Some(&["nueva"])) {
+    if let Err(error) = add.execute(&mut head, Some(&["b.txt"])) {
         println!("{}", error);
-        return;
+        // return;
     }
 
-    // let checkout = Checkout::new();
-    // if let Err(error) = checkout.execute(&mut head, Some(&["new"])) {
-    //     println!("{}", error);
-    //     return;
-    // }
+    let mut file = fs::File::create("a/a.txt")?;
+    file.write_all("hola".as_bytes())?;
 
-    // let add = Add::new();
-    // if let Err(error) = add.execute(&mut head, Some(&["a/a.txt"])) {
-    //     println!("{}", error);
-    //     return;
-    // }
-
-    
-
-    // let mut status = Status::new();
-    // if let Err(error) = status.execute(&mut head, None) {
-    //     println!("{}", error);
-    //     return;
-    // }
+    let mut status: commands::Status = commands::Status::new();
+    if let Err(error) = status.execute(&mut head, None) {
+        println!("{}", error);
+        // return;
+    }
 
     // let mut cat = CatFile::new();
     // if let Err(error) = cat.execute(&mut head, Some(&["-t", "000142551ee3ec5d88c405cc048e1d5460795102"])){
@@ -86,5 +81,8 @@ fn main() {
 	// 	eprintln!("{}", error);
     //     return;
 	// }
+    fs::remove_dir_all(".git")?;
+
+    Ok(())
 }
 

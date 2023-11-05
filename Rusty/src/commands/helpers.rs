@@ -1,11 +1,11 @@
-use std::{fs, error::Error, io, io::Write, io::Read};
+use std::{fs, error::Error, io, io::Write, io::Read, str::FromStr, io::BufRead};
 extern crate crypto;
 extern crate libflate;
 
 use crypto::sha1::Sha1;
 use crypto::digest::Digest;
 use libflate::zlib::{Encoder, Decoder};
-use std::str;
+// use std::str;
 use crate::commands::structs::Head;
 
 const R_HEADS: &str = ".git/refs/heads";
@@ -41,6 +41,14 @@ pub fn read_file_content(path: &str) -> Result<String, io::Error> {
     Ok(content)
 }
 
+/// Give a file's path it reads it's lines and returns them as a Vec<u8>
+pub fn read_file_content_to_bytes(path: &str) -> Result<Vec<u8>, io::Error> {
+    let mut file_content: Vec<u8> = Vec::new();
+    let mut file = fs::File::open(path)?;
+    file.read_to_end(&mut file_content)?;
+    Ok(file_content)
+}
+
 /// Given a file's content it compresses it using an encoder from the libflate external crate and
 /// returns a Vec<u8> containing the encoded content
 // pub fn compress_content(content: &str) -> Result<Vec<u8>, io::Error> {
@@ -62,14 +70,13 @@ pub fn compress_content(content: &str) -> Result<Vec<u8>, io::Error> {
     Ok(compressed_data)
 }
 
-/// Decompresses the given compressed data using a zlib decoder.
-///Returns the decompressed data as a vector of bytes on success or an error if the decompression fails.
-pub fn decompress_data(compressed_data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let mut decoder = Decoder::new(compressed_data)?;
-    let mut decompressed_data = Vec::new();
-    decoder.read_to_end(&mut decompressed_data)?;
-    Ok(decompressed_data)
-}
+/// This function takes a `Vec<u8>` containing compressed data, decompresses it using
+/// the zlib decoder, and returns the decompressed content as a `String`.
+pub fn decompress_file_content(content: Vec<u8>) -> Result<String, io::Error> {
+    let mut decompressed_data= String::new();
+    
+    let mut decoder = Decoder::new(&content[..])?;
+    decoder.read_to_string(&mut decompressed_data)?;
 
 /// Generates a SHA-1 hash as a hexadecimal string from the provided string
 pub fn generate_sha1_string(str: &str) -> String {

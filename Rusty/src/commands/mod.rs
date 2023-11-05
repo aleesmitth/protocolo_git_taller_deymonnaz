@@ -1,7 +1,9 @@
-use std::{fs, error::Error, io, io::Write, io::Read, str};
+use std::fmt::format;
+use std::{fs, error::Error, io, io::Write, io::Read, str, io::BufRead, io::BufReader};
 
 extern crate libflate;
 use libflate::zlib::Decoder;
+use std::str::FromStr;
 
 const OBJECT: &str = ".git/objects";
 
@@ -20,6 +22,7 @@ const INDEX_FILE: &str = ".git/index";
 const CONFIG_FILE: &str = ".git/config";
 
 pub mod structs;
+use crate::commands::helpers::get_file_length;
 // use structs::GitObjectType;
 // use structs::HashObjectCreator;
 use crate::commands::structs::HashObjectCreator;
@@ -327,8 +330,8 @@ impl Command for Commit {
                 _ => message = Some(arg),
             }
         }
-        let hash_obj = HashObject::new();
-        let tree_hash = hash_obj.execute(head, Some(&[WRITE_FLAG, TYPE_FLAG, "tree", INDEX_FILE]))?;
+        let index_file_content = helpers::read_file_content(INDEX_FILE)?;
+        let tree_hash = HashObjectCreator::write_object_file(index_file_content.clone(), ObjectType::Tree, index_file_content.as_bytes().len() as u64)?;
     
         let branch_path = helpers::get_current_branch_path()?;
         message = if message_flag { message } else { None };
@@ -339,7 +342,7 @@ impl Command for Commit {
         let mut branch_file = fs::File::create(branch_path)?;
         branch_file.write_all(commit_object_hash.as_bytes())?;
 
-        self.stg_area.clear_index_file()?;
+        self.stg_area.unstage_index_file()?;
         Ok(String::new())
     }
 }
@@ -405,35 +408,49 @@ impl Status {
 }
 
 impl Command for Status {
+    /// Execute the "status" command to check the status of the Git repository.
+    /// This command checks the status of the current Git repository and prints the
+    /// status of files in the working directory, indicating whether they are
+    /// modified, staged, or unstaged.
     fn execute(&self, _head: &mut Head, _args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
         let branch_path = helpers::get_current_branch_path()?;
         let last_commit_hash: String = helpers::read_file_content(&branch_path)?;
         let last_commit_path = format!("{}/{}/{}", OBJECT, &last_commit_hash[..2], &last_commit_hash[2..]);
 
-        println!("Last Commit Path: {}", last_commit_path);
+        let decompressed_data = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&last_commit_path)?)?;
+        let commit_file_lines: Vec<String> = decompressed_data.lines().map(|s| s.to_string()).collect();
 
-        let commit_file = fs::File::open(&last_commit_path)?;
+        let tree_hash = &commit_file_lines[0];
+        let tree_object_path = format!("{}/{}/{}", OBJECT, &tree_hash[..2], &tree_hash[2..]);
 
-        // Lee el contenido del archivo en un búfer
-        // let mut buf = Vec::new();
-        // commit_file.read_to_end(&mut buf)?;
+        let tree_content = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&tree_object_path)?)?;
+        let tree_objects: Vec<String> = tree_content.lines().map(|s| s.to_string()).collect(); //aca esta todo el contenido del arbol en un vector de strings de la forma: file_path;object_hash;state
 
-        // println!("{:?}", buf);
-        let buf = [120, 156, 5, 192, 177, 17, 192, 32, 12, 3, 192, 158, 105, 68, 236, 224, 48, 14, 56, 18, 21, 21, 251, 223, 241, 33, 180, 238, 166, 207, 146, 45, 164, 234, 249, 24, 28, 157, 85, 226, 244, 156, 248, 223, 192, 40, 101, 243, 156, 177, 120, 1, 78, 167, 14, 28];
+        let index_file_content = helpers::read_file_content(INDEX_FILE)?; 
+        let index_objects: Vec<String> = index_file_content.lines().map(|s| s.to_string()).collect(); //aca esta todo el contenido del index file en un vector de strings de la forma: file_path;object_hash;state
 
-        // Utiliza Decoder para descomprimir el contenido del búfer
-        let mut decoder = Decoder::new(&buf[..])?;
-        let mut last_commit_content_bytes = Vec::new();
-        println!("{:?}", last_commit_content_bytes);
-
-        if decoder.read_to_end(&mut last_commit_content_bytes).is_err() {
-            return Err("Failed to read commit content".into());
+        for pos in 0..(index_objects.len()) {
+            let index_file_line: Vec<&str> = index_objects[pos].split(';').collect();
+            
+            if pos < tree_objects.len() {
+                //creo que se puede asumir que los objetos siempre van a estar en la misma posicion en el index y el tree
+                // porque en vez de eliminarlo cuando commiteamos, solo los unstageamos, entonces queda en el mismo lugar que en el tree
+                let tree_file_line: Vec<&str> = tree_objects[pos].split(';').collect();
+                if tree_file_line[1] != index_file_line[1] && index_file_line[2] == "2" {
+                    println!("Modified: {} (Staged)", index_file_line[0]);
+                    continue;
+                }
+                let current_object_content = helpers::read_file_content(index_file_line[0])?;
+                let current_object_hash = HashObjectCreator::generate_object_hash(ObjectType::Blob, get_file_length(index_file_line[0])?, &current_object_content);
+                println!("{} {}", pos, current_object_hash);
+                if current_object_hash != tree_file_line[1] && index_file_line[2] == "0" {
+                    println!("Modified: {} (Unstaged)", index_file_line[0]);
+                }
+            }
+            else {
+                println!("Added: {} (Staged)", index_file_line[0]);
+            }
         }
-
-        let last_commit_content = String::from_utf8(last_commit_content_bytes)?;
-
-        println!("Last Commit Content: {:?}", last_commit_content);
-
         Ok(String::new())
     }
 }
@@ -444,6 +461,7 @@ impl Remote {
     fn new() -> Self {
         Remote {}
     }
+
     /// Adds a new remote repository configuration to the Git configuration file.
     fn add_new_remote(&self, remote_name: String, url: String) -> Result<(), Box<dyn Error>> {
         let config_content = helpers::read_file_content(CONFIG_FILE)?;
