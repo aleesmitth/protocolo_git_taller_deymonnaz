@@ -1,11 +1,12 @@
 use std::fmt::format;
-use std::{fs, error::Error, io, io::Write, io::Read, str, io::BufRead, io::BufReader};
+use std::{fs, error::Error, io, io::Write, io::Read, str, io::BufRead, io::BufReader, io::Cursor};
 
 extern crate libflate;
 use libflate::zlib::Decoder;
 use std::str::FromStr;
 
 const OBJECT: &str = ".git/objects";
+const PACK: &str = ".git/pack";
 
 const DELETE_FLAG: &str = "-d";
 const RENAME_FLAG: &str = "-m";
@@ -50,16 +51,18 @@ impl Command for Init {
     /// for branches, tags, and objects. It also sets the default branch to 'main' and creates an empty
     ///  index file. If successful, it returns an empty string; otherwise, it returns an error message.
     fn execute(&self, head: &mut Head, _: Option<&[&str]>) -> Result<String, Box<dyn Error>>{
-
+        
         let _refs_heads = fs::create_dir_all(R_HEADS);
+        
         let _refs_tags = fs::create_dir(R_TAGS)?;
         let _obj = fs::create_dir(OBJECT)?;
-
-        helpers::create_new_branch(DEFAULT_BRANCH_NAME, head)?;
+        let _pack = fs::create_dir(PACK)?;
 
         let mut head_file = fs::File::create(HEAD_FILE)?;
         head_file.write_all(b"ref: refs/heads/main")?;
 
+        let _main = fs::File::create(".git/refs/heads/main")?; //esto no esta ideal hacerlo aca
+        helpers::create_new_branch(DEFAULT_BRANCH_NAME, head)?;
         let _index_file = fs::File::create(INDEX_FILE)?;
         
         Ok(String::new())    
@@ -293,7 +296,6 @@ impl Commit {
     /// Generates the content for a new commit.    
     fn generate_commit_content(&self, tree_hash: String, message: Option<&str>, branch_path: &str) -> Result<String, Box<dyn Error>> {
         let head_commit = helpers::read_file_content(branch_path)?;
-        println!("commit");
         //let mut content = String::new();
         // content.push_str(&tree_hash);
         // content.push_str(&head_commit);
@@ -418,11 +420,11 @@ impl Command for Status {
         let last_commit_path = format!("{}/{}/{}", OBJECT, &last_commit_hash[..2], &last_commit_hash[2..]);
 
         let decompressed_data = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&last_commit_path)?)?;
-        let commit_file_lines: Vec<String> = decompressed_data.lines().map(|s| s.to_string()).collect();
-
+        let commit_file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
+        let commit_file_lines: Vec<String> = commit_file_content[1].lines().map(|s| s.to_string()).collect();
+        
         let tree_hash = &commit_file_lines[0];
         let tree_object_path = format!("{}/{}/{}", OBJECT, &tree_hash[..2], &tree_hash[2..]);
-
         let tree_content = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&tree_object_path)?)?;
         let tree_objects: Vec<String> = tree_content.lines().map(|s| s.to_string()).collect(); //aca esta todo el contenido del arbol en un vector de strings de la forma: file_path;object_hash;state
 
@@ -442,7 +444,6 @@ impl Command for Status {
                 }
                 let current_object_content = helpers::read_file_content(index_file_line[0])?;
                 let current_object_hash = HashObjectCreator::generate_object_hash(ObjectType::Blob, get_file_length(index_file_line[0])?, &current_object_content);
-                println!("{} {}", pos, current_object_hash);
                 if current_object_hash != tree_file_line[1] && index_file_line[2] == "0" {
                     println!("Modified: {} (Unstaged)", index_file_line[0]);
                 }
@@ -557,6 +558,61 @@ impl Command for Remote {
 	        (_, true, Some(name), _) => self.remove_remote(name)?,
 	        _ => {}
 	    }
+        Ok(String::new())
+    }
+}
+
+pub struct PackObjects;
+
+impl PackObjects {
+    pub fn new() -> Self {
+        PackObjects {}
+    }
+}
+
+impl Command for PackObjects {
+    /// Execute the `PackObjects` command.
+    /// This command generates a Git pack file that contains compressed Git objects.
+    /// The pack file format is used to efficiently store objects and their history.
+    /// It also creates an index file that helps locate objects in the pack file.
+    fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
+        let header = "0x50 0x41 0x43 0x4B 0x00 0x00 0x00 0x02"; //podria incluirse version pero no parece necesario
+
+        let mut pack_file = fs::File::create(".git/pack/pack_file.pack")?; //ver que nombre tiene que tener varios identificadores y hash
+        let mut uncompressed_pack_file = fs::File::create(".git/pack/uncompressed_pack_file")?;
+        let mut index_file = fs::File::create(".git/pack/pack_file.idx")?; //tambien ver nomber
+        uncompressed_pack_file.write_all(header.as_bytes())?;
+        pack_file.write_all(&helpers::compress_content(header)?)?;
+        let mut objects_list = Vec::new();
+        helpers::list_files_recursively(".git/objects", &mut objects_list)?;
+              
+        let mut object_info_list: Vec<String> = Vec::new();
+        let mut offset = header.len() as u64;
+
+        //ver que en esta lista no se este guardando el pack file, por ahora si se guarda CORREGIR
+        let pack_file_content = String::new();
+        for object_path in objects_list {
+            let compressed_file_content = helpers::read_file_content_to_bytes(&object_path)?;
+            let object_content = helpers::decompress_file_content(compressed_file_content.clone())?;
+
+            // let object_lines: Vec<String> = object_content.split('\0').map(String::from).collect();
+            // let object_data: Vec<String> = object_lines[1].lines().map(|s| s.to_string()).collect();
+            // let header_str = &object_lines[0];
+
+            let object_info = format!("{} {} {}\n", helpers::generate_sha1_string(&object_content), object_content.len(), offset);
+            object_info_list.push(object_info);
+            offset += compressed_file_content.len() as u64;
+
+            uncompressed_pack_file.write_all(&object_content.as_bytes())?;
+            pack_file.write_all(&compressed_file_content)?;
+        }
+        // Sort the object information by SHA-1 hash
+        object_info_list.sort();
+
+        // Write the sorted object information to the index file
+        for info in object_info_list {
+            index_file.write_all(info.as_bytes())?;
+        }
         Ok(String::new())
     }
 }

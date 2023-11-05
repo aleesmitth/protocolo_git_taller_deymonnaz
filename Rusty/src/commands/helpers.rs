@@ -18,7 +18,7 @@ pub fn get_current_branch_path() -> Result<String, Box<dyn Error>> {
     let head_file_content = read_file_content(HEAD_FILE)?;
     let split_head_content: Vec<&str> = head_file_content.split(" ").collect();
     if let Some(branch_path) = split_head_content.get(1) { 
-        let full_branch_path = format!(".git/{}", branch_path);
+        let full_branch_path: String = format!(".git/{}", branch_path);
         return Ok(full_branch_path);
     }
     Err(Box::new(io::Error::new(
@@ -77,6 +77,8 @@ pub fn decompress_file_content(content: Vec<u8>) -> Result<String, io::Error> {
     
     let mut decoder = Decoder::new(&content[..])?;
     decoder.read_to_string(&mut decompressed_data)?;
+    Ok(decompressed_data)
+}
 
 /// Generates a SHA-1 hash as a hexadecimal string from the provided string
 pub fn generate_sha1_string(str: &str) -> String {
@@ -88,10 +90,9 @@ pub fn generate_sha1_string(str: &str) -> String {
 /// Creates a new branch with the specified name. Creates branch file.
 pub fn create_new_branch(branch_name: &str, head: &mut Head) -> Result<(), Box<dyn Error>> { 
     let branch_path = format!("{}/{}", R_HEADS, branch_name);
-
+    
     let previous_branch_path = get_current_branch_path()?;
     let last_commit_hash = read_file_content(&previous_branch_path)?;
-
     let mut branch_file = fs::File::create(&branch_path)?;
 
     if branch_name == DEFAULT_BRANCH_NAME {
@@ -174,6 +175,28 @@ pub fn remove_object_from_file(file_path: &str) -> io::Result<()> {
 
     // Write the updated contents back to the file.
     fs::write(INDEX_FILE, updated_contents)?;
+
+    Ok(())
+}
+
+pub fn list_files_recursively(dir_path: &str, files_list: &mut Vec<String>) -> io::Result<()> {
+    let entries = fs::read_dir(dir_path)?;
+
+    for entry in entries {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let entry_path = entry.path();
+
+        if file_type.is_dir() {
+            // If it's a subdirectory, recurse into it
+            list_files_recursively(entry_path.to_str().ok_or(io::Error::from(io::ErrorKind::InvalidInput))?, files_list)?;
+        } else if file_type.is_file() {
+            // If it's a file, add its path to the list
+            if let Some(current_obj_path) = entry_path.to_str() {
+                files_list.push(current_obj_path.to_string());
+            }
+        }
+    }
 
     Ok(())
 }
