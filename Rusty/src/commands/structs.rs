@@ -26,7 +26,6 @@ impl HashObjectCreator {
         // let hashed_data = helpers::generate_sha1_string(data.as_str());
         let hashed_data = Self::generate_object_hash(obj_type, file_len, &content);
         let compressed_content = helpers::compress_content(content.as_str())?;
-        println!("{:?}", compressed_content);
         let obj_directory_path = format!("{}/{}", OBJECT, &hashed_data[0..2]);
         let _ = fs::create_dir(&obj_directory_path);
     
@@ -98,6 +97,8 @@ impl StagingArea {
         
         let mut index_file = fs::File::create(INDEX_FILE)?;
         index_file.write_all(new_index_file_content.as_bytes())?;
+        Ok(())
+    }
 
     // fn unstage_file(&mut self, path: &str) {
     //     if let Some(status) = self.files.get_mut(path) {

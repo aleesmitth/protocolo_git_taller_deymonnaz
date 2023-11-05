@@ -1,11 +1,12 @@
 use std::fmt::format;
-use std::{fs, error::Error, io, io::Write, io::Read, str, io::BufRead, io::BufReader};
+use std::{fs, error::Error, io, io::Write, io::Read, str, io::BufRead, io::BufReader, io::Cursor};
 
 extern crate libflate;
 use libflate::zlib::Decoder;
 use std::str::FromStr;
 
 const OBJECT: &str = ".git/objects";
+const PACK: &str = ".git/pack";
 
 const DELETE_FLAG: &str = "-d";
 const RENAME_FLAG: &str = "-m";
@@ -50,16 +51,18 @@ impl Command for Init {
     /// for branches, tags, and objects. It also sets the default branch to 'main' and creates an empty
     ///  index file. If successful, it returns an empty string; otherwise, it returns an error message.
     fn execute(&self, head: &mut Head, _: Option<&[&str]>) -> Result<String, Box<dyn Error>>{
-
+        
         let _refs_heads = fs::create_dir_all(R_HEADS);
+        
         let _refs_tags = fs::create_dir(R_TAGS)?;
         let _obj = fs::create_dir(OBJECT)?;
-
-        helpers::create_new_branch(DEFAULT_BRANCH_NAME, head)?;
+        let _pack = fs::create_dir(PACK)?;
 
         let mut head_file = fs::File::create(HEAD_FILE)?;
         head_file.write_all(b"ref: refs/heads/main")?;
 
+        let _main = fs::File::create(".git/refs/heads/main")?; //esto no esta ideal hacerlo aca
+        helpers::create_new_branch(DEFAULT_BRANCH_NAME, head)?;
         let _index_file = fs::File::create(INDEX_FILE)?;
         
         Ok(String::new())    
@@ -442,7 +445,6 @@ impl Command for Status {
                 }
                 let current_object_content = helpers::read_file_content(index_file_line[0])?;
                 let current_object_hash = HashObjectCreator::generate_object_hash(ObjectType::Blob, get_file_length(index_file_line[0])?, &current_object_content);
-                println!("{} {}", pos, current_object_hash);
                 if current_object_hash != tree_file_line[1] && index_file_line[2] == "0" {
                     println!("Modified: {} (Unstaged)", index_file_line[0]);
                 }
@@ -557,6 +559,66 @@ impl Command for Remote {
 	        (_, true, Some(name), _) => self.remove_remote(name)?,
 	        _ => {}
 	    }
+        Ok(String::new())
+    }
+}
+
+pub struct PackObjects;
+
+impl PackObjects {
+    pub fn new() -> Self {
+        PackObjects {}
+    }
+}
+
+impl Command for PackObjects {
+    /// Executes Command for Remote. When no flags are received, all remotes are listed. If the add flag is received
+    /// with a name and a new url, a remote is added to the config file. If a remove flag and a name is received, 
+    /// the remote with said name will be removed from the config file.
+    fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
+        println!("packObejcts");
+        let header = "0x50 0x41 0x43 0x4B 0x00 0x00 0x00 0x02"; //podria incluirse version pero no parece necesario
+
+        let pack_file = fs::File::create(".git/pack/pack_file.pack")?; //ver que nombre tiene que tener varios identificadores y hash
+        let index_file = fs::File::create(".git/pack/pack_file.idx")?; //tambien ver nomber
+        
+        let mut objects_list = Vec::new();
+        helpers::list_files_recursively(".git/objects", &mut objects_list)?;
+        println!("objects: {:?}", objects_list);
+        //ver que en esta lista no se este guardando el pack file, por ahora si se guarda CORREGIR
+        let pack_file_content = String::new();
+        for object_path in objects_list {
+            println!("iter: {}", object_path);
+            //let compressed_file_content = helpers::read_file_content_to_bytes(&object_path)?;
+            // let object_content = helpers::decompress_file_content(compressed_file_content)?;
+            // println!("object_content: {}", object_content);
+            let file = fs::File::open(object_path)?;
+            let mut decoder = Decoder::new(file)?;
+
+            // Read the header from the zlib decoder
+            let mut header = [0u8; 8];
+            decoder.read_exact(&mut header)?;
+
+            // Convert the header bytes to a string
+            let header_str = String::from_utf8_lossy(&header).to_string();
+            println!("{}", header_str);
+
+            // object_data.write_all(b"blob ")?;
+
+            // // Write the object size
+            // object_data.write_all(&(BLOB_DATA.len() as u64).to_be_bytes())?;
+        
+            // // Write null byte separator
+            // object_data.push(0);
+        
+            // // Write the blob data
+            // object_data.write_all(BLOB_DATA)?;
+        
+            // // Write the packed object data to the packfile
+            // packfile.write_all(&object_data)?;
+        }
+
+
         Ok(String::new())
     }
 }
