@@ -2,15 +2,6 @@ mod commands;
 
 use crate::commands::structs::Head;
 use crate::commands::Command;
-use std::{env, io};
-
-fn parse_arguments(args: &[String]) -> Option<Vec<&str>> {
-    if args.is_empty() {
-        return None;
-    } 
-    let arg_slices: Vec<&str> = args.iter().map(String::as_str).collect();
-    Some(arg_slices)
-}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut head = Head::new();
@@ -35,8 +26,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             _ => return Err(Box::new(io::Error::new(io::ErrorKind::Other,"Error: Invalid command."))),
         };
     };
-
-    // fs::remove_dir_all(".git")?;
     Ok(())
 }
 

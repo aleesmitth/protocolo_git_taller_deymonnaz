@@ -1,6 +1,7 @@
-use std::{fs, error::Error, io::Write, fmt};
+use std::{fs, error::Error, io::Write, fmt, net::TcpStream, io::BufRead};
 const OBJECT: &str = ".git/objects";
 const INDEX_FILE: &str = ".git/index";
+const DEFAULT_REMOTE: &str = "origin";
 
 use crate::commands::helpers;
 
@@ -160,6 +161,15 @@ impl ObjectType {
             _ => None,
         }
     }
+    pub fn get_object_for_pack_file(&self) -> u8 {
+        let object_type = match self {
+            ObjectType::Commit => 1,
+            ObjectType::Tree => 2,
+            ObjectType::Blob => 3,
+            ObjectType::Tag => 4,
+        };
+        object_type
+    }
 }
 
 impl fmt::Display for ObjectType {
@@ -173,3 +183,92 @@ impl fmt::Display for ObjectType {
         write!(f, "{}", string)
     }
 }
+
+pub struct ServerConnection;
+
+impl ServerConnection {
+    pub fn new() -> Self {
+        ServerConnection {}
+    }
+
+    pub fn receive_pack(&mut self) -> Result<(), Box<dyn Error>> {
+        println!("1");
+        //let remote_server_address = helpers::get_remote_url(DEFAULT_REMOTE)?;
+        //let mut stream = TcpStream::connect(remote_server_address)?;
+        let mut stream = TcpStream::connect("127.0.0.1:9418")?;
+
+        let service = "git-receive-pack /.git\0host=127.0.0.1\0";
+        let request = format!("{:04x}{}", service.len() + 4, service);
+        // Send the Git service request
+        stream.write_all(request.as_bytes())?;
+
+        // Read the response from the server
+        let mut response = String::new();
+        {
+        let mut reader = std::io::BufReader::new(&stream);
+        for line in reader.lines() {
+            let line = line?;
+            println!("line: {}", line);
+            break;
+        }
+        }
+        println!("response: {:?}", response);
+
+        let branch_path = helpers::get_current_branch_path()?;
+        let last_commit_hash: String = helpers::read_file_content(&branch_path)?;
+        println!("last_commit: {}", last_commit_hash);
+        let line = format!("0000000000000000000000000000000000000000 {} refs/heads/new", last_commit_hash);
+        let actual_line = format!("{:04x}{}\n", line.len() + 5, line);
+        println!("line: {}", actual_line);
+        stream.write_all(actual_line.as_bytes())?;
+        stream.write_all(b"0000")?;
+        
+        let mut pack_file = fs::File::open(".git/pack/pack_file.pack")?;
+        std::io::copy(&mut pack_file, &mut stream)?;
+        //stream.flush()?;
+
+        response.clear();
+        let mut reader = std::io::BufReader::new(&stream);
+        for line in reader.lines() {
+            let line = line?;
+            println!("line: {}", line);
+            break;
+        }
+
+        Ok(())
+    }
+
+    pub fn clone_from_remote(&self) -> Result<(), Box<dyn Error>> {
+        let mut stream = TcpStream::connect("127.0.0.1:9418")?;
+
+        let request = format!("{:04x}git-upload-pack /.git\0host=127.0.0.1\0", "git-upload-pack /.git\0host=127.0.0.1\0".len() + 4);
+        stream.write_all(request.as_bytes())?;
+        stream.flush()?;
+
+        let reader = std::io::BufReader::new(&stream);
+        for line in reader.lines() {
+            let line = line?;
+            println!("{}", line);
+            break;
+        }
+
+        let branch_path = helpers::get_current_branch_path()?;
+        let last_commit_hash: String = helpers::read_file_content(&branch_path)?;
+
+        let line = format!("want {} multi_ack side-band-64k ofs-delta", last_commit_hash);
+        let actual_line = format!("{:04x}{}\n", line.len() + 5, line);
+        println!("{}", actual_line);
+        stream.write_all(actual_line.as_bytes())?;
+        stream.write_all("0000".as_bytes())?;
+        let done = format!("{:04x}done\n", "done\n".len()+4);
+        println!("{}", done);
+        stream.write_all(done.as_bytes())?;
+        stream.flush()?;
+
+        Ok(())
+        }
+}
+
+
+
+

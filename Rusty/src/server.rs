@@ -2,7 +2,11 @@ use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream};
 use std::thread;
 
-fn handle_git_client(mut stream: TcpStream) {
+fn receive_pack(mut stream: TcpStream) {
+    
+}
+
+pub fn handle_git_client(mut stream: TcpStream) {
     // In the Git Dumb Protocol, Git commands are sent as text lines.
     // You would parse the incoming lines and respond accordingly.
 
@@ -12,9 +16,11 @@ fn handle_git_client(mut stream: TcpStream) {
     for line in reader.lines() {
         if let Ok(line) = line {
             if line.starts_with("git-upload-pack") {
+                println!("upload pack received");
                 writer.write_all(b"# service=git-upload-pack\n").unwrap();
                 writer.flush().unwrap();
             } else if line.starts_with("git-receive-pack") {
+                println!("git-receive-pack");
                 writer.write_all(b"# service=git-receive-pack\n").unwrap();
                 writer.flush().unwrap();
             } else if line == "capabilities" {
@@ -38,12 +44,14 @@ fn handle_git_client(mut stream: TcpStream) {
 fn main() {
     let listener = TcpListener::bind("127.0.0.1:9418").unwrap(); // Default Git port
 
-    println!("Git server (Dumb Protocol) is running at git://127.0.0.1:9418");
+    println!("Git server is running at git://127.0.0.1:9418");
 
     for stream in listener.incoming() {
+        println!("aca");
         match stream {
             Ok(stream) => {
                 thread::spawn(|| {
+                    println!("match");
                     handle_git_client(stream);
                 });
             }
