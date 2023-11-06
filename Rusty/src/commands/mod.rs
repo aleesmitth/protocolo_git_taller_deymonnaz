@@ -422,6 +422,10 @@ impl Command for Status {
     fn execute(&self, _head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let branch_path = helpers::get_current_branch_path()?;
         let last_commit_hash: String = helpers::read_file_content(&branch_path)?;
+        if last_commit_hash.is_empty() {
+            println!("nothing to commit, working tree clean");
+            return Ok(String::new())
+        }
         let last_commit_path = format!("{}/{}/{}", OBJECT, &last_commit_hash[..2], &last_commit_hash[2..]);
 
         let decompressed_data = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&last_commit_path)?)?;
@@ -442,19 +446,20 @@ impl Command for Status {
             if pos < tree_objects.len() {
                 let tree_file_line: Vec<&str> = tree_objects[pos].split(';').collect();
                 if tree_file_line[1] != index_file_line[1] && index_file_line[2] == "2" {
-                    println!("Modified: {} (Staged)", index_file_line[0]);
+                    println!("modified: {} (Staged)", index_file_line[0]);
                     continue;
                 }
                 let current_object_content = helpers::read_file_content(index_file_line[0])?;
                 let current_object_hash = HashObjectCreator::generate_object_hash(ObjectType::Blob, get_file_length(index_file_line[0])?, &current_object_content);
                 if current_object_hash != tree_file_line[1] && index_file_line[2] == "0" {
-                    println!("Modified: {} (Unstaged)", index_file_line[0]);
+                    println!("modified: {} (Unstaged)", index_file_line[0]);
                 }
             }
             else {
-                println!("Added: {} (Staged)", index_file_line[0]);
+                println!("new file: {} (Staged)", index_file_line[0]);
             }
         }
+        println!("nothing to commit, working tree clean");
         Ok(String::new())
     }
 }
