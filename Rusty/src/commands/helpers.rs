@@ -27,6 +27,14 @@ pub fn get_current_branch_path() -> Result<String, Box<dyn Error>> {
     )))
 }
 
+/// Returns head commit
+pub fn get_head_commit() ->  Result<String, Box<dyn Error>> {    
+    let mut file = fs::File::open(get_current_branch_path()?)?;
+    let mut content = String::new();
+    file.read_to_string(&mut content)?;
+    Ok(content)
+}
+
 /// Returns length of a file's content
 pub fn get_file_length(path: &str) -> Result<u64, Box<dyn Error>> {
     let metadata = fs::metadata(path)?;

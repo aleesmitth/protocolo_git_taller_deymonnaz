@@ -12,6 +12,9 @@ const TYPE_FLAG: &str = "-t";
 const WRITE_FLAG: &str = "-w";
 const SIZE_FLAG: &str = "-s";
 const MESSAGE_FLAG: &str = "-m";
+const EXCLUDE_LOG_ENTRY: char = '^';
+const HEAD: &str = "HEAD";
+
 const ADD_FLAG: &str = "add";
 const REMOVE_FLAG: &str = "rm";
 
@@ -24,8 +27,6 @@ const CONFIG_FILE: &str = ".git/config";
 
 pub mod structs;
 use crate::commands::helpers::get_file_length;
-// use structs::GitObjectType;
-// use structs::HashObjectCreator;
 use crate::commands::structs::HashObjectCreator;
 use crate::commands::structs::ObjectType;
 use crate::commands::structs::Head;
@@ -36,7 +37,7 @@ use self::structs::ServerConnection;
 mod helpers;
 
 pub trait Command {
-    fn execute(&self, head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>>;
+    fn execute(&self, head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>>;
 }
 
 pub struct Init;
@@ -52,7 +53,7 @@ impl Command for Init {
     /// This function initializes a new Git repository by creating the necessary directory structure
     /// for branches, tags, and objects. It also sets the default branch to 'main' and creates an empty
     ///  index file. If successful, it returns an empty string; otherwise, it returns an error message.
-    fn execute(&self, head: &mut Head, _: Option<&[&str]>) -> Result<String, Box<dyn Error>>{
+    fn execute(&self, head: &mut Head, _: Option<Vec<&str>>) -> Result<String, Box<dyn Error>>{
         
         let _refs_heads = fs::create_dir_all(R_HEADS);
         
@@ -118,16 +119,16 @@ impl Branch {
 /// assert!(result2.is_ok());
 /// ```
 impl Command for Branch {
-    fn execute(&self, head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
 	    let list_branches_flag = args.is_none();
 	    let mut delete_flag = false;
 	    let mut rename_flag = false;
 	    let mut first_branch_name: Option<String> = None;
 	    let mut second_branch_name: Option<String> = None;
-	    let arg_slice = args.unwrap_or(&[]);
+	    let arg_slice = args.unwrap_or(Vec::new());
 
 
-	    for &arg in arg_slice { // Note the & in for &arg
+	    for arg in arg_slice { // Note the & in for &arg
 	        match arg {
 	            DELETE_FLAG => delete_flag = true,
 	            RENAME_FLAG => rename_flag = true,
@@ -170,15 +171,20 @@ impl Command for Checkout {
     /// Executes the `git checkout` command, which changes the current branch to the specified one.
     /// It updates the `HEAD` file to point to the new branch if it's different from the current branch.
     /// If successful, it returns an empty string; otherwise, it returns an error message.
-    fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         match args {
             Some(args) => {
     
                 let branch_path = format!("{}/{}", R_HEADS, args[0]);
-
+                if !fs::metadata(branch_path).is_ok() {
+                    return Err(Box::new(io::Error::new(
+                        io::ErrorKind::Other,
+                        "Error: Branch name did not match any file known.",
+                    )))
+                }
                 let new_head_content = format!("ref: refs/heads/{}", args[0]);
         
-                let mut head_file_content = helpers::read_file_content(HEAD_FILE)?;
+                let head_file_content = helpers::read_file_content(HEAD_FILE)?;
         
                 if head_file_content == new_head_content {
                     return Err(Box::new(io::Error::new(
@@ -210,7 +216,7 @@ impl CatFile {
 
 impl Command for CatFile {
     /// Executes the `cat-file` command, which displays information about a Git object's type or size.
-    fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         match args {
             Some(args) => {
                 let path = format!(".git/objects/{}/{}", &args[1][..2], &args[1][2..]);
@@ -251,8 +257,8 @@ impl Command for HashObject {
     /// Executes the `hash-object` command, which calculates the hash of a given file or data.
     /// If the write flag is specified, the object is created as a file in the objects subdirectory.
     /// Default object type is "blob" but can be specified with type flag.
-    fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
-        let arg_slice = args.unwrap_or(&[]);
+    fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        let arg_slice = args.unwrap_or(Vec::new());
         let mut path: &str = "";
         let mut obj_type = ObjectType::Blob;
         let mut write = false;
@@ -317,7 +323,7 @@ impl Command for Commit {
     /// To achieve this, it creates a "tree" which is the index file turned into a tree object.
     /// Then it creates a commit file, which contains the tree object hash, the commit's parent
     /// commits and the given message with the message flag.
-    fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         if helpers::get_file_length(INDEX_FILE)? == 0 {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
@@ -327,9 +333,9 @@ impl Command for Commit {
 
         let mut message: Option<&str> = None;
         let mut message_flag = false;
-        let arg_slice = args.unwrap_or(&[]);
+        let arg_slice = args.unwrap_or(Vec::new());
 
-	    for &arg in arg_slice { // Note the & in for &arg
+	    for arg in arg_slice { // Note the & in for &arg
 	        match arg { 
                 MESSAGE_FLAG => message_flag = true,
                 _ => message = Some(arg),
@@ -364,7 +370,7 @@ impl Rm {
 
 impl Command for Rm {
     /// Receives a file path and removes it from the staging area.
-    fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         match args {
             Some(args) => {
                 self.stg_area.remove_file(args[0])?;
@@ -390,7 +396,7 @@ impl Add {
 
 impl Command for Add {
     /// Receives a file path and adds it to the staging area.
-    fn execute(&self, head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         match args {
             Some(args) => {
                 self.stg_area.add_file(head, args[0])?;
@@ -417,44 +423,47 @@ impl Command for Status {
     /// This command checks the status of the current Git repository and prints the
     /// status of files in the working directory, indicating whether they are
     /// modified, staged, or unstaged.
-    fn execute(&self, _head: &mut Head, _args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, _head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let branch_path = helpers::get_current_branch_path()?;
         let last_commit_hash: String = helpers::read_file_content(&branch_path)?;
+        if last_commit_hash.is_empty() {
+            println!("nothing to commit, working tree clean");
+            return Ok(String::new())
+        }
         let last_commit_path = format!("{}/{}/{}", OBJECT, &last_commit_hash[..2], &last_commit_hash[2..]);
 
         let decompressed_data = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&last_commit_path)?)?;
         let commit_file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
         let commit_file_lines: Vec<String> = commit_file_content[1].lines().map(|s| s.to_string()).collect();
-        
+
         let tree_hash = &commit_file_lines[0];
         let tree_object_path = format!("{}/{}/{}", OBJECT, &tree_hash[..2], &tree_hash[2..]);
         let tree_content = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&tree_object_path)?)?;
-        let tree_objects: Vec<String> = tree_content.lines().map(|s| s.to_string()).collect(); //aca esta todo el contenido del arbol en un vector de strings de la forma: file_path;object_hash;state
+        let tree_contents_split: Vec<String> = tree_content.split('\0').map(String::from).collect();
+        let tree_objects: Vec<String> = tree_contents_split[1].lines().map(|s| s.to_string()).collect(); //aca esta todo el contenido del arbol en un vector de strings de la forma: file_path;object_hash;state
 
         let index_file_content = helpers::read_file_content(INDEX_FILE)?; 
         let index_objects: Vec<String> = index_file_content.lines().map(|s| s.to_string()).collect(); //aca esta todo el contenido del index file en un vector de strings de la forma: file_path;object_hash;state
 
         for pos in 0..(index_objects.len()) {
             let index_file_line: Vec<&str> = index_objects[pos].split(';').collect();
-            
             if pos < tree_objects.len() {
-                //creo que se puede asumir que los objetos siempre van a estar en la misma posicion en el index y el tree
-                // porque en vez de eliminarlo cuando commiteamos, solo los unstageamos, entonces queda en el mismo lugar que en el tree
                 let tree_file_line: Vec<&str> = tree_objects[pos].split(';').collect();
                 if tree_file_line[1] != index_file_line[1] && index_file_line[2] == "2" {
-                    println!("Modified: {} (Staged)", index_file_line[0]);
+                    println!("modified: {} (Staged)", index_file_line[0]);
                     continue;
                 }
                 let current_object_content = helpers::read_file_content(index_file_line[0])?;
                 let current_object_hash = HashObjectCreator::generate_object_hash(ObjectType::Blob, get_file_length(index_file_line[0])?, &current_object_content);
                 if current_object_hash != tree_file_line[1] && index_file_line[2] == "0" {
-                    println!("Modified: {} (Unstaged)", index_file_line[0]);
+                    println!("modified: {} (Unstaged)", index_file_line[0]);
                 }
             }
             else {
-                println!("Added: {} (Staged)", index_file_line[0]);
+                println!("new file: {} (Staged)", index_file_line[0]);
             }
         }
+        println!("nothing to commit, working tree clean");
         Ok(String::new())
     }
 }
@@ -534,7 +543,7 @@ impl Command for Remote {
     /// Executes Command for Remote. When no flags are received, all remotes are listed. If the add flag is received
     /// with a name and a new url, a remote is added to the config file. If a remove flag and a name is received, 
     /// the remote with said name will be removed from the config file.
-    fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         if args.is_none() {
             self.list_remotes()?;
             return Ok(String::new());
@@ -543,9 +552,9 @@ impl Command for Remote {
         let mut remove_flag = false;
         let mut name = None;
         let mut url = None;
-        let arg_slice = args.unwrap_or(&[]);
+        let arg_slice = args.unwrap_or(Vec::new());
 
-	    for &arg in arg_slice {
+	    for arg in arg_slice {
 	        match arg { 
                 ADD_FLAG => add_flag = true,
                 REMOVE_FLAG => remove_flag = true,
@@ -683,6 +692,129 @@ impl Command for Clone {
         let mut server_connection = ServerConnection::new();
         server_connection.clone_from_remote()?;
 
+        Ok(String::new())
+    }
+}
+
+/// This module defines the `Log` struct, which is responsible for implementing the "git log" command.
+/// It provides methods to generate log entries and execute the command.
+
+pub struct Log;
+
+impl Log {
+    /// Creates a new `Log` instance.
+    pub fn new() -> Self {
+        Log {}
+    }
+
+    /// Generates log entries for a given base commit and stores them in the provided `entries` vector.
+    /// If the base commit ID is too short, it returns an error.
+    ///
+    /// # Arguments
+    ///
+    /// * `entries` - A mutable reference to a vector to store log entries.
+    /// * `base_commit` - The base commit ID to start generating logs from./// # Returns
+    ///
+    /// A `Result` containing the execution result or an error message.    
+    fn generate_log_entries(&self, entries: &mut Vec<String>, base_commit: String) -> Result<String, Box<dyn Error>> {
+        if base_commit.len() < 4 {
+            return Err(Box::new(io::Error::new(
+                        io::ErrorKind::Other,
+                        "Error: Invalid Commit ID. It's too short",
+                    )))
+        }
+
+        let current_commit = if base_commit == HEAD { helpers::get_head_commit()? } else { base_commit };
+
+        if entries.contains(&current_commit) {
+            // don't process it again
+            return Ok(String::new());
+        }
+
+        //println!("starting to generate logs for {:?}", current_commit.clone());
+        let commit_path = format!("{}/{}/{}", OBJECT, &current_commit[..2], &current_commit[2..]);
+        //println!("going to {:?}", commit_path.clone());
+        let decompressed_data = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&commit_path)?)?;
+        //println!("decompressed data {:?}", decompressed_data.clone());
+        
+        // trim header
+        let commit_file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
+
+        let commit_file_lines: Vec<String> = commit_file_content[1].lines().map(|s| s.to_string()).collect();
+        
+        let parent_commit_trimmed = &commit_file_lines[1];
+
+        entries.push(current_commit);
+
+        if parent_commit_trimmed.is_empty() {            
+            //root commit
+            //println!("returning, found root commit");
+            return Ok(String::new());
+        }
+
+        //println!("parent commit {:?}", parent_commit_trimmed.clone());
+        self.generate_log_entries(entries, parent_commit_trimmed.clone())?;
+        Ok(String::new())
+    }
+}
+
+impl Command for Log {
+    /// Executes the "git log" command.
+    ///
+    /// # Arguments
+    ///
+    /// * `_head` - A mutable reference to the `Head` structure (not used in this implementation).
+    /// * `args` - An optional slice of arguments passed to the command.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the execution result or an error message. 
+    fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        // Extract the arguments from the provided slice or use an empty slice if none is provided
+        let arg_slice = args.unwrap_or(Vec::new());
+
+        // Initialize vectors to store log entries (included and excluded)        
+        let mut log_entries = Vec::new();
+        let mut log_entries_excluded = Vec::new();
+
+
+        // Iterate through the provided arguments
+        for arg in arg_slice { // Note the & in for &arg
+            // Check the first character of each argument
+            if let Some(first_char) = arg.chars().next() {
+                match first_char {
+                    EXCLUDE_LOG_ENTRY => {
+                        // Generate log entries for exclusion and store them in the excluded entries vector
+                        self.generate_log_entries(&mut log_entries_excluded, arg[1..].to_string())?;
+                        //println!("exclude {:?}", log_entries_excluded);
+
+                    },
+                    _ => {
+                        // Generate log entries for inclusion and store them in the included entries vector
+                        self.generate_log_entries(&mut log_entries, arg.to_string())?;
+                        //println!("include {:?}", log_entries);
+
+                    }
+                }
+            }
+        }
+        /*println!("result {:?}", log_entries.iter()
+            .filter(| entry | !log_entries_excluded.contains(entry))
+            .cloned()
+            .collect::<Vec<String>>());*/
+
+        // Filter out log entries that are in the excluded entries vector
+        log_entries = log_entries.iter()
+            .filter(| entry | !log_entries_excluded.contains(entry))
+            .cloned()
+            .collect::<Vec<String>>();
+
+        // Display the resulting log entries
+        for entry in &log_entries {
+            println!("{:?}", entry);
+        }
+        
+        // Return a successful result (an empty string in this case)
         Ok(String::new())
     }
 }
