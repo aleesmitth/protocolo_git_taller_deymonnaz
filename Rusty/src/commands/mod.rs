@@ -648,11 +648,17 @@ impl Log {
         }
 
         let current_commit = if base_commit == HEAD { helpers::get_head_commit()? } else { base_commit };
-        println!("starting to generate logs for {:?}", current_commit.clone());
+
+        if entries.contains(&current_commit) {
+            // don't process it again
+            return Ok(String::new());
+        }
+
+        //println!("starting to generate logs for {:?}", current_commit.clone());
         let commit_path = format!("{}/{}/{}", OBJECT, &current_commit[..2], &current_commit[2..]);
-        println!("going to {:?}", commit_path.clone());
+        //println!("going to {:?}", commit_path.clone());
         let decompressed_data = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&commit_path)?)?;
-        println!("decompressed data {:?}", decompressed_data.clone());
+        //println!("decompressed data {:?}", decompressed_data.clone());
         
         // trim header
         let commit_file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
@@ -665,11 +671,11 @@ impl Log {
 
         if parent_commit_trimmed.is_empty() {            
             //root commit
-            println!("returning, found root commit");
-            return Ok(String::new())
+            //println!("returning, found root commit");
+            return Ok(String::new());
         }
 
-        println!("parent commit {:?}", parent_commit_trimmed.clone());
+        //println!("parent commit {:?}", parent_commit_trimmed.clone());
         self.generate_log_entries(entries, parent_commit_trimmed.clone())?;
         Ok(String::new())
     }
@@ -703,13 +709,13 @@ impl Command for Log {
                     EXCLUDE_LOG_ENTRY => {
                         // Generate log entries for exclusion and store them in the excluded entries vector
                         self.generate_log_entries(&mut log_entries_excluded, arg[1..].to_string())?;
-                        println!("exclude {:?}", log_entries_excluded);
+                        //println!("exclude {:?}", log_entries_excluded);
 
                     },
                     _ => {
                         // Generate log entries for inclusion and store them in the included entries vector
                         self.generate_log_entries(&mut log_entries, arg.to_string())?;
-                        println!("include {:?}", log_entries);
+                        //println!("include {:?}", log_entries);
 
                     }
                 }

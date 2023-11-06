@@ -49,7 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }*/
 
     let mut log: commands::Log = commands::Log::new();
-    if let Err(error) = log.execute(&mut head, Some(&["HEAD", "^609c3030bc134b38ebb13634408278003f2f50d8"])) {
+    if let Err(error) = log.execute(&mut head, Some(&["HEAD", "HEAD", "^609c3030bc134b38ebb13634408278003f2f50d8"])) {
         println!("{}", error);
         // return;
     }
