@@ -5,7 +5,6 @@ extern crate libflate;
 use crypto::sha1::Sha1;
 use crypto::digest::Digest;
 use libflate::zlib::{Encoder, Decoder};
-// use std::str;
 use crate::commands::structs::Head;
 
 const R_HEADS: &str = ".git/refs/heads";

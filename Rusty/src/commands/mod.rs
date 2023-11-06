@@ -581,19 +581,15 @@ impl Command for PackObjects {
     fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {  
         // Open pack and index files
         let mut pack_file = fs::File::create(".git/pack/pack_file.pack")?;
-        let mut index_file = fs::File::create(".git/pack/pack_file.idx")?;
-        let mut checksum = b"0xFFFFFFFF";
         // Create an uncompressed pack file
         let mut pack_file_content = Vec::new();
-    
-        // Initialize the object info list and offset
-        let mut object_info_list: Vec<String> = Vec::new();
-        // let mut offset = pack_header.len() as u64;
+        let mut index_entries: Vec<u8> = Vec::new();
     
         // List all objects in the .git/objects directory
         let mut objects_list = Vec::new();
         helpers::list_files_recursively(".git/objects", &mut objects_list)?;
         let mut object_count: u32 = 0;
+        let mut offset: u64 = 12;
         // Iterate through objects
         for object_path in objects_list {
             object_count += 1;
@@ -601,18 +597,21 @@ impl Command for PackObjects {
             let file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
             let object_header: Vec<String> = file_content[0].split(' ').map(String::from).collect();;
             let object_type = ObjectType::new(&object_header[0]).unwrap_or(ObjectType::Blob);
-            let object_size: u32 = object_header[1].parse()?;
+            let object_size: u64 = object_header[1].parse()?;
             let object_content: &str = &file_content[1];
             println!("header: {:?}", object_header);
             println!("content: {}", object_content);
             // Calculate the SHA-1 hash of the object content
-            let sha1_hash = helpers::generate_sha1_string(&object_content);
     
-            // Add object information to the list
-            // let object_info = format!("{} {} {}\n", sha1_hash, object_content.len(), offset);
-            // object_info_list.push(object_info);
-            // offset += compressed_file_content.len() as u64;
-    
+            index_entries.extend_from_slice(&object_type.get_object_for_pack_file().to_be_bytes());  // Object type
+            index_entries.extend_from_slice(&(object_size as u32).to_be_bytes());  // Object size
+            index_entries.extend_from_slice(helpers::generate_sha1_string(&decompressed_data).as_bytes());  // SHA-1 hash bytes
+
+            // Calculate the offset in the pack file (you need to keep track of this as you write to the pack file).
+            offset += object_size;
+
+            index_entries.extend_from_slice(&offset.to_be_bytes());  // Offset in the pack file
+
             // Append object content to the uncompressed pack file
             let header_byte = ((object_type.get_object_for_pack_file() & 0x07) << 4) | ((object_size & 0x0F) as u8);
             pack_file_content.extend_from_slice(&[header_byte]);
@@ -636,13 +635,15 @@ impl Command for PackObjects {
         // Calculate the SHA-1 hash of the entire pack file content
         let pack_checksum = helpers::generate_sha1_string_from_bytes(&pack_file_final);
         println!("pack checksum: {}", pack_checksum);
-        // Append the checksum to the pack file
         pack_file.write_all(pack_checksum.as_bytes())?;
-    
-        // Write the sorted object information to the index file
-        for info in object_info_list {
-            index_file.write_all(info.as_bytes())?;
-        }
+
+        let mut index_file = fs::File::create(".git/pack/pack_file.idx")?;
+        let index_header = 
+
+        index_file.write_all(index_header);
+        index_file.write_all(fanout_table);
+        index_file.write_all(&index_entries);
+        index
     
         Ok(String::new())
     }
