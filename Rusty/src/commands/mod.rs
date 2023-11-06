@@ -14,6 +14,8 @@ const TYPE_FLAG: &str = "-t";
 const WRITE_FLAG: &str = "-w";
 const SIZE_FLAG: &str = "-s";
 const MESSAGE_FLAG: &str = "-m";
+const ADD_FLAG: &str = "add";
+const REMOVE_FLAG: &str = "rm";
 
 const R_HEADS: &str = ".git/refs/heads";
 const HEAD_FILE: &str = ".git/HEAD";
@@ -30,6 +32,8 @@ use crate::commands::structs::HashObjectCreator;
 use crate::commands::structs::ObjectType;
 use crate::commands::structs::Head;
 use crate::commands::structs::StagingArea;
+
+use self::structs::ServerConnection;
 
 mod helpers;
 
@@ -58,6 +62,7 @@ impl Command for Init {
         let _obj = fs::create_dir(OBJECT)?;
         let _pack = fs::create_dir(PACK)?;
 
+        let mut config_file = fs::File::create(CONFIG_FILE)?;
         let mut head_file = fs::File::create(HEAD_FILE)?;
         head_file.write_all(b"ref: refs/heads/main")?;
 
@@ -459,7 +464,7 @@ impl Command for Status {
 pub struct Remote;
 
 impl Remote {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Remote {}
     }
 
@@ -575,44 +580,129 @@ impl Command for PackObjects {
     /// This command generates a Git pack file that contains compressed Git objects.
     /// The pack file format is used to efficiently store objects and their history.
     /// It also creates an index file that helps locate objects in the pack file.
-    fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
-        let header = "0x50 0x41 0x43 0x4B 0x00 0x00 0x00 0x02"; //podria incluirse version pero no parece necesario
+    // fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
+    //     let header = "0x50 0x41 0x43 0x4B 0x00 0x00 0x00 0x02"; //podria incluirse version pero no parece necesario
 
-        let mut pack_file = fs::File::create(".git/pack/pack_file.pack")?; //ver que nombre tiene que tener varios identificadores y hash
-        let mut uncompressed_pack_file = fs::File::create(".git/pack/uncompressed_pack_file")?;
-        let mut index_file = fs::File::create(".git/pack/pack_file.idx")?; //tambien ver nomber
-        uncompressed_pack_file.write_all(header.as_bytes())?;
-        pack_file.write_all(&helpers::compress_content(header)?)?;
+    //     let mut pack_file = fs::File::create(".git/pack/pack_file.pack")?; //ver que nombre tiene que tener varios identificadores y hash
+    //     let mut uncompressed_pack_file = fs::File::create(".git/pack/uncompressed_pack_file")?;
+    //     let mut index_file = fs::File::create(".git/pack/pack_file.idx")?; //tambien ver nomber
+    //     uncompressed_pack_file.write_all(header.as_bytes())?;
+    //     pack_file.write_all(&helpers::compress_content(header)?)?;
+    //     let mut objects_list = Vec::new();
+    //     helpers::list_files_recursively(".git/objects", &mut objects_list)?;
+              
+    //     let mut object_info_list: Vec<String> = Vec::new();
+    //     let mut offset = header.len() as u64;
+
+    //     //ver que en esta lista no se este guardando el pack file, por ahora si se guarda CORREGIR
+    //     let pack_file_content = String::new();
+    //     for object_path in objects_list {
+    //         let compressed_file_content = helpers::read_file_content_to_bytes(&object_path)?;
+    //         let object_content = helpers::decompress_file_content(compressed_file_content.clone())?;
+
+    //         // let object_lines: Vec<String> = object_content.split('\0').map(String::from).collect();
+    //         // let object_data: Vec<String> = object_lines[1].lines().map(|s| s.to_string()).collect();
+    //         // let header_str = &object_lines[0];
+
+    //         let object_info = format!("{} {} {}\n", helpers::generate_sha1_string(&object_content), object_content.len(), offset);
+    //         object_info_list.push(object_info);
+    //         offset += compressed_file_content.len() as u64;
+
+    //         uncompressed_pack_file.write_all(&object_content.as_bytes())?;
+    //         pack_file.write_all(&compressed_file_content)?;
+    //     }
+    //     // Sort the object information by SHA-1 hash
+    //     object_info_list.sort();
+
+    //     // Write the sorted object information to the index file
+    //     for info in object_info_list {
+    //         index_file.write_all(info.as_bytes())?;
+    //     }
+    //     Ok(String::new())
+    // }
+    fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {  
+        // Open pack and index files
+        let mut pack_file = fs::File::create(".git/pack/pack_file.pack")?;
+        let mut index_file = fs::File::create(".git/pack/pack_file.idx")?;
+    
+        // Create an uncompressed pack file
+        let mut pack_file_content = Vec::new();
+    
+        // Initialize the object info list and offset
+        let mut object_info_list: Vec<String> = Vec::new();
+        // let mut offset = pack_header.len() as u64;
+    
+        // List all objects in the .git/objects directory
         let mut objects_list = Vec::new();
         helpers::list_files_recursively(".git/objects", &mut objects_list)?;
-              
-        let mut object_info_list: Vec<String> = Vec::new();
-        let mut offset = header.len() as u64;
-
-        //ver que en esta lista no se este guardando el pack file, por ahora si se guarda CORREGIR
-        let pack_file_content = String::new();
+        let mut object_count: u32 = 0;
+        // Iterate through objects
         for object_path in objects_list {
+            object_count += 1;
             let compressed_file_content = helpers::read_file_content_to_bytes(&object_path)?;
             let object_content = helpers::decompress_file_content(compressed_file_content.clone())?;
-
-            // let object_lines: Vec<String> = object_content.split('\0').map(String::from).collect();
-            // let object_data: Vec<String> = object_lines[1].lines().map(|s| s.to_string()).collect();
-            // let header_str = &object_lines[0];
-
-            let object_info = format!("{} {} {}\n", helpers::generate_sha1_string(&object_content), object_content.len(), offset);
-            object_info_list.push(object_info);
-            offset += compressed_file_content.len() as u64;
-
-            uncompressed_pack_file.write_all(&object_content.as_bytes())?;
-            pack_file.write_all(&compressed_file_content)?;
+    
+            // Calculate the SHA-1 hash of the object content
+            let sha1_hash = helpers::generate_sha1_string(&object_content);
+    
+            // Add object information to the list
+            // let object_info = format!("{} {} {}\n", sha1_hash, object_content.len(), offset);
+            // object_info_list.push(object_info);
+            // offset += compressed_file_content.len() as u64;
+    
+            // Append object content to the uncompressed pack file
+            pack_file_content.extend_from_slice(&compressed_file_content);
         }
+    
         // Sort the object information by SHA-1 hash
-        object_info_list.sort();
-
+        // object_info_list.sort();
+    
+        // Generate pack header
+        let mut pack_header: Vec<u8> = Vec::new();
+        pack_header.extend(b"PACK");
+        let version: u32 = 2;  // Replace with the actual version number
+        pack_header.extend(&version.to_be_bytes());
+        pack_header.extend(object_count.to_be_bytes());
+        pack_header.extend(helpers::generate_sha1_string_from_bytes(&pack_header).as_bytes());
+        pack_file.write_all(&pack_header)?;
+        println!("{:?}", &pack_header);
+    
+        // Write the uncompressed pack file content to the pack file
+        pack_file.write_all(&pack_file_content)?;
+    
+        // Calculate the SHA-1 hash of the entire pack file content
+        let pack_checksum = helpers::generate_sha1_string_from_bytes(&pack_file_content);
+        println!("{}", pack_checksum);
+        // Append the checksum to the pack file
+        pack_file.write_all(pack_checksum.as_bytes())?;
+    
         // Write the sorted object information to the index file
         for info in object_info_list {
             index_file.write_all(info.as_bytes())?;
         }
+    
+        Ok(String::new())
+    }
+}
+
+pub struct Push;
+
+impl Push {
+    pub fn new() -> Self {
+        Push {}
+    }
+}
+
+impl Command for Push {
+    fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
+        //Pack and index files are created in .git/pack/ directory
+        let pack_objects = PackObjects::new();
+        pack_objects.execute(_head, None)?; 
+
+        let mut server_connection = ServerConnection::new();
+        server_connection.upload_pack()?;
+        println!("aca");
+
         Ok(String::new())
     }
 }

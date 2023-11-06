@@ -12,6 +12,7 @@ const R_HEADS: &str = ".git/refs/heads";
 const HEAD_FILE: &str = ".git/HEAD";
 const DEFAULT_BRANCH_NAME: &str = "main";
 const INDEX_FILE: &str = ".git/index";
+const CONFIG_FILE: &str = ".git/config";
 
 /// Retrieves the path to the current branch from the Git HEAD file.
 pub fn get_current_branch_path() -> Result<String, Box<dyn Error>> {
@@ -199,4 +200,31 @@ pub fn list_files_recursively(dir_path: &str, files_list: &mut Vec<String>) -> i
     }
 
     Ok(())
+}
+
+pub fn get_remote_url(name: &str) -> Result<String, Box<dyn Error>> {
+    let config_content = read_file_content(CONFIG_FILE)?;
+    let current_remote_line = format!("[remote '{}']", name);
+    let mut in_remote = false;
+
+    for line in config_content.lines() {
+        if line == current_remote_line.as_str() {
+            in_remote = true;
+        } else if in_remote {
+            let parts: Vec<&str> = line.split(" ").collect();
+            let url = parts.last().unwrap_or(&"");
+            return Ok(url.to_string());
+        }
+    }
+    Err(Box::new(io::Error::new(
+        io::ErrorKind::Other,
+        "No remote found.",
+    )))
+}
+
+pub fn generate_sha1_string_from_bytes(data: &Vec<u8>) -> String {
+    let mut hasher = Sha1::new();
+    let data: Vec<u8> = vec![0, 1, 2, 3, 4, 5];
+    hasher.input(&data);
+    hasher.result_str()
 }

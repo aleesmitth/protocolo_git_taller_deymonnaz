@@ -1,6 +1,7 @@
-use std::{fs, error::Error, io::Write, fmt};
+use std::{fs, error::Error, io::Write, fmt, net::TcpStream, io::BufRead};
 const OBJECT: &str = ".git/objects";
 const INDEX_FILE: &str = ".git/index";
+const DEFAULT_REMOTE: &str = "origin";
 
 use crate::commands::helpers;
 
@@ -184,3 +185,47 @@ impl fmt::Display for ObjectType {
         write!(f, "{}", string)
     }
 }
+
+pub struct ServerConnection;
+
+impl ServerConnection {
+    pub fn new() -> Self {
+        ServerConnection {}
+    }
+
+    pub fn upload_pack(&mut self) -> Result<(), Box<dyn Error>> {
+        println!("1");
+        let remote_server_address = helpers::get_remote_url(DEFAULT_REMOTE)?;
+        println!("{}", remote_server_address);
+        let mut stream = TcpStream::connect(remote_server_address)?;
+        println!("3");
+        let git_service = "git-upload-pack";
+
+        // Send the Git service request
+        write!(&stream, "{}\n", git_service)?;
+
+        // Read the response from the server
+        let mut response = String::new();
+        let mut reader = std::io::BufReader::new(&stream);
+        reader.read_line(&mut response)?;
+
+        // Check if the server is ready to receive the pack file
+        if response.starts_with("acknowledgments") {
+            // The server is ready, so send the pack file
+            let mut pack_file = std::fs::File::open(".git/pack/pack.pack")?;
+            
+            // Use a separate stream for writing to avoid borrow issues
+            let mut write_stream = &stream;
+            std::io::copy(&mut pack_file, &mut write_stream)?;
+
+            // Optionally, read the server's acknowledgment response
+            response.clear();
+            reader.read_line(&mut response)?;
+        }
+        Ok(())
+    }
+}
+
+
+
+
