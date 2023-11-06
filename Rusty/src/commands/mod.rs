@@ -638,12 +638,12 @@ impl Command for PackObjects {
         pack_file.write_all(pack_checksum.as_bytes())?;
 
         let mut index_file = fs::File::create(".git/pack/pack_file.idx")?;
-        let index_header = 
+        // let index_header = 
 
-        index_file.write_all(index_header);
-        index_file.write_all(fanout_table);
-        index_file.write_all(&index_entries);
-        index
+        // index_file.write_all(index_header);
+        // index_file.write_all(fanout_table);
+        // index_file.write_all(&index_entries);
+        // index
     
         Ok(String::new())
     }

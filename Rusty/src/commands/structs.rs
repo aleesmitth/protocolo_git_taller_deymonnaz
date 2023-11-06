@@ -223,7 +223,7 @@ impl ServerConnection {
             break;
         }
         }
-        println!("{:?}", response);
+        println!("response: {:?}", response);
 
         let branch_path = helpers::get_current_branch_path()?;
         let last_commit_hash: String = helpers::read_file_content(&branch_path)?;

@@ -81,22 +81,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // }
 
     // // head.print_all();
-    let add = commands::Add::new();
+    // let add = commands::Add::new();
     // if let Err(error) = add.execute(&mut head, Some(&["a/a.txt"])) {
     //     println!("{}", error);
     //     // return;
     // }
 
-    if let Err(error) = add.execute(&mut head, Some(&["b.txt"])) {
-        println!("{}", error);
-        // return;
-    }
+    // if let Err(error) = add.execute(&mut head, Some(&["b.txt"])) {
+    //     println!("{}", error);
+    //     // return;
+    // }
 
-    let mut commit = commands::Commit::new();
-    if let Err(error) = commit.execute(&mut head, Some(&["-m", "message"])) {
-        println!("{}", error);
-        // return;
-    }
+    // let mut commit = commands::Commit::new();
+    // if let Err(error) = commit.execute(&mut head, Some(&["-m", "message"])) {
+    //     println!("{}", error);
+    //     // return;
+    // }
 
     // let mut status: commands::Status = commands::Status::new();
     // if let Err(error) = status.execute(&mut head, None) {
@@ -128,7 +128,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     println!("{}", error);
     //     // return;
     // }
-    // fs::remove_dir_all(".git")?;
+    fs::remove_dir_all(".git")?;
 
     Ok(())
 }
