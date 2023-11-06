@@ -5,16 +5,12 @@ const INDEX_FILE: &str = ".git/index";
 use crate::commands::helpers;
 
 
-use super::helpers::{get_file_length, read_file_content};
+use super::helpers::get_file_length;
 
 /// Abstract struct for creating new objects in git repository
 pub struct HashObjectCreator;
 
 impl HashObjectCreator {
-    fn new() -> Self {
-        HashObjectCreator {}
-    }
-
     /// Writes an object file to the Git repository.
     ///
     /// This function takes the provided content, object type, and file length, and writes the object
@@ -43,13 +39,6 @@ impl HashObjectCreator {
         let data = format!("{} {}\0{}", obj_type, file_len, content);
         helpers::generate_sha1_string(data.as_str())
     }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-enum FileStatus {
-    Untracked,
-    Modified,
-    Staged,
 }
 
 /// Represents the staging area for Git. Where files can be added and removed. They can have 3 possible states,

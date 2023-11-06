@@ -1,105 +1,42 @@
 mod commands;
-use commands::CatFile;
 
 use crate::commands::structs::Head;
 use crate::commands::Command;
-use std::fs;
+use std::{env, io};
+
+fn parse_arguments(args: &[String]) -> Option<Vec<&str>> {
+    if args.is_empty() {
+        return None;
+    } 
+    let arg_slices: Vec<&str> = args.iter().map(String::as_str).collect();
+    Some(arg_slices)
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-
     let mut head = Head::new();
-    let init = commands::Init::new();
-    if let Err(error) = init.execute(&mut head, None){
-        eprintln!("{}", error);
-        //return; 
-    }
-    // head.print_all();
-    let add = commands::Add::new();
-    if let Err(error) = add.execute(&mut head, Some(&["a/a.txt"])) {
-        println!("{}", error);
-        // return;
-    }
+    let args: Vec<String> = env::args().collect();
+    println!("{:?}", args);
+    if args.len() >= 2 {
+        let command = &args[1];
 
-    // if let Err(error) = add.execute(&mut head, Some(&["b.txt"])) {
-    //     println!("{}", error);
-    //     // return;
-    // }
+        match command.as_str() {
+            "init" => commands::Init::new().execute(&mut head, None)?,
+            "branch" => commands::Branch::new().execute(&mut head, parse_arguments(&args[2..]))?,
+            "checkout" => commands::Checkout::new().execute(&mut head, parse_arguments(&args[2..]))?,
+            "cat-file" => commands::CatFile::new().execute(&mut head, parse_arguments(&args[2..]))?,
+            "hash-object" => commands::HashObject::new().execute(&mut head, parse_arguments(&args[2..]))?,
+            "add" => commands::Add::new().execute(&mut head, parse_arguments(&args[2..]))?,
+            "rm" => commands::Rm::new().execute(&mut head, parse_arguments(&args[2..]))?,
+            "commit" => commands::Commit::new().execute(&mut head, parse_arguments(&args[2..]))?,
+            "status" => commands::Status::new().execute(&mut head, None)?,
+            "log" => commands::Log::new().execute(&mut head, parse_arguments(&args[2..]))?,
+            "remote" => commands::Remote::new().execute(&mut head, parse_arguments(&args[2..]))?,
+            "pack-objects" => commands::PackObjects::new().execute(&mut head, None)?,
+            _ => return Err(Box::new(io::Error::new(io::ErrorKind::Other,"Error: Invalid command."))),
+        };
+    };
 
-    let mut commit = commands::Commit::new();
-    if let Err(error) = commit.execute(&mut head, Some(&["-m", "message"])) {
-        println!("{}", error);
-        // return;
-    }
-
-    if let Err(error) = add.execute(&mut head, Some(&["b.txt"])) {
-        println!("{}", error);
-        // return;
-    }
-
-    let mut status: commands::Status = commands::Status::new();
-    if let Err(error) = status.execute(&mut head, None) {
-        println!("{}", error);
-        // return;
-    }
-
-    // let mut log: commands::Log = commands::Log::new();
-    // if let Err(error) = log.execute(&mut head, Some(&["HEAD", "HEAD", "^609c3030bc134b38ebb13634408278003f2f50d8"])) {
-    //     println!("{}", error);
-    //     // return;
-    // }
-
-    // let cat_file = commands::CatFile::new();
-    // if let Err(error) = cat_file.execute(&mut head, Some(&["-t", "b8b4a4e2a5db3ebed5f5e02beb3e2d27bca9fc9a"])) {
-    //     println!("{}", error);
-    //     // return;
-    // }
-
-    // let mut pack_object: commands::PackObjects = commands::PackObjects::new();
-    // if let Err(error) = pack_object.execute(&mut head, None) {
-    //     println!("{}", error);
-    //     // return;
-    // }
-
-
-    // let mut cat = CatFile::new();
-    // if let Err(error) = cat.execute(&mut head, Some(&["-t", "000142551ee3ec5d88c405cc048e1d5460795102"])){
-    //     eprintln!("{}", error);
-    //     return; 
-    // }
-
-    // let hash_obj = HashObject::new();
-    // if let Err(error) = hash_obj.execute(&mut head, Some(&["-w", "-t", "tree", "hola.txt"])){
-    //     eprintln!("{}", error);
-    //     return;
-    // }
-
-	// if let Err(error) = branch.execute(&mut head, Some(&["branch-name"])){
-	// 	eprintln!("{}", error);
-    //     return;
-	// }
-
-	// if let Err(error) = branch.execute(&mut head, Some(&["-d", "branch-name"])){
-	// 	eprintln!("{}", error);
-    //     return;
-	// }
-
-	// if let Err(error) = branch.execute(&mut head, Some(&["branch-name"])){
-	// 	eprintln!("{}", error);
-    //     return;
-	// }
-
-	// if let Err(error) = branch.execute(&mut head, Some(&["-m", "branch-name", "new_branch_name"])){
-	// 	eprintln!("{}", error);
-    //     return;
-	// }
-    
-	// if let Err(error) = branch.execute(&mut head, None){
-	// 	eprintln!("{}", error);
-    //     return;
-	// }
-
-    fs::remove_dir_all(".git")?;
-
+    // fs::remove_dir_all(".git")?;
     Ok(())
 }
 
