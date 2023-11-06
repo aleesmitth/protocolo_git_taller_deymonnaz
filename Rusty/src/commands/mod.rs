@@ -14,10 +14,8 @@ const SIZE_FLAG: &str = "-s";
 const MESSAGE_FLAG: &str = "-m";
 const EXCLUDE_LOG_ENTRY: char = '^';
 const HEAD: &str = "HEAD";
-
 const ADD_FLAG: &str = "add";
 const REMOVE_FLAG: &str = "rm";
-
 const R_HEADS: &str = ".git/refs/heads";
 const HEAD_FILE: &str = ".git/HEAD";
 const R_TAGS: &str = ".git/refs/tags";
@@ -305,12 +303,8 @@ impl Commit {
     /// Generates the content for a new commit.    
     fn generate_commit_content(&self, tree_hash: String, message: Option<&str>, branch_path: &str) -> Result<String, Box<dyn Error>> {
         let head_commit = helpers::read_file_content(branch_path)?;
-        //let mut content = String::new();
-        // content.push_str(&tree_hash);
-        // content.push_str(&head_commit);
         let mut content = format!("{}\n{}", tree_hash, head_commit);
         if let Some(message) = message {
-            // content.push_str(message);
             content = format!("{}\n{}", content, message);
         }
         Ok(content)
@@ -335,7 +329,7 @@ impl Command for Commit {
         let mut message_flag = false;
         let arg_slice = args.unwrap_or(Vec::new());
 
-	    for arg in arg_slice { // Note the & in for &arg
+	    for arg in arg_slice {
 	        match arg { 
                 MESSAGE_FLAG => message_flag = true,
                 _ => message = Some(arg),
@@ -426,44 +420,48 @@ impl Command for Status {
     fn execute(&self, _head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let branch_path = helpers::get_current_branch_path()?;
         let last_commit_hash: String = helpers::read_file_content(&branch_path)?;
-        if last_commit_hash.is_empty() {
-            println!("nothing to commit, working tree clean");
-            return Ok(String::new())
+        let mut no_changes = true;
+        let mut tree_objects: Vec<String> = Vec::new();
+        if !last_commit_hash.is_empty() {
+            let last_commit_path = format!("{}/{}/{}", OBJECT, &last_commit_hash[..2], &last_commit_hash[2..]);
+            let decompressed_data = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&last_commit_path)?)?;
+            let commit_file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
+            let commit_file_lines: Vec<String> = commit_file_content[1].lines().map(|s| s.to_string()).collect();
+
+            let tree_hash = &commit_file_lines[0];
+            let tree_object_path = format!("{}/{}/{}", OBJECT, &tree_hash[..2], &tree_hash[2..]);
+            let tree_content = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&tree_object_path)?)?;
+            let tree_contents_split: Vec<String> = tree_content.split('\0').map(String::from).collect();
+            tree_objects =  tree_contents_split[1].lines().map(|s| s.to_string()).collect();
         }
-        let last_commit_path = format!("{}/{}/{}", OBJECT, &last_commit_hash[..2], &last_commit_hash[2..]);
-
-        let decompressed_data = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&last_commit_path)?)?;
-        let commit_file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
-        let commit_file_lines: Vec<String> = commit_file_content[1].lines().map(|s| s.to_string()).collect();
-
-        let tree_hash = &commit_file_lines[0];
-        let tree_object_path = format!("{}/{}/{}", OBJECT, &tree_hash[..2], &tree_hash[2..]);
-        let tree_content = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&tree_object_path)?)?;
-        let tree_contents_split: Vec<String> = tree_content.split('\0').map(String::from).collect();
-        let tree_objects: Vec<String> = tree_contents_split[1].lines().map(|s| s.to_string()).collect(); //aca esta todo el contenido del arbol en un vector de strings de la forma: file_path;object_hash;state
-
+        
         let index_file_content = helpers::read_file_content(INDEX_FILE)?; 
-        let index_objects: Vec<String> = index_file_content.lines().map(|s| s.to_string()).collect(); //aca esta todo el contenido del index file en un vector de strings de la forma: file_path;object_hash;state
+        let index_objects: Vec<String> = index_file_content.lines().map(|s| s.to_string()).collect();
 
         for pos in 0..(index_objects.len()) {
             let index_file_line: Vec<&str> = index_objects[pos].split(';').collect();
             if pos < tree_objects.len() {
                 let tree_file_line: Vec<&str> = tree_objects[pos].split(';').collect();
                 if tree_file_line[1] != index_file_line[1] && index_file_line[2] == "2" {
+                    no_changes = false;
                     println!("modified: {} (Staged)", index_file_line[0]);
                     continue;
                 }
                 let current_object_content = helpers::read_file_content(index_file_line[0])?;
                 let current_object_hash = HashObjectCreator::generate_object_hash(ObjectType::Blob, get_file_length(index_file_line[0])?, &current_object_content);
                 if current_object_hash != tree_file_line[1] && index_file_line[2] == "0" {
+                    no_changes = false;
                     println!("modified: {} (Unstaged)", index_file_line[0]);
                 }
             }
             else {
+                no_changes = false;
                 println!("new file: {} (Staged)", index_file_line[0]);
             }
         }
-        println!("nothing to commit, working tree clean");
+        if no_changes {
+            println!("nothing to commit, working tree clean");
+        }
         Ok(String::new())
     }
 }
@@ -587,7 +585,7 @@ impl Command for PackObjects {
     /// This command generates a Git pack file that contains compressed Git objects.
     /// The pack file format is used to efficiently store objects and their history.
     /// It also creates an index file that helps locate objects in the pack file.
-    fn execute(&self, _head: &mut Head, args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {  
+    fn execute(&self, _head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {  
         // Open pack and index files
         let mut pack_file = fs::File::create(".git/pack/pack_file.pack")?;
         // Create an uncompressed pack file
@@ -604,7 +602,7 @@ impl Command for PackObjects {
             object_count += 1;
             let decompressed_data: String = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&object_path)?)?;
             let file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
-            let object_header: Vec<String> = file_content[0].split(' ').map(String::from).collect();;
+            let object_header: Vec<String> = file_content[0].split(' ').map(String::from).collect();
             let object_type = ObjectType::new(&object_header[0]).unwrap_or(ObjectType::Blob);
             let object_size: u64 = object_header[1].parse()?;
             let object_content: &str = &file_content[1];
@@ -646,7 +644,7 @@ impl Command for PackObjects {
         println!("pack checksum: {}", pack_checksum);
         pack_file.write_all(pack_checksum.as_bytes())?;
 
-        let mut index_file = fs::File::create(".git/pack/pack_file.idx")?;
+        // let mut index_file = fs::File::create(".git/pack/pack_file.idx")?;
         // let index_header = 
 
         // index_file.write_all(index_header);
@@ -660,14 +658,8 @@ impl Command for PackObjects {
 
 pub struct Push;
 
-impl Push {
-    pub fn new() -> Self {
-        Push {}
-    }
-}
-
 impl Command for Push {
-    fn execute(&self, _head: &mut Head, _args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, _head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         //Pack and index files are created in .git/pack/ directory
         let pack_objects = PackObjects::new();
         pack_objects.execute(_head, None)?; 
@@ -681,15 +673,9 @@ impl Command for Push {
 
 pub struct Clone;
 
-impl Clone {
-    pub fn new() -> Self {
-        Clone {}
-    }
-}
-
 impl Command for Clone {
-    fn execute(&self, _head: &mut Head, _args: Option<&[&str]>) -> Result<String, Box<dyn Error>> {
-        let mut server_connection = ServerConnection::new();
+    fn execute(&self, _head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        let server_connection = ServerConnection::new();
         server_connection.clone_from_remote()?;
 
         Ok(String::new())
