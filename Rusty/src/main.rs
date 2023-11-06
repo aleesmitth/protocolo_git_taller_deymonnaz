@@ -8,7 +8,7 @@ use std::fs;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut head = Head::new();
-    /*let init = commands::Init::new();
+    let init = commands::Init::new();
     if let Err(error) = init.execute(&mut head, None){
         eprintln!("{}", error);
         //return; 
@@ -20,10 +20,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // return;
     }
 
-    if let Err(error) = add.execute(&mut head, Some(&["b.txt"])) {
-        println!("{}", error);
-        // return;
-    }
+    // if let Err(error) = add.execute(&mut head, Some(&["b.txt"])) {
+    //     println!("{}", error);
+    //     // return;
+    // }
 
     let mut commit = commands::Commit::new();
     if let Err(error) = commit.execute(&mut head, Some(&["-m", "message"])) {
@@ -32,12 +32,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if let Err(error) = add.execute(&mut head, Some(&["b.txt"])) {
-        println!("{}", error);
-        // return;
-    }
-
-    let mut commit = commands::Commit::new();
-    if let Err(error) = commit.execute(&mut head, Some(&["-m", "message"])) {
         println!("{}", error);
         // return;
     }
@@ -46,13 +40,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Err(error) = status.execute(&mut head, None) {
         println!("{}", error);
         // return;
-    }*/
-
-    let mut log: commands::Log = commands::Log::new();
-    if let Err(error) = log.execute(&mut head, Some(&["HEAD", "HEAD", "^609c3030bc134b38ebb13634408278003f2f50d8"])) {
-        println!("{}", error);
-        // return;
     }
+
+    // let mut log: commands::Log = commands::Log::new();
+    // if let Err(error) = log.execute(&mut head, Some(&["HEAD", "HEAD", "^609c3030bc134b38ebb13634408278003f2f50d8"])) {
+    //     println!("{}", error);
+    //     // return;
+    // }
 
     // let cat_file = commands::CatFile::new();
     // if let Err(error) = cat_file.execute(&mut head, Some(&["-t", "b8b4a4e2a5db3ebed5f5e02beb3e2d27bca9fc9a"])) {
@@ -60,11 +54,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     // return;
     // }
 
-    let mut pack_object: commands::PackObjects = commands::PackObjects::new();
-    if let Err(error) = pack_object.execute(&mut head, None) {
-        println!("{}", error);
-        // return;
-    }
+    // let mut pack_object: commands::PackObjects = commands::PackObjects::new();
+    // if let Err(error) = pack_object.execute(&mut head, None) {
+    //     println!("{}", error);
+    //     // return;
+    // }
 
 
     // let mut cat = CatFile::new();
@@ -104,7 +98,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     return;
 	// }
 
-    //fs::remove_dir_all(".git")?;
+    fs::remove_dir_all(".git")?;
 
     Ok(())
 }

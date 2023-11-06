@@ -1,4 +1,4 @@
-use std::{fs, error::Error, io, io::Write, io::Read, str::FromStr, io::BufRead};
+use std::{fs, error::Error, io, io::Write, io::Read, io::BufRead};
 extern crate crypto;
 extern crate libflate;
 

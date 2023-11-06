@@ -1,9 +1,7 @@
-use std::fmt::format;
-use std::{fs, error::Error, io, io::Write, io::Read, str, io::BufRead, io::BufReader, io::Cursor};
+use std::{fs, error::Error, io, io::Write, io::Read, str, io::BufRead};
 
 extern crate libflate;
 use libflate::zlib::Decoder;
-use std::str::FromStr;
 
 const OBJECT: &str = ".git/objects";
 const PACK: &str = ".git/pack";
@@ -16,6 +14,8 @@ const SIZE_FLAG: &str = "-s";
 const MESSAGE_FLAG: &str = "-m";
 const EXCLUDE_LOG_ENTRY: char = '^';
 const HEAD: &str = "HEAD";
+const ADD_FLAG: &str = "add";
+const REMOVE_FLAG: &str = "rm";
 
 const R_HEADS: &str = ".git/refs/heads";
 const HEAD_FILE: &str = ".git/HEAD";
@@ -26,8 +26,6 @@ const CONFIG_FILE: &str = ".git/config";
 
 pub mod structs;
 use crate::commands::helpers::get_file_length;
-// use structs::GitObjectType;
-// use structs::HashObjectCreator;
 use crate::commands::structs::HashObjectCreator;
 use crate::commands::structs::ObjectType;
 use crate::commands::structs::Head;
@@ -177,7 +175,7 @@ impl Command for Checkout {
 
                 let new_head_content = format!("ref: refs/heads/{}", args[0]);
         
-                let mut head_file_content = helpers::read_file_content(HEAD_FILE)?;
+                let head_file_content = helpers::read_file_content(HEAD_FILE)?;
         
                 if head_file_content == new_head_content {
                     return Err(Box::new(io::Error::new(
@@ -424,21 +422,19 @@ impl Command for Status {
         let decompressed_data = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&last_commit_path)?)?;
         let commit_file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
         let commit_file_lines: Vec<String> = commit_file_content[1].lines().map(|s| s.to_string()).collect();
-        
+
         let tree_hash = &commit_file_lines[0];
         let tree_object_path = format!("{}/{}/{}", OBJECT, &tree_hash[..2], &tree_hash[2..]);
         let tree_content = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&tree_object_path)?)?;
-        let tree_objects: Vec<String> = tree_content.lines().map(|s| s.to_string()).collect(); //aca esta todo el contenido del arbol en un vector de strings de la forma: file_path;object_hash;state
+        let tree_contents_split: Vec<String> = tree_content.split('\0').map(String::from).collect();
+        let tree_objects: Vec<String> = tree_contents_split[1].lines().map(|s| s.to_string()).collect(); //aca esta todo el contenido del arbol en un vector de strings de la forma: file_path;object_hash;state
 
         let index_file_content = helpers::read_file_content(INDEX_FILE)?; 
         let index_objects: Vec<String> = index_file_content.lines().map(|s| s.to_string()).collect(); //aca esta todo el contenido del index file en un vector de strings de la forma: file_path;object_hash;state
 
         for pos in 0..(index_objects.len()) {
             let index_file_line: Vec<&str> = index_objects[pos].split(';').collect();
-            
             if pos < tree_objects.len() {
-                //creo que se puede asumir que los objetos siempre van a estar en la misma posicion en el index y el tree
-                // porque en vez de eliminarlo cuando commiteamos, solo los unstageamos, entonces queda en el mismo lugar que en el tree
                 let tree_file_line: Vec<&str> = tree_objects[pos].split(';').collect();
                 if tree_file_line[1] != index_file_line[1] && index_file_line[2] == "2" {
                     println!("Modified: {} (Staged)", index_file_line[0]);
