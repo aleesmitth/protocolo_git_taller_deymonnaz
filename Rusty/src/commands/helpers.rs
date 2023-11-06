@@ -1,4 +1,4 @@
-use std::{fs, error::Error, io, io::Write, io::Read, str::FromStr, io::BufRead};
+use std::{fs, error::Error, io, io::Write, io::Read};
 extern crate crypto;
 extern crate libflate;
 
@@ -224,7 +224,6 @@ pub fn get_remote_url(name: &str) -> Result<String, Box<dyn Error>> {
 
 pub fn generate_sha1_string_from_bytes(data: &Vec<u8>) -> String {
     let mut hasher = Sha1::new();
-    let data: Vec<u8> = vec![0, 1, 2, 3, 4, 5];
     hasher.input(&data);
     hasher.result_str()
 }
