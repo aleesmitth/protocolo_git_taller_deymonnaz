@@ -193,8 +193,8 @@ impl ServerConnection {
 
     pub fn receive_pack(&mut self) -> Result<(), Box<dyn Error>> {
         println!("1");
-        let remote_server_address = helpers::get_remote_url(DEFAULT_REMOTE)?;
-        let mut stream = TcpStream::connect(remote_server_address)?;
+        //let remote_server_address = helpers::get_remote_url(DEFAULT_REMOTE)?;
+        let mut stream = TcpStream::connect("127.0.0.1:9418")?;
 
         let service = "git-receive-pack /.git\0host=127.0.0.1\0";
         let request = format!("{:04x}{}", service.len() + 4, service);

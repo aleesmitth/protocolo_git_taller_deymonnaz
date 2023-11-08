@@ -658,6 +658,14 @@ impl Command for PackObjects {
 
 pub struct Push;
 
+impl Push {
+    /// Creates a new `Push` instance.
+    pub fn new() -> Self {
+        Push {}
+    }
+}
+
+
 impl Command for Push {
     fn execute(&self, _head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         //Pack and index files are created in .git/pack/ directory
@@ -672,6 +680,13 @@ impl Command for Push {
 }
 
 pub struct Clone;
+
+impl Clone {
+    /// Creates a new `Clone` instance.
+    pub fn new() -> Self {
+        Clone {}
+    }
+}
 
 impl Command for Clone {
     fn execute(&self, _head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
