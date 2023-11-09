@@ -702,7 +702,7 @@ impl Log {
     /// * `base_commit` - The base commit ID to start generating logs from./// # Returns
     ///
     /// A `Result` containing the execution result or an error message.    
-    fn generate_log_entries(&self, entries: &mut Vec<String>, base_commit: String) -> Result<String, Box<dyn Error>> {
+    fn generate_log_entries(&self, entries: &mut Vec<(String, String)>, base_commit: String) -> Result<String, Box<dyn Error>> {
         if base_commit.len() < 4 {
             return Err(Box::new(io::Error::new(
                         io::ErrorKind::Other,
@@ -712,7 +712,7 @@ impl Log {
 
         let current_commit = if base_commit == HEAD { helpers::get_head_commit()? } else { base_commit };
 
-        if entries.contains(&current_commit) {
+        if entries.iter().any(|(key, _)| key == &current_commit) {
             // don't process it again
             return Ok(String::new());
         }
@@ -722,15 +722,25 @@ impl Log {
         //println!("going to {:?}", commit_path.clone());
         let decompressed_data = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&commit_path)?)?;
         //println!("decompressed data {:?}", decompressed_data.clone());
+        let object_type = decompressed_data.splitn(2, ' ').next().ok_or("")?;
+        
+        if object_type != ObjectType::Commit.to_string() {
+            return Err(Box::new(io::Error::new(
+                        io::ErrorKind::Other,
+                        "Error: Invalid SHA-1. Is not a commit",
+                    )))
+        }
         
         // trim header
         let commit_file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
 
         let commit_file_lines: Vec<String> = commit_file_content[1].lines().map(|s| s.to_string()).collect();
+        //println!("commit_file_lines {:?}", commit_file_lines.clone());
         
         let parent_commit_trimmed = &commit_file_lines[1];
+        let message = if commit_file_lines.len() >= 3 { commit_file_lines[2].clone() } else { String::new() };
 
-        entries.push(current_commit);
+        entries.push((current_commit, message));
 
         if parent_commit_trimmed.is_empty() {            
             //root commit
@@ -791,13 +801,17 @@ impl Command for Log {
 
         // Filter out log entries that are in the excluded entries vector
         log_entries = log_entries.iter()
-            .filter(| entry | !log_entries_excluded.contains(entry))
+            .filter(| (commit, _) | !log_entries_excluded.iter().any(|(key, _)| key == commit))
             .cloned()
-            .collect::<Vec<String>>();
+            .collect::<Vec<(String, String)>>();
 
         // Display the resulting log entries
-        for entry in &log_entries {
-            println!("{:?}", entry);
+        for (commit, message) in &log_entries {
+            if message.is_empty() {
+                println!("{:?}", commit);
+            } else {
+                println!("{:?}, {:?}", commit, message);
+            }
         }
         
         // Return a successful result (an empty string in this case)
