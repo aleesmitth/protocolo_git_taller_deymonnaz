@@ -11,8 +11,8 @@ libflate = "2"
 
 [[bin]]
 name = "main"
-path = "src/main.rs"
+path = "src/client/main.rs"
 
 [[bin]]
 name = "server"
-path = "src/server.rs"
+path = "src/server/main.rs"

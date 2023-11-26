@@ -1,6 +1,7 @@
 use crate::commands::helpers;
 use std::{fs, error::Error, io, io::Write, io::Read, str, env, io::BufRead, net::TcpStream, net::TcpListener};
-
+const RECEIVE_PACK: &str = "git-receive-pack";
+const UPLOAD_PACK: &str = "git-upload-pack";
 pub struct ServerProtocol;
 const LENGTH_BYTES: usize = 4;
 
@@ -14,46 +15,81 @@ impl ServerProtocol {
         Ok(TcpListener::bind(address)?)
     }
 
-    fn read_message_length(reader: &mut dyn Read) -> Result<u32, Box<dyn std::error::Error>> {
+    fn read_message_length(reader: &mut dyn Read) -> Result<usize, Box<dyn std::error::Error>> {
         let mut message_length: [u8; LENGTH_BYTES] = [0; LENGTH_BYTES];
         if let Err(e) = reader.read_exact(&mut message_length) {
-            eprintln!("Error reading length bytes: {}", e);
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
                 "Invalid length in line",
             )));
         }
         let hex_string = String::from_utf8_lossy(&message_length);
-        Ok(u32::from_str_radix(&hex_string, 16)?)
+        Ok(u32::from_str_radix(&hex_string, 16)? as usize)
     }
 
-    pub fn handle_client_conection(mut stream: TcpStream) {
+    // fn read_message_to_buffer(reader: &mut dyn Read, message_length: u32) -> Result<[u8; message_length], Box<dyn std::error::Error>> {
+    //     let mut buffer: [u8; message_length] = [0; message_length];
+    //     if let Err(e) = reader.read_exact(&mut buffer) {
+    //         return Err(Box::new(io::Error::new(
+    //             io::ErrorKind::Other,
+    //             "Error reading request",
+    //         )));
+    //     }
+    //     Ok(buffer)
+    // }
+
+    fn read_exact_length_to_string(reader: &mut dyn Read, message_length: usize) -> Result<String, Box<dyn std::error::Error>> {
+        let mut buffer = vec![0; message_length - 4];
+        if let Err(e) = reader.read_exact(&mut buffer) {
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                format!("Error reading request: {}", e),
+            )));
+        }
+        Ok(String::from_utf8_lossy(&buffer).to_string())
+    }
+
+    pub fn handle_client_conection(stream: TcpStream) -> Result<(), Box<dyn Error>> {
         // In the Git Dumb Protocol, Git commands are sent as text lines.
         // You would parse the incoming lines and respond accordingly.
         let mut reader = std::io::BufReader::new(&stream);
-        println!("length: {:?}", ServerProtocol::read_message_length(&mut reader).unwrap());
+        let message_length = ServerProtocol::read_message_length(&mut reader).unwrap();
+        println!("length: {:?}", message_length);
         //println!("{:x}", ServerProtocol::read_message_length(&mut reader).unwrap());
         // let mut writer = std::io::BufWriter::new(stream);
         println!("handling connection...");
         // let mut buffer = [0; 1024];
         // let _ = stream.read(&mut buffer);
         // println!("{:?}", buffer);
-        for byte in reader.bytes() {
-            match byte {
-                Ok(b'\0') => {
-                    // '\0' encountered, end of data
-                    break;
-                }
-                Ok(byte) => {
-                    // Handle the byte (e.g., print it)
-                    println!("Received byte: {}", byte as char);
-                }
-                Err(e) => {
-                    eprintln!("Error reading byte: {}", e);
-                    break;
-                }
-            }
+        let request = ServerProtocol::read_exact_length_to_string(&mut reader, message_length)?;
+        println!("here {:?}", request);
+        let request_array: Vec<&str> = request.split_whitespace().collect();
+        println!("first word in request: {:?}", request_array);
+        match request_array[0] {
+            UPLOAD_PACK => println!("pull clone: {:?}", request_array),
+            RECEIVE_PACK => println!("push: {:?}", request_array),
+            _ => {}
         }
+        
+        
+
+        
+        // for byte in reader.bytes() {
+        //     match byte {
+        //         Ok(b'\0') => {
+        //             // '\0' encountered, end of data
+        //             break;
+        //         }
+        //         Ok(byte) => {
+        //             // Handle the byte (e.g., print it)
+        //             println!("Received byte: {}", byte as char);
+        //         }
+        //         Err(e) => {
+        //             eprintln!("Error reading byte: {}", e);
+        //             break;
+        //         }
+        //     }
+        // }
         /*for line in reader.bytes() {
             if let Ok(line) = line {
                 println!("incoming line: {:?}", line);
@@ -85,6 +121,7 @@ impl ServerProtocol {
         }*/
         
         println!("end handling connection");
+        Ok(())
     }
     
 

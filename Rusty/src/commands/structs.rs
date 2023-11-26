@@ -40,6 +40,18 @@ impl HashObjectCreator {
         let data = format!("{} {}\0{}", obj_type, file_len, content);
         helpers::generate_sha1_string(data.as_str())
     }
+
+    pub fn create_tree_object() -> Result<String, Box<dyn Error>> {
+        let index_file_content = helpers::read_file_content(INDEX_FILE)?;
+        let mut tree_content = String::new();
+        let index_file_lines: Vec<&str> = index_file_content.split("\n").collect();
+        for line in index_file_lines {
+            let split_line: Vec<&str> = line.split(";").collect();
+            let new_line = format!("100644 blob {} {}\n", split_line[1], split_line[0]);
+            tree_content.push_str(&new_line);
+        }
+        HashObjectCreator::write_object_file(tree_content.clone(), ObjectType::Tree, tree_content.as_bytes().len() as u64)
+    }
 }
 
 /// Represents the staging area for Git. Where files can be added and removed. They can have 3 possible states,

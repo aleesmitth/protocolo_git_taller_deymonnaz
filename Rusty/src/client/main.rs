@@ -6,6 +6,8 @@ use rusty::commands::commands::Commit;
 use rusty::commands::commands::Push;
 use rusty::commands::commands::Clone;
 use rusty::commands::structs::Head;
+use rusty::commands::commands::Checkout;
+use rusty::commands::commands::Branch;
 use rusty::commands::commands::Command;
 use std::{env, io};
 
@@ -50,8 +52,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     };
     // };
     // Init::new().execute(&mut head, None)?;
-    Add::new().execute(&mut head, Some(vec!["ejemplo.txt"]))?;
-    Commit::new().execute(&mut head, None)?;
+    // Branch::new().execute(&mut head, Some(vec!["new"]))?;
+    // Checkout::new().execute(&mut head, Some(vec!["new"]))?;
+    // Add::new().execute(&mut head, Some(vec!["ejemplo.txt"]))?;
+    // Commit::new().execute(&mut head, None)?;
     if let Err(error) = Clone::new().execute(&mut head, None) {
         println!("{}", error);
         return Ok(())
