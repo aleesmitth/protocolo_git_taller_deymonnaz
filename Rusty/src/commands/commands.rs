@@ -685,95 +685,95 @@ impl Command for PackObjects {
 //     fanout_table
 // }
 
-// pub struct UnpackObjects;
+pub struct UnpackObjects;
 
-// impl UnpackObjects {
-//     pub fn new() -> Self {
-//         UnpackObjects {}
-//     }
+impl UnpackObjects {
+    pub fn new() -> Self {
+        UnpackObjects {}
+    }
 
-//     // fn compare_checksum(pack_content: &Vec<u8>) -> io::Result<String> {
-//     //     let calculated_checksum = helpers::generate_sha1_string_from_bytes(&pack_content[..pack_content.len()-20]);
-//     //     let pack_checksum = pack_content[pack_content.len()-20..].to_string();
-//     //     if calculated_checksum != pack_checksum {
-//     //         return Err(Box::new(io::Error::new(
-//     //             io::ErrorKind::Other,
-//     //             "Checksum did not match",
-//     //         )))
-//     //     }
-//     //     Ok(pack_checksum)
-//     // }
-//     // Read the lower `bits` bits of `value`
-//     fn keep_bits(value: usize, bits: u8) -> usize {
-//         value & ((1 << bits) - 1)
-//     }
+    // fn compare_checksum(pack_content: &Vec<u8>) -> io::Result<String> {
+    //     let calculated_checksum = helpers::generate_sha1_string_from_bytes(&pack_content[..pack_content.len()-20]);
+    //     let pack_checksum = pack_content[pack_content.len()-20..].to_string();
+    //     if calculated_checksum != pack_checksum {
+    //         return Err(Box::new(io::Error::new(
+    //             io::ErrorKind::Other,
+    //             "Checksum did not match",
+    //         )))
+    //     }
+    //     Ok(pack_checksum)
+    // }
+    // Read the lower `bits` bits of `value`
+    fn keep_bits(value: usize, bits: u8) -> usize {
+        value & ((1 << bits) - 1)
+    }
 
-//     fn read_type_and_size<R: Read>(stream: &mut R) -> io::Result<(u8, usize)> {
-//         // Object type and uncompressed pack data size
-//         // are stored in a "size-encoding" variable-length integer.
-//         // Bits 4 through 6 store the type and the remaining bits store the size.
-//         let value = read_size_encoding(stream)?;
-//         let object_type = keep_bits(value >> TYPE_BYTE_SIZE_BITS, TYPE_BITS) as u8;
-//         let size = keep_bits(value, TYPE_BYTE_SIZE_BITS)
-//                  | (value >> VARINT_ENCODING_BITS << TYPE_BYTE_SIZE_BITS);
-//         Ok((object_type, size))
-//     }
+    fn read_type_and_size<R: Read>(stream: &mut R) -> io::Result<(u8, usize)> {
+        // Object type and uncompressed pack data size
+        // are stored in a "size-encoding" variable-length integer.
+        // Bits 4 through 6 store the type and the remaining bits store the size.
+        let value = read_size_encoding(stream)?;
+        let object_type = keep_bits(value >> TYPE_BYTE_SIZE_BITS, TYPE_BITS) as u8;
+        let size = keep_bits(value, TYPE_BYTE_SIZE_BITS)
+                 | (value >> VARINT_ENCODING_BITS << TYPE_BYTE_SIZE_BITS);
+        Ok((object_type, size))
+    }
 
-//     fn read_type_and_size<R: Read>(stream: &mut R) -> io::Result<(u8, usize)> {
-//         // Object type and uncompressed pack data size
-//         // are stored in a "size-encoding" variable-length integer.
-//         // Bits 4 through 6 store the type and the remaining bits store the size.
-//         let value = read_size_encoding(stream)?;
-//         let object_type = keep_bits(value >> TYPE_BYTE_SIZE_BITS, TYPE_BITS) as u8;
-//         let size = keep_bits(value, TYPE_BYTE_SIZE_BITS)
-//                  | (value >> VARINT_ENCODING_BITS << TYPE_BYTE_SIZE_BITS);
-//         Ok((object_type, size))
-//     }
+    fn read_type_and_size<R: Read>(stream: &mut R) -> io::Result<(u8, usize)> {
+        // Object type and uncompressed pack data size
+        // are stored in a "size-encoding" variable-length integer.
+        // Bits 4 through 6 store the type and the remaining bits store the size.
+        let value = read_size_encoding(stream)?;
+        let object_type = keep_bits(value >> TYPE_BYTE_SIZE_BITS, TYPE_BITS) as u8;
+        let size = keep_bits(value, TYPE_BYTE_SIZE_BITS)
+                 | (value >> VARINT_ENCODING_BITS << TYPE_BYTE_SIZE_BITS);
+        Ok((object_type, size))
+    }
 
-//     fn read_pack_object(pack_file: &mut File, offset: u64) -> io::Result<Object> {
-//         use ObjectType::*;
-//         use PackObjectType::*;
+    fn read_pack_object(pack_file: &mut File, offset: u64) -> io::Result<Object> {
+        use ObjectType::*;
+        use PackObjectType::*;
       
-//         seek(pack_file, offset)?;
-//         let (object_type, size) = read_type_and_size(pack_file)?;
-//         let object_type = match object_type {
-//           1 => Base(Commit),
-//           2 => Base(Tree),
-//           3 => Base(Blob),
-//           4 => Base(Tag),
-//           _ => {
-//             return Err(make_error(&format!("Invalid object type: {}", object_type)))
-//           }
-//         };
-//     //     match object_type {
-//     //       Base(object_type) => {
-//     //         // The object contents are zlib-compressed
-//     //         let mut contents = Vec::with_capacity(size);
-//     //         ZlibDecoder::new(pack_file).read_to_end(&mut contents)?;
-//     //         if contents.len() != size {
-//     //           return Err(make_error("Incorrect object size"))
-//     //         }
+        seek(pack_file, offset)?;
+        let (object_type, size) = read_type_and_size(pack_file)?;
+        let object_type = match object_type {
+          1 => ObjectType::Commit,
+          2 => ObjectType::Tree,
+          3 => ObjectType::Blob,
+          4 => ObjectType::Tag,
+          _ => {
+            return Err(make_error(&format!("Invalid object type: {}", object_type)))
+          }
+        };
+    //     match object_type {
+    //       Base(object_type) => {
+    //         // The object contents are zlib-compressed
+    //         let mut contents = Vec::with_capacity(size);
+    //         ZlibDecoder::new(pack_file).read_to_end(&mut contents)?;
+    //         if contents.len() != size {
+    //           return Err(make_error("Incorrect object size"))
+    //         }
       
-//     //         Ok(Object { object_type, contents })
-//     //       }
-//     //       OffsetDelta | HashDelta => unimplemented!(),
-//     //     }
-//     }
-// }
+    //         Ok(Object { object_type, contents })
+    //       }
+    //       OffsetDelta | HashDelta => unimplemented!(),
+    //     }
+    }
+}
 
-// impl Command for UnpackObjects {
-//     fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
-//         let arg_slice = args.unwrap_or(Vec::new());
-//         let mut pack_file = fs::File::open(arg_slice[0])?;
-//         let mut buffer = Vec::new();
-//         let pack_content = pack_file.read_to_end(&mut buffer)?;
-//         //Self::compare_checksum(&pack_content)?;
-//         let offset: u64 = 12; //Skipping the header
+impl Command for UnpackObjects {
+    fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        let arg_slice = args.unwrap_or(Vec::new());
+        let mut pack_file = fs::File::open(arg_slice[0])?;
+        let mut buffer = Vec::new();
+        let pack_content = pack_file.read_to_end(&mut buffer)?;
+        //Self::compare_checksum(&pack_content)?;
+        let offset: u64 = 12; //Skipping the header
         
-//         read_pack_object(&mut file, offset);
-//         Ok(String::new())
-//     }
-// }
+        read_pack_object(&mut file, offset);
+        Ok(String::new())
+    }
+}
 
 pub struct Push;
 
