@@ -5,6 +5,7 @@ use rusty::commands::commands::Add;
 use rusty::commands::commands::Commit;
 use rusty::commands::commands::Push;
 use rusty::commands::commands::Clone;
+use rusty::commands::commands::ShowRef;
 use rusty::commands::structs::Head;
 use rusty::commands::commands::Checkout;
 use rusty::commands::commands::Branch;
@@ -61,7 +62,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     println!("{}", error);
     //     return Ok(())
     // }
-    if let Err(error) = Tag::new().execute(&mut head, Some(vec!["-l"])) {
+    if let Err(error) = ShowRef::new().execute(&mut head, None) {
         println!("{}", error);
         return Ok(())
     }

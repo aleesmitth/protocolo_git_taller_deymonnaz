@@ -1,3 +1,4 @@
+use std::fs::ReadDir;
 use std::{fs, error::Error, io, io::Write, io::Read, str, env, io::BufRead};
 
 extern crate libflate;
@@ -1084,10 +1085,8 @@ impl Tag {
     }
 
     fn list_all_tags(&self) -> Result<(), Box<dyn Error>> {
-        let tags_path = ".git/refs/tags";
-
         // Read the contents of the directory
-        let entries = fs::read_dir(tags_path)?;
+        let entries = fs::read_dir(R_TAGS)?;
 
         for entry in entries {
             let entry = entry?;
@@ -1104,7 +1103,7 @@ impl Tag {
         let current_branch_path = helpers::get_current_branch_path()?;
         let last_commit = helpers::read_file_content(&current_branch_path)?;
 
-        let tag_path = format!(".git/refs/tags/{}", name);
+        let tag_path = format!("{}{}", R_TAGS, name);
         let mut tag_file = fs::File::create(tag_path)?;
 
         tag_file.write_all(last_commit.as_bytes())?;
@@ -1113,7 +1112,7 @@ impl Tag {
     }
 
     fn verify_tag(&self, name: &str) -> bool {
-        let tag_path = format!(".git/refs/tags/{}", name);
+        let tag_path = format!("{}{}", R_TAGS, name);
 
         if fs::metadata(tag_path).is_ok() {
             return true
@@ -1122,7 +1121,7 @@ impl Tag {
     }
 
     fn delete_tag(&self, name: &str) -> Result<(), Box<dyn Error>> {
-        let tag_path = format!(".git/refs/tags/{}", name);
+        let tag_path = format!("{}{}", R_TAGS, name);
         fs::remove_file(tag_path)?;
         Ok(())
     }
@@ -1158,6 +1157,42 @@ impl Command for Tag {
 	        _ => {}
 	    }
         
+        Ok(String::new())
+    }
+}
+
+
+pub struct ShowRef;
+
+impl ShowRef {
+    /// Creates a new `Push` instance.
+    pub fn new() -> Self {
+        ShowRef {}
+    }
+
+    fn show_refs_in_directory(&self, directory_entries: ReadDir, partial_path: &str) -> Result<(), Box<dyn Error>> {
+        for entry in directory_entries {
+            let entry = entry?;
+            let file_name = entry.file_name();
+            let file_name_str = file_name.to_string_lossy(); // Convert to a String
+    
+            let content = std::fs::read_to_string(entry.path())?;
+
+            println!("{} {}{}", content, partial_path, file_name_str);
+        }
+        Ok(())
+    }
+}
+
+impl Command for ShowRef {
+    fn execute(&self, _head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        // Read the contents of the directory
+        let branch_entries = fs::read_dir(R_HEADS)?;
+        self.show_refs_in_directory(branch_entries, "refs/heads/")?;
+
+        let tags_entries = fs::read_dir(R_TAGS)?;
+        self.show_refs_in_directory(tags_entries, "refs/tags/")?;
+
         Ok(String::new())
     }
 }
