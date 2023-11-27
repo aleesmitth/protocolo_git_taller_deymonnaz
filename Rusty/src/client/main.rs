@@ -1,4 +1,4 @@
-// use rusty::commands::commands;
+use rusty::commands::commands::CheckIgnore;
 use rusty::commands::commands::RELATIVE_PATH;
 use rusty::commands::commands::Init;
 use rusty::commands::commands::Add;
@@ -56,7 +56,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Checkout::new().execute(&mut head, Some(vec!["new"]))?;
     // Add::new().execute(&mut head, Some(vec!["ejemplo.txt"]))?;
     // Commit::new().execute(&mut head, None)?;
-    if let Err(error) = Clone::new().execute(&mut head, None) {
+    // if let Err(error) = Clone::new().execute(&mut head, None) {
+    //     println!("{}", error);
+    //     return Ok(())
+    // }
+    if let Err(error) = CheckIgnore::new().execute(&mut head, Some(vec!["ejemplo.txt"])) {
         println!("{}", error);
         return Ok(())
     }

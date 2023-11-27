@@ -1,4 +1,4 @@
-use std::{fs, error::Error, io, io::Write, io::Read, str, env};
+use std::{fs, error::Error, io, io::Write, io::Read, str, env, io::BufRead};
 
 extern crate libflate;
 use libflate::zlib::Decoder;
@@ -410,7 +410,16 @@ impl Command for Add {
     fn execute(&self, head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         match args {
             Some(args) => {
-                self.stg_area.add_file(head, args[0])?;
+                if (CheckIgnore::new().execute(head, Some(vec![args[0]]))?).is_empty() {
+                    self.stg_area.add_file(head, args[0])?;
+                } 
+                else {
+                    return Err(Box::new(io::Error::new(
+                        io::ErrorKind::Other,
+                        "Error: File is included in '.gitignore'",
+                    )))
+                }
+                
             }
             None => return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
@@ -1023,6 +1032,40 @@ impl Command for Log {
         }
         
         // Return a successful result (an empty string in this case)
+        Ok(String::new())
+    }
+}
+
+pub struct CheckIgnore;
+
+impl CheckIgnore {
+    /// Creates a new `Push` instance.
+    pub fn new() -> Self {
+        CheckIgnore {}
+    }
+}
+
+
+impl Command for CheckIgnore {
+    fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        //Checking if a .gitignore file exists
+        if !fs::metadata(".gitignore.txt").is_ok() {
+            return Ok(String::new())
+        }
+
+        // Extract the arguments from the provided slice or use an empty slice if none is provided
+        let arg_slice = args.unwrap_or(Vec::new());
+        let file_path = arg_slice[0];
+
+        let file = fs::File::open(".gitignore.txt")?;
+        let reader = io::BufReader::new(file);
+
+        let line_exists = reader.lines().any(|line| line.map_or(false, |l| l == file_path));
+        if line_exists {
+            println!("{}", file_path);
+            return Ok(file_path.to_string())
+        }
+
         Ok(String::new())
     }
 }
