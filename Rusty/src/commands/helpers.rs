@@ -1,4 +1,4 @@
-use std::{fs, error::Error, io, io::Write, io::Read};
+use std::{fs, error::Error, io, io::Write, io::Read, path::Path};
 extern crate crypto;
 extern crate libflate;
 
@@ -185,6 +185,42 @@ pub fn remove_object_from_file(file_path: &str) -> io::Result<()> {
     fs::write(INDEX_FILE, updated_contents)?;
 
     Ok(())
+}
+
+pub fn get_all_branches() -> Result<Vec<String>, Box<dyn Error>> {
+    let current_branch_path = get_current_branch_path()?;
+    println!("test: {:?}",current_branch_path);
+
+    // Extract the directory path from the file path
+    let dir_path = Path::new(&current_branch_path)
+        .parent()
+        .ok_or("Failed to get parent directory")?;
+
+    // Remove the ".git/" prefix if it exists
+    let dir_path_without_git = dir_path.strip_prefix(".git/").unwrap_or(dir_path);
+
+    // Read the contents of the directory
+    let entries = fs::read_dir(dir_path)?;
+
+    // Iterate over the entries
+    let mut branches: Vec<String> = Vec::new();
+    for entry in entries {
+        let entry = entry?;
+
+        // Get the file name and content
+        let file_name = if entry.path() == Path::new(&current_branch_path) {
+            "HEAD".to_string()
+        } else {
+            dir_path_without_git.join(entry.file_name()).to_string_lossy().into_owned()
+        };
+        let file_content = fs::read_to_string(entry.path())?;
+
+        // Combine content and filename
+        let branch = format!("{} {}", file_content, file_name);
+        branches.push(branch);
+    }
+
+    Ok(branches)
 }
 
 pub fn list_files_recursively(dir_path: &str, files_list: &mut Vec<String>) -> io::Result<()> {

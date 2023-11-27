@@ -15,7 +15,7 @@ impl ServerProtocol {
         Ok(TcpListener::bind(address)?)
     }
 
-    fn read_message_length(reader: &mut dyn Read) -> Result<usize, Box<dyn std::error::Error>> {
+    fn get_request_length(reader: &mut dyn Read) -> Result<usize, Box<dyn std::error::Error>> {
         let mut message_length: [u8; LENGTH_BYTES] = [0; LENGTH_BYTES];
         if let Err(e) = reader.read_exact(&mut message_length) {
             return Err(Box::new(io::Error::new(
@@ -49,24 +49,26 @@ impl ServerProtocol {
         Ok(String::from_utf8_lossy(&buffer).to_string())
     }
 
-    pub fn handle_client_conection(stream: TcpStream) -> Result<(), Box<dyn Error>> {
+    pub fn handle_client_conection(stream: &mut TcpStream) -> Result<(), Box<dyn Error>> {
         // In the Git Dumb Protocol, Git commands are sent as text lines.
         // You would parse the incoming lines and respond accordingly.
-        let mut reader = std::io::BufReader::new(&stream);
-        let message_length = ServerProtocol::read_message_length(&mut reader).unwrap();
-        println!("length: {:?}", message_length);
+        let stream_clone = stream.try_clone()?;
+        let mut reader = std::io::BufReader::new(stream_clone);
+        println!("waiting for request...");
+        let request_length = ServerProtocol::get_request_length(&mut reader)?;
+        println!("request_length: {:?}", request_length);
         //println!("{:x}", ServerProtocol::read_message_length(&mut reader).unwrap());
         // let mut writer = std::io::BufWriter::new(stream);
-        println!("handling connection...");
+        println!("reading request_...");
         // let mut buffer = [0; 1024];
         // let _ = stream.read(&mut buffer);
         // println!("{:?}", buffer);
-        let request = ServerProtocol::read_exact_length_to_string(&mut reader, message_length)?;
-        println!("here {:?}", request);
+        let request = ServerProtocol::read_exact_length_to_string(&mut reader, request_length)?;
+        println!("request: {:?}", request);
         let request_array: Vec<&str> = request.split_whitespace().collect();
         println!("first word in request: {:?}", request_array);
         match request_array[0] {
-            UPLOAD_PACK => println!("pull clone: {:?}", request_array),
+            UPLOAD_PACK => ServerProtocol::upload_pack(stream)?,
             RECEIVE_PACK => println!("push: {:?}", request_array),
             _ => {}
         }
@@ -122,6 +124,22 @@ impl ServerProtocol {
         
         println!("end handling connection");
         Ok(())
+    }
+    
+
+    pub fn upload_pack(stream: &mut TcpStream) -> Result<(), Box<dyn Error>> {
+        println!("git-upload-pack");
+        let branches: Vec<String> = helpers::get_all_branches()?;
+        for branch in &branches {
+	        let line_to_send = ServerProtocol::format_line_to_send(branch.clone());
+	        println!("sending line: {:?}", line_to_send);
+	        stream.write_all(line_to_send.as_bytes())?;
+            }
+        Ok(())
+    }
+
+    pub fn format_line_to_send(line: String) -> String {
+    	format!("{:04x}{}", line.len() + 4, line)
     }
     
 

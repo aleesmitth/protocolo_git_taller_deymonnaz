@@ -20,8 +20,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                thread::spawn(|| {
-                    ServerProtocol::handle_client_conection(stream);
+                let mut cloned_stream = stream.try_clone()?;
+                thread::spawn(move || {
+                    ServerProtocol::handle_client_conection(&mut cloned_stream);
                 });
             }
             Err(e) => {
