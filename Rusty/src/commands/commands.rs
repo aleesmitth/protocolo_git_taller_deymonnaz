@@ -12,6 +12,8 @@ const TYPE_FLAG: &str = "-t";
 const WRITE_FLAG: &str = "-w";
 const SIZE_FLAG: &str = "-s";
 const MESSAGE_FLAG: &str = "-m";
+const VERIFY_FLAG: &str = "-v";
+const LIST_FLAG: &str = "-l";
 const EXCLUDE_LOG_ENTRY: char = '^';
 const HEAD: &str = "HEAD";
 const ADD_FLAG: &str = "add";
@@ -1045,8 +1047,11 @@ impl CheckIgnore {
     }
 }
 
-
 impl Command for CheckIgnore {
+    /// Execute the command, checking for the existence of a file path in the .gitignore file.
+    /// Returns a `Result` containing a string. If the file path is found in the .gitignore file,
+    /// the path is returned; otherwise, an empty string is returned. Errors are wrapped
+    /// in the `Result` type.
     fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         //Checking if a .gitignore file exists
         if !fs::metadata(".gitignore.txt").is_ok() {
@@ -1066,6 +1071,93 @@ impl Command for CheckIgnore {
             return Ok(file_path.to_string())
         }
 
+        Ok(String::new())
+    }
+}
+
+pub struct Tag;
+
+impl Tag {
+    /// Creates a new `Push` instance.
+    pub fn new() -> Self {
+        Tag {}
+    }
+
+    fn list_all_tags(&self) -> Result<(), Box<dyn Error>> {
+        let tags_path = ".git/refs/tags";
+
+        // Read the contents of the directory
+        let entries = fs::read_dir(tags_path)?;
+
+        for entry in entries {
+            let entry = entry?;
+            let file_name = entry.file_name();
+            let file_name_str = file_name.to_string_lossy(); // Convert to a String
+    
+            println!("{}", file_name_str);
+        }
+
+        Ok(())
+    }
+
+    fn add_new_lightweight_tag(&self, name: &str) -> Result<(), Box<dyn Error>> {
+        let current_branch_path = helpers::get_current_branch_path()?;
+        let last_commit = helpers::read_file_content(&current_branch_path)?;
+
+        let tag_path = format!(".git/refs/tags/{}", name);
+        let mut tag_file = fs::File::create(tag_path)?;
+
+        tag_file.write_all(last_commit.as_bytes())?;
+
+        Ok(())
+    }
+
+    fn verify_tag(&self, name: &str) -> bool {
+        let tag_path = format!(".git/refs/tags/{}", name);
+
+        if fs::metadata(tag_path).is_ok() {
+            return true
+        }
+        false
+    }
+
+    fn delete_tag(&self, name: &str) -> Result<(), Box<dyn Error>> {
+        let tag_path = format!(".git/refs/tags/{}", name);
+        fs::remove_file(tag_path)?;
+        Ok(())
+    }
+}
+
+impl Command for Tag {
+    fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        if args.is_none() {
+            self.list_all_tags()?;
+            return Ok(String::new())
+        }
+
+        let mut verify_flag = false;
+        let mut delete_flag = false;
+        let mut list_flag = false;
+        let mut name = None;
+        let arg_slice = args.unwrap_or(Vec::new());
+
+        for arg in arg_slice {
+            match arg {
+                LIST_FLAG => list_flag = true,
+                VERIFY_FLAG => verify_flag = true,
+                DELETE_FLAG => delete_flag = true,
+                _ => name = Some(arg),
+            }
+        }
+
+        match (verify_flag, delete_flag, list_flag, name) {
+	        (false, false, false, Some(name)) => self.add_new_lightweight_tag(name)?,
+            // (true, _, _, Some(name)) => self.verify_tag(name),
+	        (_, true, _, Some(name)) => self.delete_tag(name)?,
+            (_, _, true, _) => self.list_all_tags()?,
+	        _ => {}
+	    }
+        
         Ok(String::new())
     }
 }

@@ -8,6 +8,7 @@ use rusty::commands::commands::Clone;
 use rusty::commands::structs::Head;
 use rusty::commands::commands::Checkout;
 use rusty::commands::commands::Branch;
+use rusty::commands::commands::Tag;
 use rusty::commands::commands::Command;
 use std::{env, io};
 
@@ -60,7 +61,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     println!("{}", error);
     //     return Ok(())
     // }
-    if let Err(error) = CheckIgnore::new().execute(&mut head, Some(vec!["ejemplo.txt"])) {
+    if let Err(error) = Tag::new().execute(&mut head, Some(vec!["-l"])) {
         println!("{}", error);
         return Ok(())
     }
