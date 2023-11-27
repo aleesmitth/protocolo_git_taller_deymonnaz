@@ -4,6 +4,9 @@ const RECEIVE_PACK: &str = "git-receive-pack";
 const UPLOAD_PACK: &str = "git-upload-pack";
 pub struct ServerProtocol;
 const LENGTH_BYTES: usize = 4;
+const WANT_REQUEST: &str = "want";
+const MESSAGE_DELIMITER_1: &str = "0000";
+const MESSAGE_DELIMITER_2: &str = "0009done\n";
 
 impl ServerProtocol {
     pub fn new() -> Self {
@@ -57,6 +60,13 @@ impl ServerProtocol {
         println!("waiting for request...");
         let request_length = ServerProtocol::get_request_length(&mut reader)?;
         println!("request_length: {:?}", request_length);
+        if request_length == 0 {
+        	// TODO gracefully end connection, message length is 0
+        	return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "Error: Request length 0",
+            )));
+        }
         //println!("{:x}", ServerProtocol::read_message_length(&mut reader).unwrap());
         // let mut writer = std::io::BufWriter::new(stream);
         println!("reading request_...");
@@ -66,7 +76,7 @@ impl ServerProtocol {
         let request = ServerProtocol::read_exact_length_to_string(&mut reader, request_length)?;
         println!("request: {:?}", request);
         let request_array: Vec<&str> = request.split_whitespace().collect();
-        println!("first word in request: {:?}", request_array);
+        println!("request in array: {:?}", request_array);
         match request_array[0] {
             UPLOAD_PACK => ServerProtocol::upload_pack(stream)?,
             RECEIVE_PACK => println!("push: {:?}", request_array),
@@ -134,14 +144,88 @@ impl ServerProtocol {
 	        let line_to_send = ServerProtocol::format_line_to_send(branch.clone());
 	        println!("sending line: {:?}", line_to_send);
 	        stream.write_all(line_to_send.as_bytes())?;
-            }
+        }
+
+        stream.write_all(ServerProtocol::possible_message_delimiters()[0].as_bytes());
+        println!("-sent end of message delimiter-");
+
+        let mut reader = std::io::BufReader::new(stream);
+        let requests_received: Vec<String> = ServerProtocol::read_until_delimiter(&mut reader)?;
+        for request_received in requests_received {
+	        let request_array: Vec<&str> = request_received.split_whitespace().collect();
+	        println!("request in array: {:?}", request_array);
+	        if request_array[0] != WANT_REQUEST {
+	        	//TODO not want request, handle error gracefully
+	        	println!("Error: expected want request but got: {:?}", request_array[0]);
+	        	return Err(Box::new(io::Error::new(
+	                        io::ErrorKind::Other,
+	                        "Error: Expecting want request but got something else",
+	                    )))
+	        }
+	        // TODO should probably go read the branches again in case some other client updated the latest commit
+	        let is_valid_commit = ServerProtocol::validate_is_latest_commit_any_branch(request_array[1], &branches);
+	        if !is_valid_commit {
+		        println!("invalid commit: {:?}", request_array);
+		        return Err(Box::new(io::Error::new(
+		                        io::ErrorKind::Other,
+		                        "Error: Received invalid commit hash for want request",
+		                    )))
+	    	}
+
+	    	println!("valid want request.");
+	    }
+
         Ok(())
+    }
+
+    pub fn read_until_delimiter(reader: &mut dyn Read) -> Result<Vec<String>, Box<dyn Error>> {
+    	let mut requests_received: Vec<String> = Vec::new();
+    	let message_delimiters: Vec<String> = ServerProtocol::possible_message_delimiters();
+    	while true {
+	    	println!("waiting for request..");
+	        let request_length = ServerProtocol::get_request_length(reader)?;
+	        println!("request length: {:?}", request_length);
+	        if request_length == 0 {
+	        	// TODO gracefully end connection, message length is 0
+	        	/*return Err(Box::new(io::Error::new(
+	                io::ErrorKind::Other,
+	                "Error: Request length 0",
+	            )));*/
+	            break; // TODO I'm leaving this break for the time being so that I can continue execution
+	        }
+	        println!("reading request..");
+	        let request = ServerProtocol::read_exact_length_to_string(reader, request_length)?;
+	        println!("request: {:?}", request);
+
+	        // received a message delimiter
+	        if message_delimiters.contains(&request) {
+			    break;
+			}
+	        requests_received.push(request);
+	    }
+        Ok(requests_received)
+    }
+
+    pub fn validate_is_latest_commit_any_branch(commit: &str, branches: &Vec<String>) -> bool {
+    	for branch in branches {    		
+		    // Split the string into words
+		    let branch_commit_and_name: Vec<&str> = branch.split_whitespace().collect();
+    		if let Some(first_word) = branch_commit_and_name.first() {
+		        if first_word == &commit {
+		        	return true;
+		        }
+		    }
+    	}
+    	false
     }
 
     pub fn format_line_to_send(line: String) -> String {
     	format!("{:04x}{}", line.len() + 4, line)
     }
     
+    pub fn possible_message_delimiters() -> Vec<String> {
+    	vec![String::from(MESSAGE_DELIMITER_1), String::from(MESSAGE_DELIMITER_2)]
+	}
 
     pub fn receive_pack(&mut self) -> Result<(), Box<dyn Error>> {
         /*println!("1");

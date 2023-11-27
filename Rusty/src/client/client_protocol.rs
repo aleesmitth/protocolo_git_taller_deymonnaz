@@ -107,6 +107,9 @@ impl ClientProtocol {
             let actual_line = format!("{:04x}{}", line.len() + 4, line);
             println!("request line: {}", actual_line);
             stream.write_all(actual_line.as_bytes())?;
+            // TODO remove this extra writes, it's for testing
+            stream.write_all(actual_line.as_bytes())?;
+            stream.write_all(actual_line.as_bytes())?;
             break;
         }
         stream.write_all("0000".as_bytes())?;

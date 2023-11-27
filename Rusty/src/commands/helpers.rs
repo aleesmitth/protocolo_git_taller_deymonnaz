@@ -216,7 +216,7 @@ pub fn get_all_branches() -> Result<Vec<String>, Box<dyn Error>> {
         let file_content = fs::read_to_string(entry.path())?;
 
         // Combine content and filename
-        let branch = format!("{} {}", file_content, file_name);
+        let branch = format!("{} {}\n", file_content, file_name);
         branches.push(branch);
     }
 
