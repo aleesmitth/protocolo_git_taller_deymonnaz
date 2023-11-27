@@ -23,6 +23,10 @@ const DEFAULT_BRANCH_NAME: &str = "main";
 const INDEX_FILE: &str = ".git/index";
 const CONFIG_FILE: &str = ".git/config";
 pub const RELATIVE_PATH: &str = "RELATIVE_PATH";
+const VARINT_ENCODING_BITS: u8 = 7;
+const VARINT_CONTINUE_FLAG: u8 = 1 << VARINT_ENCODING_BITS;
+const TYPE_BITS: u8 = 3;
+const TYPE_BYTE_SIZE_BITS: u8 = VARINT_ENCODING_BITS - TYPE_BITS;
 
 use crate::commands::helpers::get_file_length;
 use crate::commands::structs::HashObjectCreator;
@@ -64,7 +68,7 @@ impl Command for Init {
     /// This function initializes a new Git repository by creating the necessary directory structure
     /// for branches, tags, and objects. It also sets the default branch to 'main' and creates an empty
     ///  index file. If successful, it returns an empty string; otherwise, it returns an error message.
-    fn execute(&self, head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>>{       
+    fn execute(&self, head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>>{       
         let _refs_heads = fs::create_dir_all(PathHandler::get_relative_path(R_HEADS));
         let _refs_tags = fs::create_dir_all(PathHandler::get_relative_path(R_TAGS))?;
         let _obj = fs::create_dir(PathHandler::get_relative_path(OBJECT))?;
@@ -708,41 +712,61 @@ impl UnpackObjects {
         value & ((1 << bits) - 1)
     }
 
-    fn read_type_and_size<R: Read>(stream: &mut R) -> io::Result<(u8, usize)> {
-        // Object type and uncompressed pack data size
-        // are stored in a "size-encoding" variable-length integer.
-        // Bits 4 through 6 store the type and the remaining bits store the size.
-        let value = read_size_encoding(stream)?;
-        let object_type = keep_bits(value >> TYPE_BYTE_SIZE_BITS, TYPE_BITS) as u8;
-        let size = keep_bits(value, TYPE_BYTE_SIZE_BITS)
-                 | (value >> VARINT_ENCODING_BITS << TYPE_BYTE_SIZE_BITS);
-        Ok((object_type, size))
+    // Reads a fixed number of bytes from a stream.
+    // Rust's "const generics" make this function very useful.
+    fn read_bytes<R: Read, const N: usize>(stream: &mut R) -> io::Result<[u8; N]> {
+        let mut bytes = [0; N];
+        stream.read_exact(&mut bytes)?;
+        Ok(bytes)
     }
 
-    fn read_type_and_size<R: Read>(stream: &mut R) -> io::Result<(u8, usize)> {
-        // Object type and uncompressed pack data size
-        // are stored in a "size-encoding" variable-length integer.
-        // Bits 4 through 6 store the type and the remaining bits store the size.
-        let value = read_size_encoding(stream)?;
-        let object_type = keep_bits(value >> TYPE_BYTE_SIZE_BITS, TYPE_BITS) as u8;
-        let size = keep_bits(value, TYPE_BYTE_SIZE_BITS)
-                 | (value >> VARINT_ENCODING_BITS << TYPE_BYTE_SIZE_BITS);
-        Ok((object_type, size))
+    // Read 7 bits of data and a flag indicating whether there are more
+    fn read_varint_byte<R: Read>(stream: &mut R) -> io::Result<(u8, bool)> {
+        let [byte] = Self::read_bytes(stream)?;
+        let value = byte & !VARINT_CONTINUE_FLAG;
+        let more_bytes = byte & VARINT_CONTINUE_FLAG != 0;
+        Ok((value, more_bytes))
     }
 
-    fn read_pack_object(pack_file: &mut File, offset: u64) -> io::Result<Object> {
-        use ObjectType::*;
-        use PackObjectType::*;
+    fn read_size_encoding<R: Read>(stream: &mut R) -> io::Result<usize> {
+        let mut value = 0;
+        let mut length = 0; // the number of bits of data read so far
+        loop {
+          let (byte_value, more_bytes) = Self::read_varint_byte(stream)?;
+          // Add in the data bits
+          value |= (byte_value as usize) << length;
+          // Stop if this is the last byte
+          if !more_bytes {
+            return Ok(value)
+          }
       
-        seek(pack_file, offset)?;
-        let (object_type, size) = read_type_and_size(pack_file)?;
+          length += VARINT_ENCODING_BITS;
+        }
+    }
+
+    fn read_type_and_size<R: Read>(stream: &mut R) -> Result<(u8, usize), Box<dyn Error>> {
+        // Object type and uncompressed pack data size
+        // are stored in a "size-encoding" variable-length integer.
+        // Bits 4 through 6 store the type and the remaining bits store the size.
+        let value = Self::read_size_encoding(stream)?;
+        let object_type = Self::keep_bits(value >> TYPE_BYTE_SIZE_BITS, TYPE_BITS) as u8;
+        let size = Self::keep_bits(value, TYPE_BYTE_SIZE_BITS)
+                 | (value >> VARINT_ENCODING_BITS << TYPE_BYTE_SIZE_BITS);
+        Ok((object_type, size))
+    }
+
+    fn read_pack_object(pack_file: &mut fs::File, offset: u64) -> Result<(ObjectType, usize), Box<dyn Error>> {
+        let (object_type, size) = Self::read_type_and_size(pack_file)?;
         let object_type = match object_type {
           1 => ObjectType::Commit,
           2 => ObjectType::Tree,
           3 => ObjectType::Blob,
           4 => ObjectType::Tag,
           _ => {
-            return Err(make_error(&format!("Invalid object type: {}", object_type)))
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "Error: Invalid Object Type",
+            )))
           }
         };
     //     match object_type {
@@ -758,6 +782,7 @@ impl UnpackObjects {
     //       }
     //       OffsetDelta | HashDelta => unimplemented!(),
     //     }
+        Ok((object_type, size))
     }
 }
 
@@ -765,12 +790,24 @@ impl Command for UnpackObjects {
     fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let arg_slice = args.unwrap_or(Vec::new());
         let mut pack_file = fs::File::open(arg_slice[0])?;
-        let mut buffer = Vec::new();
-        let pack_content = pack_file.read_to_end(&mut buffer)?;
+        let mut header = Vec::with_capacity(12);
+        let _pack_content = pack_file.read_exact(&mut header)?;
         //Self::compare_checksum(&pack_content)?;
-        let offset: u64 = 12; //Skipping the header
-        
-        read_pack_object(&mut file, offset);
+        let pack_file_size = helpers::get_file_length(".git/pack/received_pack_file.pack")?;
+        println!("pack file size: {}", pack_file_size);
+        let mut offset: u64 = 12; //Skipping the header
+        while offset < pack_file_size {  
+            let (object_type, size) = Self::read_pack_object(&mut pack_file, offset)?;
+            println!("type: {} ; size: {}", object_type, size);
+            let mut object_content = Vec::with_capacity(size);
+            // ZlibDecoder::new(pack_file).read_to_end(&mut object_content)?; tal vez esto para descomprimir en una misma linea
+            pack_file.read_exact(&mut object_content)?;
+            println!("object content bytes: {:?}", object_content);
+            let utf8_string = String::from_utf8_lossy(&object_content).to_string();
+            println!("object content string: {}", utf8_string);
+            HashObjectCreator::write_object_file(utf8_string, object_type, size as u64)?; //tal vez antes tenga que descomprimir object content, que aca viene comprimido con zlib
+            offset += size as u64;
+        }
         Ok(String::new())
     }
 }
