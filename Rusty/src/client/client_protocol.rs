@@ -123,7 +123,9 @@ impl ClientProtocol {
                         let mut buffer = Vec::new(); 
                         stream.read_to_end(&mut buffer)?;
                         println!("{:?}", buffer);
-                        std::fs::write(".git/pack/received_pack_file.pack", &buffer)?;
+                        // std::fs::write(".git/pack/received_pack_file.pack", &buffer)?;
+                        let mut file = fs::File::create(".git/pack/received_pack_file.pack")?;
+                        file.write_all(&buffer)?;
                     }
                     
                 }

@@ -28,6 +28,10 @@ const VARINT_CONTINUE_FLAG: u8 = 1 << VARINT_ENCODING_BITS;
 const TYPE_BITS: u8 = 3;
 const TYPE_BYTE_SIZE_BITS: u8 = VARINT_ENCODING_BITS - TYPE_BITS;
 
+// const TYPE_BITS: usize = 3;
+// const TYPE_MASK: usize = (1 << TYPE_BITS) - 1;
+
+
 use crate::commands::helpers::get_file_length;
 use crate::commands::structs::HashObjectCreator;
 use crate::commands::structs::ObjectType;
@@ -757,6 +761,7 @@ impl UnpackObjects {
 
     fn read_pack_object(pack_file: &mut fs::File, offset: u64) -> Result<(ObjectType, usize), Box<dyn Error>> {
         let (object_type, size) = Self::read_type_and_size(pack_file)?;
+        println!("obj type: {:?}", object_type);
         let object_type = match object_type {
           1 => ObjectType::Commit,
           2 => ObjectType::Tree,
@@ -784,14 +789,61 @@ impl UnpackObjects {
     //     }
         Ok((object_type, size))
     }
+    // fn read_varint<R: Read>(stream: &mut R) -> Result<usize, io::Error> {
+    //     let mut value = 0;
+    //     let mut shift = 0;
+    
+    //     loop {
+    //         let mut buf = [0; 1];
+    //         stream.read_exact(&mut buf)?;
+    
+    //         let byte_value = buf[0] as usize;
+    //         value |= (byte_value & 0b0111_1111) << shift;
+    //         shift += 7;
+    
+    //         if byte_value & 0b1000_0000 == 0 {
+    //             return Ok(value);
+    //         }
+    
+    //         // Prevent potential overflow in the value variable
+    //         if shift >= std::mem::size_of::<usize>() * 8 {
+    //             return Err(io::Error::new(
+    //                 io::ErrorKind::InvalidData,
+    //                 "Invalid varint encoding",
+    //             ));
+    //         }
+    //     }
+    // }
+    
+    // fn read_type_and_size<R: Read>(stream: &mut R) -> Result<(ObjectType, usize), io::Error> {
+    //     let varint = Self::read_varint(stream)?;
+    //     let object_type = (varint & TYPE_MASK) as u8;
+    //     let size = varint >> TYPE_BITS;
+    //     println!("type: {}; size: {}", object_type, size);
+    //     let object_type = match object_type {
+    //         1 => ObjectType::Commit,
+    //         2 => ObjectType::Tree,
+    //         3 => ObjectType::Blob,
+    //         4 => ObjectType::Tag,
+    //         _ => {
+    //             return Err(io::Error::new(
+    //                 io::ErrorKind::Other,
+    //                 "Error: Invalid Object Type",
+    //             ))
+    //         }
+    //     };
+    
+    //     Ok((object_type, size))
+    // }
 }
 
 impl Command for UnpackObjects {
     fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
-        let arg_slice = args.unwrap_or(Vec::new());
-        let mut pack_file = fs::File::open(arg_slice[0])?;
-        let mut header = Vec::with_capacity(12);
-        let _pack_content = pack_file.read_exact(&mut header)?;
+        // let arg_slice = args.unwrap_or(Vec::new());
+        let mut pack_file = fs::File::open(".git/pack/received_pack_file.pack")?;
+        let mut header = vec![0; 12]; //Size of header is fixed
+        pack_file.read_exact(&mut header)?;
+        println!("unpack header: {:?}", header);
         //Self::compare_checksum(&pack_content)?;
         let pack_file_size = helpers::get_file_length(".git/pack/received_pack_file.pack")?;
         println!("pack file size: {}", pack_file_size);
@@ -799,13 +851,12 @@ impl Command for UnpackObjects {
         while offset < pack_file_size {  
             let (object_type, size) = Self::read_pack_object(&mut pack_file, offset)?;
             println!("type: {} ; size: {}", object_type, size);
-            let mut object_content = Vec::with_capacity(size);
+            let mut object_content = vec![0; size];
             // ZlibDecoder::new(pack_file).read_to_end(&mut object_content)?; tal vez esto para descomprimir en una misma linea
             pack_file.read_exact(&mut object_content)?;
-            println!("object content bytes: {:?}", object_content);
-            let utf8_string = String::from_utf8_lossy(&object_content).to_string();
-            println!("object content string: {}", utf8_string);
-            HashObjectCreator::write_object_file(utf8_string, object_type, size as u64)?; //tal vez antes tenga que descomprimir object content, que aca viene comprimido con zlib
+            let decompressed_content = helpers::decompress_file_content(object_content)?;
+            println!("object content string: {}", decompressed_content);
+            HashObjectCreator::write_object_file(decompressed_content, object_type, size as u64)?; //tal vez antes tenga que descomprimir object content, que aca viene comprimido con zlib
             offset += size as u64;
         }
         Ok(String::new())
@@ -848,7 +899,7 @@ impl Command for Clone {
     fn execute(&self, _head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let mut server_connection = ClientProtocol::new();
         server_connection.clone_from_remote()?;
-
+        UnpackObjects::new().execute(_head, None)?;
         Ok(String::new())
     }
 }
