@@ -5,8 +5,8 @@ const UPLOAD_PACK: &str = "git-upload-pack";
 pub struct ServerProtocol;
 const LENGTH_BYTES: usize = 4;
 const WANT_REQUEST: &str = "want";
-const MESSAGE_DELIMITER_1: &str = "0000";
-const MESSAGE_DELIMITER_2: &str = "0009done\n";
+const REQUEST_DELIMITER: &str = "0000";
+const REQUEST_DELIMITER_DONE: &str = "0009done\n";
 
 impl ServerProtocol {
     pub fn new() -> Self {
@@ -146,11 +146,11 @@ impl ServerProtocol {
 	        stream.write_all(line_to_send.as_bytes())?;
         }
 
-        stream.write_all(ServerProtocol::possible_message_delimiters()[0].as_bytes());
+        stream.write_all(REQUEST_DELIMITER.as_bytes());
         println!("-sent end of message delimiter-");
 
         let mut reader = std::io::BufReader::new(stream);
-        let requests_received: Vec<String> = ServerProtocol::read_until_delimiter(&mut reader)?;
+        let requests_received: Vec<String> = ServerProtocol::read_until(&mut reader, REQUEST_DELIMITER_DONE)?;
         for request_received in requests_received {
 	        let request_array: Vec<&str> = request_received.split_whitespace().collect();
 	        println!("request in array: {:?}", request_array);
@@ -178,9 +178,8 @@ impl ServerProtocol {
         Ok(())
     }
 
-    pub fn read_until_delimiter(reader: &mut dyn Read) -> Result<Vec<String>, Box<dyn Error>> {
+    pub fn read_until(reader: &mut dyn Read, delimiter: &str) -> Result<Vec<String>, Box<dyn Error>> {
     	let mut requests_received: Vec<String> = Vec::new();
-    	let message_delimiters: Vec<String> = ServerProtocol::possible_message_delimiters();
     	while true {
 	    	println!("waiting for request..");
 	        let request_length = ServerProtocol::get_request_length(reader)?;
@@ -198,7 +197,8 @@ impl ServerProtocol {
 	        println!("request: {:?}", request);
 
 	        // received a message delimiter
-	        if message_delimiters.contains(&request) {
+	        if &request == delimiter {
+	        	println!("found delimiter {:?}", delimiter);
 			    break;
 			}
 	        requests_received.push(request);
@@ -222,10 +222,6 @@ impl ServerProtocol {
     pub fn format_line_to_send(line: String) -> String {
     	format!("{:04x}{}", line.len() + 4, line)
     }
-    
-    pub fn possible_message_delimiters() -> Vec<String> {
-    	vec![String::from(MESSAGE_DELIMITER_1), String::from(MESSAGE_DELIMITER_2)]
-	}
 
     pub fn receive_pack(&mut self) -> Result<(), Box<dyn Error>> {
         /*println!("1");
