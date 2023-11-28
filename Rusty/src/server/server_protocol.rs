@@ -5,8 +5,8 @@ const UPLOAD_PACK: &str = "git-upload-pack";
 pub struct ServerProtocol;
 const LENGTH_BYTES: usize = 4;
 const WANT_REQUEST: &str = "want";
-const REQUEST_DELIMITER: &str = "0000";
-const REQUEST_DELIMITER_DONE: &str = "0009done\n";
+const REQUEST_LENGTH_CERO: &str = "0000";
+const REQUEST_DELIMITER_DONE: &str = "done\n";
 
 impl ServerProtocol {
     pub fn new() -> Self {
@@ -146,11 +146,11 @@ impl ServerProtocol {
 	        stream.write_all(line_to_send.as_bytes())?;
         }
 
-        stream.write_all(REQUEST_DELIMITER.as_bytes());
+        stream.write_all(REQUEST_LENGTH_CERO.as_bytes());
         println!("-sent end of message delimiter-");
 
         let mut reader = std::io::BufReader::new(stream);
-        let requests_received: Vec<String> = ServerProtocol::read_until(&mut reader, REQUEST_DELIMITER_DONE)?;
+        let requests_received: Vec<String> = ServerProtocol::read_until(&mut reader, REQUEST_DELIMITER_DONE, false)?;
         for request_received in requests_received {
 	        let request_array: Vec<&str> = request_received.split_whitespace().collect();
 	        println!("request in array: {:?}", request_array);
@@ -178,19 +178,14 @@ impl ServerProtocol {
         Ok(())
     }
 
-    pub fn read_until(reader: &mut dyn Read, delimiter: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    pub fn read_until(reader: &mut dyn Read, delimiter: &str, stop_when_length_cero: bool) -> Result<Vec<String>, Box<dyn Error>> {
     	let mut requests_received: Vec<String> = Vec::new();
     	while true {
 	    	println!("waiting for request..");
 	        let request_length = ServerProtocol::get_request_length(reader)?;
 	        println!("request length: {:?}", request_length);
 	        if request_length == 0 {
-	        	// TODO gracefully end connection, message length is 0
-	        	/*return Err(Box::new(io::Error::new(
-	                io::ErrorKind::Other,
-	                "Error: Request length 0",
-	            )));*/
-	            break; // TODO I'm leaving this break for the time being so that I can continue execution
+	            if stop_when_length_cero { break; } else { continue; }
 	        }
 	        println!("reading request..");
 	        let request = ServerProtocol::read_exact_length_to_string(reader, request_length)?;

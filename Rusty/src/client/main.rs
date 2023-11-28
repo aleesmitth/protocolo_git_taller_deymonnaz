@@ -62,7 +62,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     println!("{}", error);
     //     return Ok(())
     // }
-    if let Err(error) = ShowRef::new().execute(&mut head, None) {
+    if let Err(error) = Clone::new().execute(&mut head, None) {
         println!("{}", error);
         return Ok(())
     }
