@@ -1,4 +1,4 @@
-use std::{fs, error::Error, io, io::Write, io::Read};
+use std::{fs, error::Error, io, io::Write, io::Read, path::Path};
 extern crate crypto;
 extern crate libflate;
 
@@ -7,6 +7,9 @@ use crypto::digest::Digest;
 use libflate::zlib::{Encoder, Decoder};
 use crate::commands::structs::Head;
 
+use super::structs::ObjectType;
+
+const OBJECT: &str = ".git/objects";
 const R_HEADS: &str = ".git/refs/heads";
 const HEAD_FILE: &str = ".git/HEAD";
 const DEFAULT_BRANCH_NAME: &str = "main";
@@ -52,7 +55,7 @@ pub fn read_file_content(path: &str) -> Result<String, io::Error> {
 /// Give a file's path it reads it's lines and returns them as a Vec<u8>
 pub fn read_file_content_to_bytes(path: &str) -> Result<Vec<u8>, io::Error> {
     let mut file_content: Vec<u8> = Vec::new();
-    let mut file = fs::File::open(path)?;
+    let mut file: fs::File = fs::File::open(path)?;
     file.read_to_end(&mut file_content)?;
     Ok(file_content)
 }
@@ -187,6 +190,42 @@ pub fn remove_object_from_file(file_path: &str) -> io::Result<()> {
     Ok(())
 }
 
+pub fn get_all_branches() -> Result<Vec<String>, Box<dyn Error>> {
+    let current_branch_path = get_current_branch_path()?;
+    println!("test: {:?}",current_branch_path);
+
+    // Extract the directory path from the file path
+    let dir_path = Path::new(&current_branch_path)
+        .parent()
+        .ok_or("Failed to get parent directory")?;
+
+    // Remove the ".git/" prefix if it exists
+    let dir_path_without_git = dir_path.strip_prefix(".git/").unwrap_or(dir_path);
+
+    // Read the contents of the directory
+    let entries = fs::read_dir(dir_path)?;
+
+    // Iterate over the entries
+    let mut branches: Vec<String> = Vec::new();
+    for entry in entries {
+        let entry = entry?;
+
+        // Get the file name and content
+        let file_name = if entry.path() == Path::new(&current_branch_path) {
+            "HEAD".to_string()
+        } else {
+            dir_path_without_git.join(entry.file_name()).to_string_lossy().into_owned()
+        };
+        let file_content = fs::read_to_string(entry.path())?;
+
+        // Combine content and filename
+        let branch = format!("{} {}\n", file_content, file_name);
+        branches.push(branch);
+    }
+
+    Ok(branches)
+}
+
 pub fn list_files_recursively(dir_path: &str, files_list: &mut Vec<String>) -> io::Result<()> {
     let entries = fs::read_dir(dir_path)?;
 
@@ -233,4 +272,21 @@ pub fn generate_sha1_string_from_bytes(data: &Vec<u8>) -> String {
     let mut hasher = Sha1::new();
     hasher.input(&data);
     hasher.result_str()
+}
+
+pub fn read_object(hash: String) -> Result<(ObjectType, String), Box<dyn Error>> {
+    let (directory, file) = hash.split_at(2);
+    let object_path = format!("{}/{}/{}", OBJECT, directory, file);
+    let mut file = fs::File::open(object_path)?;
+    let mut buffer = String::new();
+    Decoder::new(file)?.read_to_string(&mut buffer)?;
+
+    let file_content: Vec<String> = buffer.split('\0').map(String::from).collect();
+    let object_header: Vec<String> = file_content[0].split(' ').map(String::from).collect();
+    let object_type = ObjectType::new(&object_header[0]).ok_or(io::Error::new(
+        io::ErrorKind::InvalidData,
+        "Failed to determine object type",
+    ))?;
+
+    Ok((object_type, file_content[1].clone()))
 }
