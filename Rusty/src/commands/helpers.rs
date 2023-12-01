@@ -7,6 +7,9 @@ use crypto::digest::Digest;
 use libflate::zlib::{Encoder, Decoder};
 use crate::commands::structs::Head;
 
+use super::structs::ObjectType;
+
+const OBJECT: &str = ".git/objects";
 const R_HEADS: &str = ".git/refs/heads";
 const HEAD_FILE: &str = ".git/HEAD";
 const DEFAULT_BRANCH_NAME: &str = "main";
@@ -52,7 +55,7 @@ pub fn read_file_content(path: &str) -> Result<String, io::Error> {
 /// Give a file's path it reads it's lines and returns them as a Vec<u8>
 pub fn read_file_content_to_bytes(path: &str) -> Result<Vec<u8>, io::Error> {
     let mut file_content: Vec<u8> = Vec::new();
-    let mut file = fs::File::open(path)?;
+    let mut file: fs::File = fs::File::open(path)?;
     file.read_to_end(&mut file_content)?;
     Ok(file_content)
 }
@@ -269,4 +272,21 @@ pub fn generate_sha1_string_from_bytes(data: &Vec<u8>) -> String {
     let mut hasher = Sha1::new();
     hasher.input(&data);
     hasher.result_str()
+}
+
+pub fn read_object(hash: String) -> Result<(ObjectType, String), Box<dyn Error>> {
+    let (directory, file) = hash.split_at(2);
+    let object_path = format!("{}/{}/{}", OBJECT, directory, file);
+    let mut file = fs::File::open(object_path)?;
+    let mut buffer = String::new();
+    Decoder::new(file)?.read_to_string(&mut buffer)?;
+
+    let file_content: Vec<String> = buffer.split('\0').map(String::from).collect();
+    let object_header: Vec<String> = file_content[0].split(' ').map(String::from).collect();
+    let object_type = ObjectType::new(&object_header[0]).ok_or(io::Error::new(
+        io::ErrorKind::InvalidData,
+        "Failed to determine object type",
+    ))?;
+
+    Ok((object_type, file_content[1].clone()))
 }

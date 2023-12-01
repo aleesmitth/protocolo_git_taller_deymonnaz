@@ -196,6 +196,12 @@ impl fmt::Display for ObjectType {
     }
 }
 
+pub enum PackObjectType {
+    Base(ObjectType),
+    OffsetDelta,
+    HashDelta,
+  }
+
 pub struct ServerConnection;
 
 impl ServerConnection {
