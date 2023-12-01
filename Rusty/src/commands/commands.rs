@@ -618,7 +618,7 @@ impl Command for PackObjects {
     /// This command generates a Git pack file that contains compressed Git objects.
     /// The pack file format is used to efficiently store objects and their history.
     /// It also creates an index file that helps locate objects in the pack file.
-    fn execute(&self, _head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {  
+    fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {  
         let arg_slice = args.unwrap_or(Vec::new());
         let objects_list: Vec<String> = arg_slice[0]; // aca tengo que tener los hashes de todos los objetos que quiero procesar
         // Open pack and index files

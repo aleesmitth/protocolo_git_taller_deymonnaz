@@ -59,13 +59,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Checkout::new().execute(&mut head, Some(vec!["new"]))?;
     // Add::new().execute(&mut head, Some(vec!["ejemplo.txt"]))?;
     // Commit::new().execute(&mut head, None)?;
-<<<<<<< HEAD
     // if let Err(error) = Clone::new().execute(&mut head, None) {
     //     println!("{}", error);
     //     return Ok(())
     // }
-=======
->>>>>>> daeb0be (UnpackObjects fully working)
     if let Err(error) = Clone::new().execute(&mut head, None) {
         println!("{}", error);
         return Ok(())
