@@ -1,4 +1,4 @@
-use std::{fs, error::Error, io, io::Write, io::Read, path::Path};
+use std::{fs, error::Error, io, io::Write, io::Read, path::Path, fmt::format, collections::HashMap};
 extern crate crypto;
 extern crate libflate;
 
@@ -15,6 +15,7 @@ const HEAD_FILE: &str = ".git/HEAD";
 const DEFAULT_BRANCH_NAME: &str = "main";
 const INDEX_FILE: &str = ".git/index";
 const CONFIG_FILE: &str = ".git/config";
+const R_REMOTES: &str = ".git/refs/remotes";
 
 /// Retrieves the path to the current branch from the Git HEAD file.
 pub fn get_current_branch_path() -> Result<String, Box<dyn Error>> {
@@ -289,4 +290,77 @@ pub fn read_object(hash: String) -> Result<(ObjectType, String), Box<dyn Error>>
     ))?;
 
     Ok((object_type, file_content[1].clone()))
+}
+
+pub fn get_remote_tracking_branches() -> Result<HashMap<String, (String, String)>, Box<dyn Error>> {
+    // Assuming CONFIG_FILE is a constant containing the path to the Git configuration file
+    const CONFIG_FILE: &str = ".git/config";
+
+    // Read the content of the Git configuration file
+    let config_content = read_file_content(CONFIG_FILE)?;
+
+    // Initialize a HashMap to store branch names and their corresponding remotes
+    let mut branches_and_remotes = HashMap::new();
+
+    // Parse the INI-like configuration content manually
+    let mut lines = config_content.lines().peekable();
+    while let Some(line) = lines.next() {
+        // Check if the line represents a section header
+        if line.starts_with("[branch ") {
+            let branch_name = line.trim_start_matches("[branch ").trim_end_matches(']');
+            // Extract remote and merge values
+            let mut remote = None;
+            let mut merge = None;
+
+            while let Some(next_line) = lines.next() {
+                if next_line.starts_with("remote = ") {
+                    remote = Some(next_line.trim_start_matches("remote = ").to_string());
+                } else if next_line.starts_with("merge = ") {
+                    merge = Some(next_line.trim_start_matches("merge = refs/heads/").to_string());
+                } else if next_line.starts_with('[') {
+                    // End of the current section
+                    break;
+                }
+            }
+
+            // If both remote and merge values are present, store in the HashMap
+            if let (Some(remote), Some(merge)) = (remote, merge) {
+                // branches_and_remotes.insert(branch_name.to_string(), format!("{}/{}", remote, merge));
+                branches_and_remotes.insert(branch_name.to_string(), (remote, merge));
+            }
+        }
+    }
+    Ok(branches_and_remotes)
+}
+
+pub fn update_local_branch_with_commit(remote_name: &str, branch_name: &str, remote_hash: &str) -> Result<(), Box<dyn Error>> {
+    let config_content = read_file_content(CONFIG_FILE)?;
+
+    let branch_header = format!("[branch '{}']", branch_name);
+    let mut lines = config_content.lines().peekable();
+    while let Some(line) = lines.next() {
+        if line == branch_header {
+            let mut remote = None;
+            while let Some(next_line) = lines.next() {
+                if next_line.starts_with("remote = ") {
+                    remote = Some(next_line.trim_start_matches("remote = ").to_string());
+                } else if next_line.starts_with('[') {
+                    break;
+                }
+            }
+            if let Some(remote) = remote {
+                if remote == remote_name {
+                    update_branch_hash(branch_name, remote_hash);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn update_branch_hash(branch_name: &str, new_commit_hash: &str) -> Result<(), Box<dyn Error>> {
+    let path = format!("{}/{}", R_HEADS, branch_name);
+    let mut file = fs::File::create(path)?;
+    file.write_all(new_commit_hash.as_bytes())?;
+    Ok(())
 }

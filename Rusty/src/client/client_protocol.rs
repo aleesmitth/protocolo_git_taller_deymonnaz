@@ -1,4 +1,5 @@
 use crate::commands::helpers;
+use std::thread::current;
 use std::{fs, error::Error, io, io::Write, io::Read, str, env, io::BufRead, net::TcpStream, net::Shutdown, thread, time::Duration};
 use std::sync::{mpsc, Arc, Mutex};
 pub struct ClientProtocol;
@@ -66,8 +67,8 @@ impl ClientProtocol {
         Ok(())
     }
 
-    pub fn clone_from_remote(&mut self) -> Result<(), Box<dyn Error>> {
-        let mut stream = ClientProtocol::connect("127.0.0.1:9418")?;
+    pub fn fetch_from_remote(&mut self, remote_url: String) -> Result<Vec<(String, String)>, Box<dyn Error>> {
+        let mut stream = ClientProtocol::connect(&remote_url)?;
 
         let request = format!("{:04x}git-upload-pack /projects/.git\0host=127.0.0.1\0", "git-upload-pack /projects/.git\0host=127.0.0.1\0".len() + 4);
         println!("{}", request);
@@ -81,7 +82,8 @@ impl ClientProtocol {
             ClientProtocol::read_response_from_server(stream_clone, tx);
         });
 
-        let mut objects_in_remote: Vec<String> = Vec::new(); 
+        let mut refs_in_remote: Vec<(String, String)> = Vec::new();
+        let mut current_commit = String::new();
         thread::sleep(Duration::from_millis(10));
         loop {
             match rx.try_recv() {
@@ -91,9 +93,16 @@ impl ClientProtocol {
                     }
                     let split_value: Vec<&str> = message.split_whitespace().collect();
                     let remote_hash = split_value[0].to_string()[4..].to_string();
+                    println!("split value: {:?}", split_value);
                     println!("response line: {:?}\n", message);
                     println!("remote hash: {}", remote_hash);
-                    objects_in_remote.push(remote_hash);
+                    if split_value.len() > 2 {
+                        current_commit = remote_hash;
+                    } else {
+                        //aca tengo que hacer que se guarde el commit y nombre de la ref
+                        let ref_name = split_value[1];
+                        refs_in_remote.push((remote_hash, ref_name.to_string()));
+                    }
                 }
                 Err(_) => break,
             }
@@ -101,9 +110,9 @@ impl ClientProtocol {
         }
 
         println!("\nafter response");
-        println!("{:?}", objects_in_remote);
-        for object_id in objects_in_remote {
-            let line = format!("want {}\n", object_id);
+        println!("{:?}", refs_in_remote);
+        for (ref_hash, ref_name) in &refs_in_remote {
+            let line = format!("want {}\n", ref_hash);
             let actual_line = format!("{:04x}{}", line.len() + 4, line);
             println!("request line: {}", actual_line);
             stream.write_all(actual_line.as_bytes())?;
@@ -140,7 +149,7 @@ impl ClientProtocol {
         thread_handle.join().expect("Error joining thread");
         stream.shutdown(Shutdown::Both)?;
 
-        Ok(())
+        Ok(refs_in_remote)
     }
 
     fn read_response_from_server(stream: TcpStream, tx: mpsc::Sender<String>) -> Result<(), Box<dyn Error>> {
