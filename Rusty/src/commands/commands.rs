@@ -1,5 +1,5 @@
 use std::fs::ReadDir;
-use std::{fs, error::Error, io, io::Write, io::Read, str, env, io::BufRead, io::Seek, io::SeekFrom, io::ErrorKind};
+use std::{fs, error::Error, io, io::Write, io::Read, str, env, io::BufRead, io::Seek, io::SeekFrom, io::ErrorKind, collections::HashMap};
 
 extern crate libflate;
 use libflate::zlib::Decoder;
@@ -22,10 +22,12 @@ const REMOVE_FLAG: &str = "rm";
 pub const R_HEADS: &str = ".git/refs/heads";
 const HEAD_FILE: &str = ".git/HEAD";
 const R_TAGS: &str = ".git/refs/tags";
+const R_REMOTES: &str = ".git/refs/remotes";
 const DEFAULT_BRANCH_NAME: &str = "main";
 const INDEX_FILE: &str = ".git/index";
 const CONFIG_FILE: &str = ".git/config";
 pub const RELATIVE_PATH: &str = "RELATIVE_PATH";
+const DEFAULT_REMOTE_REPOSITORY: &str = "origin";
 const VARINT_ENCODING_BITS: u8 = 7;
 const VARINT_CONTINUE_FLAG: u8 = 1 << VARINT_ENCODING_BITS;
 const TYPE_BITS: u8 = 3;
@@ -38,6 +40,7 @@ const COPY_ZERO_SIZE: usize = 0x10000;
 // const TYPE_MASK: usize = (1 << TYPE_BITS) - 1;
 
 
+use crate::client;
 use crate::commands::helpers::get_file_length;
 use crate::commands::structs::HashObjectCreator;
 use crate::commands::structs::ObjectType;
@@ -48,6 +51,7 @@ use crate::commands::structs::StagingArea;
 use crate::client::client_protocol::ClientProtocol;
 
 use crate::commands::helpers;
+use crate::server::server_protocol;
 
 // TODO MOVER A OTRA CARPETA. NO TIENE SENTIDO commands::commands::PathHandler
 pub struct PathHandler;
@@ -84,7 +88,10 @@ impl Command for Init {
         let _refs_tags = fs::create_dir_all(PathHandler::get_relative_path(R_TAGS))?;
         let _obj = fs::create_dir(PathHandler::get_relative_path(OBJECT))?;
         let _pack = fs::create_dir(PathHandler::get_relative_path(PACK))?;
-        
+        let _remotes_dir = fs::create_dir(R_REMOTES)?;
+        let default_remote_dir_path = format!("{}/{}", R_REMOTES, DEFAULT_REMOTE_REPOSITORY);
+        fs::create_dir(default_remote_dir_path)?;
+
         let mut _config_file = fs::File::create(PathHandler::get_relative_path(CONFIG_FILE))?;
         let mut head_file = fs::File::create(PathHandler::get_relative_path(HEAD_FILE))?;
         head_file.write_all(b"ref: refs/heads/main")?;
@@ -522,6 +529,9 @@ impl Remote {
 
         let mut config_file = fs::File::create(CONFIG_FILE)?;
         config_file.write_all(new_config_content.as_bytes())?;
+
+        let remote_dir_path = format!("{}/{}", R_REMOTES, remote_name);
+        fs::create_dir(remote_dir_path)?;
 
         Ok(())
     }
@@ -972,6 +982,76 @@ impl Command for UnpackObjects {
     }
 }
 
+pub struct Fetch;
+
+impl Fetch {
+    /// Creates a new `Push` instance.
+    pub fn new() -> Self {
+        Fetch {}
+    }
+
+    pub fn add_remote_ref(&self, ref_hash: &str, ref_name: &str, remote_name: &str) -> Result<(), Box<dyn Error>> {
+        let split_ref_name: Vec<&str> = ref_name.split('/').collect(); //aca tendria que ver si es un tag o un branch
+        let remote_ref_name = split_ref_name[2];
+        let mut ref_path = String::new();
+        match split_ref_name[1] {
+            "heads" => {
+                ref_path = format!("{}/{}/{}", R_REMOTES, remote_name, remote_ref_name);
+                helpers::update_local_branch_with_commit(remote_name, remote_ref_name, ref_hash);
+            } 
+            "tags" => ref_path = format!("{}/{}", R_TAGS, remote_ref_name),
+            _ => {}
+        } 
+        println!("{}", ref_path);
+        let mut ref_file = fs::File::create(ref_path)?;
+        ref_file.write_all(ref_hash.as_bytes())?;
+        Ok(())
+    }
+
+    // pub fn update_remote_tracking_branches(&self) -> Result<(), Box<dyn Error>> {
+    //     let branches_and_remotes = helpers::get_remote_tracking_branches()?;
+        
+    //     for (branch_name, (remote, merge)) in branches_and_remotes.iter() {
+    //         // let split_value = value.split('/').collect();
+    //         println!("Key: {}, Values: remote:{} merge:{}", branch_name, remote, merge);
+    //     }
+
+    //     Ok(())
+    // }
+}
+
+
+impl Command for Fetch {
+    fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        let mut remote_url = String::new();
+        let mut remote_name = DEFAULT_REMOTE_REPOSITORY;
+        match args {
+            Some(args) => {
+                match helpers::get_remote_url(args[0]) {
+                    Ok(url) => {
+                        remote_url = url;
+                        remote_name = args[0];
+                    }
+                    Err(_) => remote_url = args[0].to_string(),
+                }
+            }
+            None => {
+                remote_url = helpers::get_remote_url(DEFAULT_REMOTE_REPOSITORY)?;
+            }
+        }
+
+        let refs = client::client_protocol::ClientProtocol::new().fetch_from_remote(remote_url)?;
+        for (ref_hash, ref_name) in refs {
+            println!("ref: {} {}", ref_hash, ref_name);
+            self.add_remote_ref(&ref_hash, &ref_name, remote_name)?;
+        }
+
+        // self.update_remote_tracking_branches();
+
+        Ok(String::new())
+    }
+}
+
 pub struct Push;
 
 impl Push {
@@ -1004,14 +1084,14 @@ impl Clone {
     }
 }
 
-impl Command for Clone {
-    fn execute(&self, _head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
-        let mut server_connection = ClientProtocol::new();
-        server_connection.clone_from_remote()?;
-        UnpackObjects::new().execute(_head, None)?;
-        Ok(String::new())
-    }
-}
+// impl Command for Clone {
+//     fn execute(&self, _head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+//         let mut server_connection = ClientProtocol::new();
+//         server_connection.clone_from_remote()?;
+//         UnpackObjects::new().execute(_head, None)?;
+//         Ok(String::new())
+//     }
+// }
 
 /// This module defines the `Log` struct, which is responsible for implementing the "git log" command.
 /// It provides methods to generate log entries and execute the command.

@@ -12,6 +12,8 @@ use rusty::commands::commands::Checkout;
 use rusty::commands::commands::Branch;
 use rusty::commands::commands::Tag;
 use rusty::commands::commands::Command;
+use rusty::commands::commands::Remote;
+use rusty::commands::commands::Fetch;
 use std::{env, io};
 
 /// This function takes a slice of strings and converts it into a vector of string slices.
@@ -63,7 +65,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     println!("{}", error);
     //     return Ok(())
     // }
-    if let Err(error) = Clone::new().execute(&mut head, None) {
+    // if let Err(error) = Clone::new().execute(&mut head, None) {
+    //     println!("{}", error);
+    //     return Ok(())
+    // }
+    // Remote::new().execute(&mut head, Some(vec!["add", "origin", "127.0.0.1:9418"]))?;
+    if let Err(error) = Fetch::new().execute(&mut head, None) {
         println!("{}", error);
         return Ok(())
     }
