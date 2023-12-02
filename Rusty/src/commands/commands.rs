@@ -997,7 +997,7 @@ impl Fetch {
         match split_ref_name[1] {
             "heads" => {
                 ref_path = format!("{}/{}/{}", R_REMOTES, remote_name, remote_ref_name);
-                helpers::update_local_branch_with_commit(remote_name, remote_ref_name, ref_hash);
+                // helpers::update_local_branch_with_commit(remote_name, remote_ref_name, ref_hash); //no hace falta hacer esto aca
             } 
             "tags" => ref_path = format!("{}/{}", R_TAGS, remote_ref_name),
             _ => {}
@@ -1047,6 +1047,27 @@ impl Command for Fetch {
         }
 
         // self.update_remote_tracking_branches();
+
+        Ok(String::new())
+    }
+}
+
+pub struct Pull;
+
+impl Pull {
+    /// Creates a new `Push` instance.
+    pub fn new() -> Self {
+        Pull {}
+    }
+}
+
+
+impl Command for Pull {
+    fn execute(&self, _head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        Fetch::new().execute(_head, None)?;
+        let current_branch = helpers::get_current_branch_path()?;
+        // Merge::new().execute(&mut head, Some(vec![""]))?;
+        //aca tengo que realizar un merge o rebase dependiendo de la 
 
         Ok(String::new())
     }
@@ -1370,6 +1391,29 @@ impl Command for ShowRef {
         let tags_entries = fs::read_dir(R_TAGS)?;
         self.show_refs_in_directory(tags_entries, "refs/tags/")?;
 
+        Ok(String::new())
+    }
+}
+
+pub struct Merge;
+
+impl Merge {
+    /// Creates a new `Push` instance.
+    pub fn new() -> Self {
+        Merge {}
+    }
+}
+
+impl Command for Merge {
+    fn execute(&self, _head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        let arg_slice = args.unwrap_or(Vec::new()); //aca tendria que chequear que sea valido el branch que recibo por parametro
+
+        let branch_to_merge = arg_slice[0];
+        let current_branch_path = helpers::get_current_branch_path()?;
+        // habria que buscar ancestor en comun
+        // ver si en el branch actual se hicieron mas commits despues de ese ancestro
+        // si no hubo mas commits puedo hacer fastforward merge y listo
+        helpers::find_common_ancestor_commit();
         Ok(String::new())
     }
 }

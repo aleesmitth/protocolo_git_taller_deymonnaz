@@ -364,3 +364,14 @@ fn update_branch_hash(branch_name: &str, new_commit_hash: &str) -> Result<(), Bo
     file.write_all(new_commit_hash.as_bytes())?;
     Ok(())
 }
+
+pub fn find_common_ancestor_commit(head: Head, current_branch: &str, merging_branch: &str) {
+    let current_branch_log = Log::new().execute(head, Some(vec![current_branch]));
+    let merging_branch_log = Log::new().execute(head, Some(vec![merging_branch]));
+
+    for merging_commit in merging_branch_log {
+        if merging_commit in merging_branch_log {
+            
+        }
+    }
+}
