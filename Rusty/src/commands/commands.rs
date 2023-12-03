@@ -1182,6 +1182,27 @@ impl Command for Push {
     }
 }
 
+pub struct Pull;
+
+impl Pull {
+    /// Creates a new `Push` instance.
+    pub fn new() -> Self {
+        Pull {}
+    }
+}
+
+
+impl Command for Pull {
+    fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        Fetch::new().execute(_head, None)?;
+
+        // Merge::new().execute(_head, Some(vec!["origin"]))?;
+        Ok(String::new())
+    }
+}
+
+
+
 pub struct Clone;
 
 impl Clone {
@@ -1940,4 +1961,3 @@ mod tests {
     }
 
 }
-
