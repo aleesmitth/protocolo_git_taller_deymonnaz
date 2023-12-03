@@ -1958,8 +1958,8 @@ mod tests {
     }
     const REMOTE_NAME: &str = "origin";
     const REMOTE_URL: &str = "127.0.0.1:9418";
-    
-    /* #[test]
+   /*  
+    #[test]
     fn test_add_remote() {
         // Common setup
         let _temp_dir = common_setup();
@@ -1995,5 +1995,5 @@ mod tests {
 
         // Clean up: The temporary directory will be automatically deleted when temp_dir goes out of scope
     }
-
+ */
 }
