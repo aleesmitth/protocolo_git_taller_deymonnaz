@@ -365,13 +365,13 @@ fn update_branch_hash(branch_name: &str, new_commit_hash: &str) -> Result<(), Bo
     Ok(())
 }
 
-pub fn find_common_ancestor_commit(head: Head, current_branch: &str, merging_branch: &str) {
-    let current_branch_log = Log::new().execute(head, Some(vec![current_branch]));
-    let merging_branch_log = Log::new().execute(head, Some(vec![merging_branch]));
+// pub fn find_common_ancestor_commit(head: Head, current_branch: &str, merging_branch: &str) {
+//     let current_branch_log = Log::new().execute(head, Some(vec![current_branch]));
+//     let merging_branch_log = Log::new().execute(head, Some(vec![merging_branch]));
 
-    for merging_commit in merging_branch_log {
-        if merging_commit in merging_branch_log {
-            
-        }
-    }
-}
+//     for merging_commit in merging_branch_log {
+//         if merging_commit in merging_branch_log {
+
+//         }
+//     }
+// }
