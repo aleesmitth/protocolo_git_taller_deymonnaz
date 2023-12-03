@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 rust-crypto = "0.2.36"
 libflate = "2"
+tempfile = "3.2"
 
 [[bin]]
 name = "main"

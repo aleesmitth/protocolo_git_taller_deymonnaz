@@ -1,6 +1,7 @@
 use std::fs::ReadDir;
 use std::{fs, error::Error, io, io::Write, io::Read, str, env, io::BufRead, io::Seek, io::SeekFrom, io::ErrorKind, collections::HashMap, path::Path};
 
+
 extern crate libflate;
 use libflate::zlib::Decoder;
 
@@ -17,6 +18,13 @@ const SIZE_FLAG: &str = "-s";
 const MESSAGE_FLAG: &str = "-m";
 const VERIFY_FLAG: &str = "-v";
 const LIST_FLAG: &str = "-l";
+
+// flags for ls-files. also DELETE_FLAG is being used
+const CACHED_FLAG: &str = "-c";
+const IGNORE_FLAG: &str = "-i";
+const STAGE_FLAG: &str = "-s";
+const MODIFIED_FLAG: &str = "-m";
+
 const EXCLUDE_LOG_ENTRY: char = '^';
 const HEAD: &str = "HEAD";
 const ADD_FLAG: &str = "add";
@@ -41,21 +49,22 @@ const COPY_ZERO_SIZE: usize = 0x10000;
 // const TYPE_BITS: usize = 3;
 // const TYPE_MASK: usize = (1 << TYPE_BITS) - 1;
 
-
 use crate::client;
 use crate::commands::helpers::get_file_length;
 use crate::commands::structs::HashObjectCreator;
+use crate::commands::structs::Head;
 use crate::commands::structs::ObjectType;
 use crate::commands::structs::PackObjectType;
-use crate::commands::structs::Head;
 use crate::commands::structs::StagingArea;
+
 use crate::commands::structs::WorkingDirectory;
+use crate::commands::structs::IndexFileEntryState;
 
 
 use crate::client::client_protocol::ClientProtocol;
 
 use crate::commands::helpers;
-use crate::server::server_protocol;
+
 
 // TODO MOVER A OTRA CARPETA. NO TIENE SENTIDO commands::commands::PathHandler
 pub struct PathHandler;
@@ -66,7 +75,7 @@ impl PathHandler {
             // Concatenate with a const string
             return format!("{}{}", relative_path, original_path);
         }
-        return original_path.to_string()
+        return original_path.to_string();
     }
 }
 
@@ -78,7 +87,7 @@ pub struct Init;
 
 impl Init {
     pub fn new() -> Self {
-        Init {  }
+        Init {}
     }
 }
 
@@ -87,14 +96,14 @@ impl Command for Init {
     /// This function initializes a new Git repository by creating the necessary directory structure
     /// for branches, tags, and objects. It also sets the default branch to 'main' and creates an empty
     ///  index file. If successful, it returns an empty string; otherwise, it returns an error message.
-    fn execute(&self, head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>>{       
+    fn execute(&self, head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let _refs_heads = fs::create_dir_all(PathHandler::get_relative_path(R_HEADS));
         let _refs_tags = fs::create_dir_all(PathHandler::get_relative_path(R_TAGS))?;
         let _obj = fs::create_dir(PathHandler::get_relative_path(OBJECT))?;
         let _pack = fs::create_dir(PathHandler::get_relative_path(PACK))?;
-        let _remotes_dir = fs::create_dir(R_REMOTES)?;
+        let _remotes_dir = fs::create_dir(PathHandler::get_relative_path(R_REMOTES))?;
         let default_remote_dir_path = format!("{}/{}", R_REMOTES, DEFAULT_REMOTE_REPOSITORY);
-        fs::create_dir(default_remote_dir_path)?;
+        fs::create_dir(PathHandler::get_relative_path(&default_remote_dir_path))?;
 
         let mut _config_file = fs::File::create(PathHandler::get_relative_path(CONFIG_FILE))?;
         let mut head_file = fs::File::create(PathHandler::get_relative_path(HEAD_FILE))?;
@@ -103,8 +112,8 @@ impl Command for Init {
         let _main = fs::File::create(PathHandler::get_relative_path(".git/refs/heads/main"))?; //esto no esta ideal hacerlo aca
         helpers::create_new_branch(DEFAULT_BRANCH_NAME, head)?;
         let _index_file = fs::File::create(PathHandler::get_relative_path(INDEX_FILE))?;
-        
-        Ok(String::new())    
+
+        Ok(String::new())
     }
 }
 
@@ -112,7 +121,7 @@ pub struct Branch;
 
 impl Branch {
     pub fn new() -> Self {
-        Branch {  }
+        Branch {}
     }
 }
 
@@ -144,7 +153,7 @@ impl Branch {
 ///
 /// # Examples
 ///
-/// ```rust
+/// rust
 /// let mut head = Head::new(); // Initialize a Head instance.
 /// let args1 = Some(&["my-branch1"]); // Command-line arguments.
 /// let result1 = Branch.execute(&mut head, args1);
@@ -152,46 +161,54 @@ impl Branch {
 /// let args2 = Some(&["-d", "my-branch1", "-m", "my-branch2"]); // Command-line arguments.
 /// let result2 = Branch.execute(&mut head, args2);
 /// assert!(result2.is_ok());
-/// ```
+///
 impl Command for Branch {
     fn execute(&self, head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
-	    let list_branches_flag = args.is_none();
-	    let mut delete_flag = false;
-	    let mut rename_flag = false;
-	    let mut first_branch_name: Option<String> = None;
-	    let mut second_branch_name: Option<String> = None;
-	    let arg_slice = args.unwrap_or(Vec::new());
+        let list_branches_flag = args.is_none();
+        let mut delete_flag = false;
+        let mut rename_flag = false;
+        let mut first_branch_name: Option<String> = None;
+        let mut second_branch_name: Option<String> = None;
+        let arg_slice = args.unwrap_or(Vec::new());
 
+        for arg in arg_slice {
+            // Note the & in for &arg
+            match arg {
+                DELETE_FLAG => delete_flag = true,
+                RENAME_FLAG => rename_flag = true,
+                _ => {
+                    if first_branch_name.is_none() {
+                        first_branch_name = Some(arg.to_string());
+                    } else if second_branch_name.is_none() {
+                        second_branch_name = Some(arg.to_string());
+                    }
+                }
+            }
+        }
 
-	    for arg in arg_slice { // Note the & in for &arg
-	        match arg {
-	            DELETE_FLAG => delete_flag = true,
-	            RENAME_FLAG => rename_flag = true,
-	            _ => {
-	            	if first_branch_name.is_none() {
-	                    first_branch_name = Some(arg.to_string());
-	                } else if second_branch_name.is_none() {
-	                    second_branch_name = Some(arg.to_string());
-	                }
-	            },
-	        }
-	    }
-
-	    /*
-			- if there are no args, print list of branches
-			- if there is "-d" flag, and a branch name, delete it
-			- if there is "-m" flag, and there isn't "-d" flag, and 2 branch names, rename the "first branch name" to the "second branch name"
-			- if there is no flags and a branch name, create a branch with that name
-	    */
-	    match (list_branches_flag, delete_flag, rename_flag, first_branch_name, second_branch_name) {
-	        (true, _, _, _, _) => head.print_all(),
-	        (_, true, _, Some(name), _) => head.delete_branch(&name)?,
-	        (_, false, true, Some(old_name), Some(new_name)) => head.rename_branch(&old_name, &new_name)?,
-	        (false, false, false, Some(name), _) => helpers::create_new_branch(&name, head)?,
-	        _ => {}
-	    }
-	    Ok(String::new())
-	}
+        /*
+            - if there are no args, print list of branches
+            - if there is "-d" flag, and a branch name, delete it
+            - if there is "-m" flag, and there isn't "-d" flag, and 2 branch names, rename the "first branch name" to the "second branch name"
+            - if there is no flags and a branch name, create a branch with that name
+        */
+        match (
+            list_branches_flag,
+            delete_flag,
+            rename_flag,
+            first_branch_name,
+            second_branch_name,
+        ) {
+            (true, _, _, _, _) => head.print_all(),
+            (_, true, _, Some(name), _) => head.delete_branch(&name)?,
+            (_, false, true, Some(old_name), Some(new_name)) => {
+                head.rename_branch(&old_name, &new_name)?
+            }
+            (false, false, false, Some(name), _) => helpers::create_new_branch(&name, head)?,
+            _ => {}
+        }
+        Ok(String::new())
+    }
 }
 
 pub struct Checkout;
@@ -209,32 +226,33 @@ impl Command for Checkout {
     fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         match args {
             Some(args) => {
-    
                 let branch_path = format!("{}/{}", R_HEADS, args[0]);
-                if !fs::metadata(branch_path).is_ok() {
+                if !fs::metadata(PathHandler::get_relative_path(&branch_path)).is_ok() {
                     return Err(Box::new(io::Error::new(
                         io::ErrorKind::Other,
                         "Error: Branch name did not match any file known.",
-                    )))
+                    )));
                 }
                 let new_head_content = format!("ref: refs/heads/{}", args[0]);
-        
-                let head_file_content = helpers::read_file_content(HEAD_FILE)?;
-        
+
+                let head_file_content = helpers::read_file_content(&PathHandler::get_relative_path(HEAD_FILE))?;
+
                 if head_file_content == new_head_content {
                     return Err(Box::new(io::Error::new(
                         io::ErrorKind::Other,
                         "Already on specified branch",
-                    )))
+                    )));
                 }
-                
-                let mut head_file = fs::File::create(HEAD_FILE)?;
+
+                let mut head_file = fs::File::create(PathHandler::get_relative_path(HEAD_FILE))?;
                 head_file.write_all(new_head_content.as_bytes())?;
             }
-            None => return Err(Box::new(io::Error::new(
-                io::ErrorKind::Other,
-                "No branch name was provided",
-            ))),
+            None => {
+                return Err(Box::new(io::Error::new(
+                    io::ErrorKind::Other,
+                    "No branch name was provided",
+                )))
+            }
         }
 
         Ok(String::new())
@@ -244,8 +262,8 @@ impl Command for Checkout {
 pub struct CatFile;
 
 impl CatFile {
-    pub fn new () -> Self {
-        CatFile{}
+    pub fn new() -> Self {
+        CatFile {}
     }
 }
 
@@ -255,12 +273,14 @@ impl Command for CatFile {
         match args {
             Some(args) => {
                 let path = format!(".git/objects/{}/{}", &args[1][..2], &args[1][2..]);
-                let file = fs::File::open(path)?;
+                let file = fs::File::open(&PathHandler::get_relative_path(&path))?;
 
-                let mut decoder = Decoder::new(file)?;
+                /* let mut decoder = Decoder::new(file)?;
 
                 let mut header = [0u8; 8];
-                decoder.read_exact(&mut header)?;
+                decoder.read_exact(&mut header)?; */
+                let mut header = Vec::with_capacity(8);
+                Decoder::new(file)?.read_to_end(&mut header)?;
 
                 let header_str = str::from_utf8(&header)?;
 
@@ -270,10 +290,15 @@ impl Command for CatFile {
                 match args[0] {
                     TYPE_FLAG => println!("{}", parts[0]),
                     SIZE_FLAG => println!("{}", parts[1]),
-                    _ => eprintln!(""),
+                    _ => return Err(Box::new(io::Error::new(io::ErrorKind::Other, "Flag error"))),
                 }
             }
-            None => eprintln!("")
+            None => {
+                return Err(Box::new(io::Error::new(
+                    io::ErrorKind::Other,
+                    "No arguments recieve",
+                )))
+            }
         }
 
         Ok(String::new())
@@ -284,7 +309,7 @@ pub struct HashObject;
 
 impl HashObject {
     pub fn new() -> Self {
-        HashObject {  }
+        HashObject {}
     }
 }
 
@@ -293,38 +318,52 @@ impl Command for HashObject {
     /// If the write flag is specified, the object is created as a file in the objects subdirectory.
     /// Default object type is "blob" but can be specified with type flag.
     fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        if args.is_none() {
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "No path provided",
+            )));
+        }
         let arg_slice = args.unwrap_or(Vec::new());
         let mut path: &str = "";
         let mut obj_type = ObjectType::Blob;
         let mut write = false;
-        for mut i in 0..arg_slice.len() {
+        let mut awaiting_type = false;
+        for i in 0..arg_slice.len() {
             match arg_slice[i] {
                 TYPE_FLAG => {
-                    i += 1;
-                    if let Some(new_obj_type) = ObjectType::new(arg_slice[i]) {
-                        obj_type = new_obj_type;
-                    } else {
-                        eprintln!("Unknown object type for input: {}", arg_slice[i]);
-                        return Ok(String::new());
-                    }
+                    awaiting_type = true;
                 }
                 WRITE_FLAG => write = true,
-                _ => path = arg_slice[i],
+                _ => {
+                    if awaiting_type {
+                        if let Some(new_obj_type) = ObjectType::new(arg_slice[i]) {
+                            obj_type = new_obj_type;
+                        } else {
+                            eprintln!("Unknown object type for input: {}", arg_slice[i]);
+                            return Ok(String::new());
+                        }
+                        awaiting_type = false;
+                    } else {
+                        path = arg_slice[i]
+                    }
+                }
             }
-        }  
+        }
         if path.is_empty() {
             eprintln!("Please provide a file path or data to hash.");
             return Ok(String::new());
         }
         let content = helpers::read_file_content(path)?;
+        let object_hash;
         if write {
             let file_len = helpers::get_file_length(path)?;
             return HashObjectCreator::write_object_file(content, obj_type, file_len);
+        } else {
+            object_hash = helpers::generate_sha1_string(content.as_str());
+            println!("{}", object_hash);
         }
-        else {
-            println!("{}", helpers::generate_sha1_string(content.as_str()));
-        }
-        Ok(String::new())
+        Ok(object_hash)
     }
 }
 
@@ -334,19 +373,25 @@ pub struct Commit {
 
 impl Commit {
     pub fn new() -> Self {
-        Commit { stg_area: StagingArea::new() }
+        Commit {
+            stg_area: StagingArea::new(),
+        }
     }
 
     /// Generates the content for a new commit.    
-    fn generate_commit_content(&self, tree_hash: String, message: Option<&str>, branch_path: &str) -> Result<String, Box<dyn Error>> {
-        let head_commit = helpers::read_file_content(branch_path)?;
+    fn generate_commit_content(
+        &self,
+        tree_hash: String,
+        message: Option<&str>,
+        branch_path: &str,
+    ) -> Result<String, Box<dyn Error>> {
+        let head_commit = helpers::read_file_content(&PathHandler::get_relative_path(branch_path))?;
         let mut content = format!("tree {}\nparent {}\n", tree_hash, head_commit);
         if let Some(message) = message {
             content = format!("{}\n{}", content, message);
         }
         Ok(content)
     }
-
 }
 
 impl Command for Commit {
@@ -355,19 +400,19 @@ impl Command for Commit {
     /// Then it creates a commit file, which contains the tree object hash, the commit's parent
     /// commits and the given message with the message flag.
     fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
-        if helpers::get_file_length(INDEX_FILE)? == 0 {
+        if helpers::get_file_length(&PathHandler::get_relative_path(INDEX_FILE))? == 0 {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
                 "No changes staged for commit",
-            )))
-        } 
+            )));
+        }
 
         let mut message: Option<&str> = None;
         let mut message_flag = false;
         let arg_slice = args.unwrap_or(Vec::new());
 
-	    for arg in arg_slice {
-	        match arg { 
+        for arg in arg_slice {
+            match arg {
                 MESSAGE_FLAG => message_flag = true,
                 _ => message = Some(arg),
             }
@@ -377,9 +422,13 @@ impl Command for Commit {
         message = if message_flag { message } else { None };
         let commit_content = self.generate_commit_content(tree_hash, message, &branch_path)?;
         println!("commit content: {}", commit_content);
-        let commit_object_hash = HashObjectCreator::write_object_file(commit_content.clone(), ObjectType::Commit, commit_content.as_bytes().len() as u64)?;
+        let commit_object_hash = HashObjectCreator::write_object_file(
+            commit_content.clone(),
+            ObjectType::Commit,
+            commit_content.as_bytes().len() as u64,
+        )?;
 
-        let mut branch_file = fs::File::create(branch_path)?;
+        let mut branch_file = fs::File::create(PathHandler::get_relative_path(&branch_path))?;
         branch_file.write_all(commit_object_hash.as_bytes())?;
 
         self.stg_area.unstage_index_file()?;
@@ -393,7 +442,9 @@ pub struct Rm {
 
 impl Rm {
     pub fn new() -> Self {
-        Rm { stg_area: StagingArea::new() }
+        Rm {
+            stg_area: StagingArea::new(),
+        }
     }
 }
 
@@ -404,10 +455,12 @@ impl Command for Rm {
             Some(args) => {
                 self.stg_area.remove_file(args[0])?;
             }
-            None => return Err(Box::new(io::Error::new(
-                io::ErrorKind::Other,
-                "Did not receive a file path to remove",
-            ))),
+            None => {
+                return Err(Box::new(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Did not receive a file path to remove",
+                )))
+            }
         }
         Ok(String::new())
     }
@@ -419,7 +472,9 @@ pub struct Add {
 
 impl Add {
     pub fn new() -> Self {
-        Add { stg_area: StagingArea::new() }
+        Add {
+            stg_area: StagingArea::new(),
+        }
     }
 }
 
@@ -430,19 +485,19 @@ impl Command for Add {
             Some(args) => {
                 if (CheckIgnore::new().execute(head, Some(vec![args[0]]))?).is_empty() {
                     self.stg_area.add_file(head, args[0])?;
-                } 
-                else {
+                } else {
                     return Err(Box::new(io::Error::new(
                         io::ErrorKind::Other,
                         "Error: File is included in '.gitignore'",
-                    )))
+                    )));
                 }
-                
             }
-            None => return Err(Box::new(io::Error::new(
-                io::ErrorKind::Other,
-                "Did not receive a file path to add",
-            ))),
+            None => {
+                return Err(Box::new(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Did not receive a file path to add",
+                )))
+            }
         }
         Ok(String::new())
     }
@@ -461,44 +516,71 @@ impl Command for Status {
     /// This command checks the status of the current Git repository and prints the
     /// status of files in the working directory, indicating whether they are
     /// modified, staged, or unstaged.
-    fn execute(&self, _head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+    fn execute(
+        &self,
+        _head: &mut Head,
+        _args: Option<Vec<&str>>,
+    ) -> Result<String, Box<dyn Error>> {
         let branch_path = helpers::get_current_branch_path()?;
-        let last_commit_hash: String = helpers::read_file_content(&branch_path)?;
+        let last_commit_hash: String = helpers::read_file_content(&PathHandler::get_relative_path(&branch_path))?;
         let mut no_changes = true;
         let mut tree_objects: Vec<String> = Vec::new();
         if !last_commit_hash.is_empty() {
-            let last_commit_path: String = format!("{}/{}/{}", OBJECT, &last_commit_hash[..2], &last_commit_hash[2..]);
-            let decompressed_data = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&last_commit_path)?)?;
-            let commit_file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
-            let commit_file_lines: Vec<String> = commit_file_content[1].lines().map(|s| s.to_string()).collect();
+            let last_commit_path: String = format!(
+                "{}/{}/{}",
+                OBJECT,
+                &last_commit_hash[..2],
+                &last_commit_hash[2..]
+            );
+            let decompressed_data = helpers::decompress_file_content(
+                helpers::read_file_content_to_bytes(&PathHandler::get_relative_path(&last_commit_path))?,
+            )?;
+            let commit_file_content: Vec<String> =
+                decompressed_data.split('\0').map(String::from).collect();
+            let commit_file_lines: Vec<String> = commit_file_content[1]
+                .lines()
+                .map(|s| s.to_string())
+                .collect();
 
-            let tree_hash = &commit_file_lines[0];
+            let tree_line = &commit_file_lines[0];
+            let tree_line_split: Vec<String> = tree_line.split_whitespace().map(String::from).collect();
+            let tree_hash = &tree_line_split[1];
             let tree_object_path = format!("{}/{}/{}", OBJECT, &tree_hash[..2], &tree_hash[2..]);
-            let tree_content = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&tree_object_path)?)?;
-            let tree_contents_split: Vec<String> = tree_content.split('\0').map(String::from).collect();
-            tree_objects =  tree_contents_split[1].lines().map(|s| s.to_string()).collect();
+            let tree_content = helpers::decompress_file_content(
+                helpers::read_file_content_to_bytes(&PathHandler::get_relative_path(&tree_object_path))?,
+            )?;
+            let tree_contents_split: Vec<String> =
+                tree_content.split('\0').map(String::from).collect();
+            tree_objects = tree_contents_split[1]
+                .lines()
+                .map(|s| s.to_string())
+                .collect();
         }
-        
-        let index_file_content = helpers::read_file_content(INDEX_FILE)?; 
-        let index_objects: Vec<String> = index_file_content.lines().map(|s| s.to_string()).collect();
+
+        let index_file_content = helpers::read_file_content(&PathHandler::get_relative_path(INDEX_FILE))?;
+        let index_objects: Vec<String> =
+            index_file_content.lines().map(|s| s.to_string()).collect();
 
         for pos in 0..(index_objects.len()) {
             let index_file_line: Vec<&str> = index_objects[pos].split(';').collect();
             if pos < tree_objects.len() {
-                let tree_file_line: Vec<&str> = tree_objects[pos].split(';').collect();
-                if tree_file_line[1] != index_file_line[1] && index_file_line[2] == "2" {
+                let tree_file_line: Vec<&str> = tree_objects[pos].split_whitespace().collect();
+                if tree_file_line[2] != index_file_line[1] && index_file_line[2] == "2" {
                     no_changes = false;
                     println!("modified: {} (Staged)", index_file_line[0]);
                     continue;
                 }
                 let current_object_content = helpers::read_file_content(index_file_line[0])?;
-                let current_object_hash = HashObjectCreator::generate_object_hash(ObjectType::Blob, get_file_length(index_file_line[0])?, &current_object_content);
-                if current_object_hash != tree_file_line[1] && index_file_line[2] == "0" {
+                let current_object_hash = HashObjectCreator::generate_object_hash(
+                    ObjectType::Blob,
+                    get_file_length(index_file_line[0])?,
+                    &current_object_content,
+                );
+                if current_object_hash != tree_file_line[2] && index_file_line[2] == "0" {
                     no_changes = false;
                     println!("modified: {} (Unstaged)", index_file_line[0]);
                 }
-            }
-            else {
+            } else {
                 no_changes = false;
                 println!("new file: {} (Staged)", index_file_line[0]);
             }
@@ -519,23 +601,24 @@ impl Remote {
 
     /// Adds a new remote repository configuration to the Git configuration file.
     fn add_new_remote(&self, remote_name: String, url: String) -> Result<(), Box<dyn Error>> {
-        let config_content = helpers::read_file_content(CONFIG_FILE)?;
+        let config_content = helpers::read_file_content(&PathHandler::get_relative_path(CONFIG_FILE))?;
 
         let section_header = format!("[remote '{}']", remote_name);
         let new_config_content = format!("{}{}\nurl = {}\n", config_content, section_header, url);
 
-        if config_content.contains(&section_header) { //en git permite agregar mas de un remote con mismo nombre si su config o url son distintos, me parece que complejiza mucho y por ahora mejor no poder agregar dos de mismo nombre
+        if config_content.contains(&section_header) {
+            //en git permite agregar mas de un remote con mismo nombre si su config o url son distintos, me parece que complejiza mucho y por ahora mejor no poder agregar dos de mismo nombre
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
                 "Remote already exists in the configuration.",
             )));
         }
 
-        let mut config_file = fs::File::create(CONFIG_FILE)?;
+        let mut config_file = fs::File::create(PathHandler::get_relative_path(CONFIG_FILE))?;
         config_file.write_all(new_config_content.as_bytes())?;
 
         let remote_dir_path = format!("{}/{}", R_REMOTES, remote_name);
-        fs::create_dir(remote_dir_path)?;
+        let _create_dir = fs::create_dir(PathHandler::get_relative_path(&remote_dir_path))?;
 
         Ok(())
     }
@@ -551,8 +634,7 @@ impl Remote {
         for line in config_content.lines() {
             if line == remote_header {
                 is_inside_remote_section = true;
-            }
-            else if line.starts_with("[") {
+            } else if line.starts_with("[") {
                 is_inside_remote_section = false;
             }
             if !is_inside_remote_section {
@@ -573,9 +655,7 @@ impl Remote {
 
         for line in config_content.lines() {
             if line.starts_with("[remote '") {
-                let remote_name = line
-                .trim_start_matches("[remote '")
-                .trim_end_matches("']");
+                let remote_name = line.trim_start_matches("[remote '").trim_end_matches("']");
                 println!("{}", remote_name);
             }
         }
@@ -586,7 +666,7 @@ impl Remote {
 
 impl Command for Remote {
     /// Executes Command for Remote. When no flags are received, all remotes are listed. If the add flag is received
-    /// with a name and a new url, a remote is added to the config file. If a remove flag and a name is received, 
+    /// with a name and a new url, a remote is added to the config file. If a remove flag and a name is received,
     /// the remote with said name will be removed from the config file.
     fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         if args.is_none() {
@@ -599,22 +679,24 @@ impl Command for Remote {
         let mut url = None;
         let arg_slice = args.unwrap_or(Vec::new());
 
-	    for arg in arg_slice {
-	        match arg { 
+        for arg in arg_slice {
+            match arg {
                 ADD_FLAG => add_flag = true,
                 REMOVE_FLAG => remove_flag = true,
-                _ => if name.is_none() {
+                _ => {
+                    if name.is_none() {
                         name = Some(arg.to_string());
                     } else if url.is_none() {
                         url = Some(arg.to_string());
-                    },
+                    }
+                }
             }
         }
         match (add_flag, remove_flag, name, url) {
-	        (true, _, Some(name), Some(url)) => self.add_new_remote(name, url)?,
-	        (_, true, Some(name), _) => self.remove_remote(name)?,
-	        _ => {}
-	    }
+            (true, _, Some(name), Some(url)) => self.add_new_remote(name, url)?,
+            (_, true, Some(name), _) => self.remove_remote(name)?,
+            _ => {}
+        }
         Ok(String::new())
     }
 }
@@ -632,7 +714,7 @@ impl PackObjects {
 //     /// This command generates a Git pack file that contains compressed Git objects.
 //     /// The pack file format is used to efficiently store objects and their history.
 //     /// It also creates an index file that helps locate objects in the pack file.
-//     fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {  
+//     fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
 //         let arg_slice = args.unwrap_or(Vec::new());
 //         let objects_list: Vec<String> = arg_slice[0]; // aca tengo que tener los hashes de todos los objetos que quiero procesar
 //         // Open pack and index files
@@ -640,7 +722,7 @@ impl PackObjects {
 //         // Create an uncompressed pack file
 //         let mut pack_file_content = Vec::new();
 //         let mut index_entries: Vec<u8> = Vec::new();
-    
+
 //         // List all objects in the .git/objects directory
 //         helpers::list_files_recursively(".git/objects", &mut objects_list)?;
 //         let mut object_count: u32 = 0;
@@ -657,7 +739,7 @@ impl PackObjects {
 //             println!("header: {:?}", object_header);
 //             println!("content: {}", object_content);
 //             // Calculate the SHA-1 hash of the object content
-    
+
 //             index_entries.extend_from_slice(&object_type.get_object_for_pack_file().to_be_bytes());  // Object type
 //             index_entries.extend_from_slice(&(object_size as u32).to_be_bytes());  // Object size
 //             index_entries.extend_from_slice(helpers::generate_sha1_string(&decompressed_data).as_bytes());  // SHA-1 hash bytes
@@ -672,7 +754,7 @@ impl PackObjects {
 //             pack_file_content.extend_from_slice(&[header_byte]);
 //             pack_file_content.extend_from_slice(&helpers::compress_content(&object_content)?);
 //         }
-    
+
 //         let mut pack_file_final = Vec::new();
 //         // Generate pack header
 //         let version = [0u8, 0u8, 0u8, 2u8];
@@ -684,7 +766,7 @@ impl PackObjects {
 //         pack_file_final.extend_from_slice(&pack_file_content);
 //         // Write the uncompressed pack file content to the pack file
 //         pack_file.write_all(&pack_file_final)?;
-    
+
 //         // Calculate the SHA-1 hash of the entire pack file content
 //         let pack_checksum = helpers::generate_sha1_string_from_bytes(&pack_file_final);
 //         println!("pack checksum: {}", pack_checksum);
@@ -701,7 +783,7 @@ impl PackObjects {
 //         let index_checksum = helpers::generate_sha1_string_from_bytes(&index_content);
 //         index_content.extend_from_slice(index_checksum.as_bytes());
 //         index_file.write_all(&index_content)?;
-    
+
 //         Ok(String::new())
 //     }
 // }
@@ -772,57 +854,58 @@ impl UnpackObjects {
         let mut value = 0;
         let mut length = 0; // the number of bits of data read so far
         loop {
-          let (byte_value, more_bytes) = Self::read_varint_byte(stream)?;
-          // Add in the data bits
-          value |= (byte_value as usize) << length;
-          // Stop if this is the last byte
-          if !more_bytes {
-            return Ok(value)
-          }
-      
-          length += VARINT_ENCODING_BITS;
+            let (byte_value, more_bytes) = Self::read_varint_byte(stream)?;
+            // Add in the data bits
+            value |= (byte_value as usize) << length;
+            // Stop if this is the last byte
+            if !more_bytes {
+                return Ok(value);
+            }
+
+            length += VARINT_ENCODING_BITS;
         }
     }
     /// Object type and uncompressed pack data size
     /// are stored in a "size-encoding" variable-length integer.
     /// Bits 4 through 6 store the type and the remaining bits store the size.
     fn read_type_and_size<R: Read>(stream: &mut R) -> Result<(u8, usize), Box<dyn Error>> {
-        
         let value = Self::read_size_encoding(stream)?;
         let object_type = Self::keep_bits(value >> TYPE_BYTE_SIZE_BITS, TYPE_BITS) as u8;
         let size = Self::keep_bits(value, TYPE_BYTE_SIZE_BITS)
-                 | (value >> VARINT_ENCODING_BITS << TYPE_BYTE_SIZE_BITS);
+            | (value >> VARINT_ENCODING_BITS << TYPE_BYTE_SIZE_BITS);
         Ok((object_type, size))
     }
 
     fn read_offset_encoding<R: Read>(stream: &mut R) -> io::Result<u64> {
         let mut value = 0;
         loop {
-          let (byte_value, more_bytes) = Self::read_varint_byte(stream)?;
-          // Add the new bits at the *least* significant end of the value
-          value = (value << VARINT_ENCODING_BITS) | byte_value as u64;
-          if !more_bytes {
-            return Ok(value)
-          }
-      
-          // Increase the value if there are more bytes, to avoid redundant encodings
-          value += 1;
+            let (byte_value, more_bytes) = Self::read_varint_byte(stream)?;
+            // Add the new bits at the *least* significant end of the value
+            value = (value << VARINT_ENCODING_BITS) | byte_value as u64;
+            if !more_bytes {
+                return Ok(value);
+            }
+
+            // Increase the value if there are more bytes, to avoid redundant encodings
+            value += 1;
         }
     }
 
     // Read an integer of up to `bytes` bytes.
     // `present_bytes` indicates which bytes are provided. The others are 0.
     fn read_partial_int<R: Read>(
-        stream: &mut R, bytes: u8, present_bytes: &mut u8
+        stream: &mut R,
+        bytes: u8,
+        present_bytes: &mut u8,
     ) -> io::Result<usize> {
         let mut value = 0;
         for byte_index in 0..bytes {
-        // Use one bit of `present_bytes` to determine if the byte exists
-        if *present_bytes & 1 != 0 {
-            let [byte] = Self::read_bytes(stream)?;
-            value |= (byte as usize) << (byte_index * 8);
-        }
-        *present_bytes >>= 1;
+            // Use one bit of `present_bytes` to determine if the byte exists
+            if *present_bytes & 1 != 0 {
+                let [byte] = Self::read_bytes(stream)?;
+                value |= (byte as usize) << (byte_index * 8);
+            }
+            *present_bytes >>= 1;
         }
         Ok(value)
     }
@@ -831,51 +914,54 @@ impl UnpackObjects {
     // and appends the relevant bytes to `result`.
     // Returns whether the delta stream still had instructions.
     fn apply_delta_instruction<R: Read>(
-        stream: &mut R, base: &[u8], result: &mut Vec<u8>
+        stream: &mut R,
+        base: &[u8],
+        result: &mut Vec<u8>,
     ) -> Result<bool, Box<dyn Error>> {
         // Check if the stream has ended, meaning the new object is done
         let instruction = match Self::read_bytes(stream) {
-        Ok([instruction]) => instruction,
-        Err(err) if err.kind() == ErrorKind::UnexpectedEof => return Ok(false),
-        Err(err) => return Err(Box::new(err)),
+            Ok([instruction]) => instruction,
+            Err(err) if err.kind() == ErrorKind::UnexpectedEof => return Ok(false),
+            Err(err) => return Err(Box::new(err)),
         };
         if instruction & COPY_INSTRUCTION_FLAG == 0 {
-        // Data instruction; the instruction byte specifies the number of data bytes
-        if instruction == 0 {
-            // Appending 0 bytes doesn't make sense, so git disallows it
-            return Err(Box::new(io::Error::new(
-                io::ErrorKind::Other,
-                "Error: Invalid Data Instructions",
-            )))
+            // Data instruction; the instruction byte specifies the number of data bytes
+            if instruction == 0 {
+                // Appending 0 bytes doesn't make sense, so git disallows it
+                return Err(Box::new(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Error: Invalid Data Instructions",
+                )));
             }
-        
+
             // Append the provided bytes
             let mut data = vec![0; instruction as usize];
             stream.read_exact(&mut data)?;
             result.extend_from_slice(&data);
-            }
-        else {
+        } else {
             // Copy instruction
             let mut nonzero_bytes = instruction;
-            let offset =
-                Self::read_partial_int(stream, COPY_OFFSET_BYTES, &mut nonzero_bytes)?;
-            let mut size =
-                Self::read_partial_int(stream, COPY_SIZE_BYTES, &mut nonzero_bytes)?;
+            let offset = Self::read_partial_int(stream, COPY_OFFSET_BYTES, &mut nonzero_bytes)?;
+            let mut size = Self::read_partial_int(stream, COPY_SIZE_BYTES, &mut nonzero_bytes)?;
             if size == 0 {
-            // Copying 0 bytes doesn't make sense, so git assumes a different size
-            size = COPY_ZERO_SIZE;
-        }
-        // Copy bytes from the base object
-        let base_data = base.get(offset..(offset + size)).ok_or(io::Error::new(
-            io::ErrorKind::NotFound,
-            "Invalid copy instructions",
-        ))?;
-        result.extend_from_slice(base_data);
+                // Copying 0 bytes doesn't make sense, so git assumes a different size
+                size = COPY_ZERO_SIZE;
+            }
+            // Copy bytes from the base object
+            let base_data = base.get(offset..(offset + size)).ok_or(io::Error::new(
+                io::ErrorKind::NotFound,
+                "Invalid copy instructions",
+            ))?;
+            result.extend_from_slice(base_data);
         }
         Ok(true)
     }
-  
-    fn apply_delta(pack_file: &mut fs::File, base_object_content: &[u8], base_type: ObjectType) -> Result<(ObjectType, Vec<u8>, usize), Box<dyn Error>> {
+
+    fn apply_delta(
+        pack_file: &mut fs::File,
+        base_object_content: &[u8],
+        base_type: ObjectType,
+    ) -> Result<(ObjectType, Vec<u8>, usize), Box<dyn Error>> {
         // let Object { object_type, contents: ref base } = *base;
         let mut delta = Decoder::new(pack_file)?; //aca esta mal esta descompresion
         let base_size = Self::read_size_encoding(&mut delta)?;
@@ -883,19 +969,19 @@ impl UnpackObjects {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
                 "Error: Incorrect base object length",
-            )))
+            )));
         }
-    
+
         let result_size = Self::read_size_encoding(&mut delta)?;
         let mut result = Vec::with_capacity(result_size);
         while Self::apply_delta_instruction(&mut delta, base_object_content, &mut result)? {}
         if result.len() != result_size {
             return Err(Box::new(io::Error::new(
-                    io::ErrorKind::Other,
-                    "Error: Incorrect object length",
-                )))
+                io::ErrorKind::Other,
+                "Error: Incorrect object length",
+            )));
         }
-    
+
         // The object type is the same as the base object
         Ok((base_type, result, result_size))
     }
@@ -904,7 +990,10 @@ impl UnpackObjects {
         file.seek(SeekFrom::Start(offset))?;
         Ok(())
     }
-    fn read_pack_object(pack_file: &mut fs::File, offset: u64) -> Result<(ObjectType, Vec<u8>, usize), Box<dyn Error>> {
+    fn read_pack_object(
+        pack_file: &mut fs::File,
+        offset: u64,
+    ) -> Result<(ObjectType, Vec<u8>, usize), Box<dyn Error>> {
         let (object_type, size) = Self::read_type_and_size(pack_file)?;
         println!("obj type: {:?}", object_type);
         let object_type = match object_type {
@@ -929,12 +1018,12 @@ impl UnpackObjects {
                 Decoder::new(pack_file)?.read_to_end(&mut contents)?;
                 if contents.len() != size {
                     return Err(Box::new(io::Error::new(
-                    io::ErrorKind::Other,
-                    "Error: Incorrect object size",
-                )))
+                        io::ErrorKind::Other,
+                        "Error: Incorrect object size",
+                    )));
                 }
-        
-                return Ok((object_type, contents, size))
+
+                return Ok((object_type, contents, size));
             }
             PackObjectType::OffsetDelta => {
                 println!("OffsetDelta");
@@ -945,15 +1034,16 @@ impl UnpackObjects {
                 ))?;
                 // Save and restore the offset since read_pack_offset() will change it
                 // let offset = Self::get_offset(pack_file)?; ver esto
-                let (base_object_type, base_object_content, size) = Self::read_pack_object(pack_file, base_offset)?;
+                let (base_object_type, base_object_content, _size) =
+                    Self::read_pack_object(pack_file, base_offset)?;
                 Self::seek(pack_file, offset)?;
-                return Self::apply_delta(pack_file, &base_object_content, base_object_type)
+                return Self::apply_delta(pack_file, &base_object_content, base_object_type);
             }
             PackObjectType::HashDelta => {
                 println!("HashDelta");
-                let hash = Self::read_hash(pack_file)?; // esto lo tengo que ver como implementar yo. seria la lectura del hash del delta object 
-                let (object_type, base_object_content) = helpers::read_object(hash)?; // aca como hace referencia a un objecto base, ya va a tener que estar descomprimido 
-                return Self::apply_delta(pack_file, base_object_content.as_bytes(), object_type)
+                let hash = Self::read_hash(pack_file)?; // esto lo tengo que ver como implementar yo. seria la lectura del hash del delta object
+                let (object_type, base_object_content) = helpers::read_object(hash)?; // aca como hace referencia a un objecto base, ya va a tener que estar descomprimido
+                return Self::apply_delta(pack_file, base_object_content.as_bytes(), object_type);
             }
         }
         // Ok((ObjectType::Blob, Vec::new())) //placeholder
@@ -961,7 +1051,7 @@ impl UnpackObjects {
 }
 
 impl Command for UnpackObjects {
-    fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, _head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         // let arg_slice = args.unwrap_or(Vec::new());
         let mut pack_file = fs::File::open(".git/pack/received_pack_file.pack")?;
         let pack_file_size = helpers::get_file_length(".git/pack/received_pack_file.pack")?;
@@ -973,12 +1063,19 @@ impl Command for UnpackObjects {
         println!("pack file size: {}", pack_file_size);
         let mut offset: u64 = 12; //Skipping the header
         let mut objects_unpacked = 1;
-        while objects_unpacked <= object_amount {  
+        while objects_unpacked <= object_amount {
             let (object_type, content, size) = Self::read_pack_object(&mut pack_file, offset)?;
-            println!("type: {} ; size: {} ; content: {:?}", object_type, size, content);
+            println!(
+                "type: {} ; size: {} ; content: {:?}",
+                object_type, size, content
+            );
             let content_to_string = String::from_utf8_lossy(&content).to_string();
             println!("content as str: {}", content_to_string);
-            HashObjectCreator::write_object_file(content_to_string, object_type, content.len() as u64)?; //tal vez antes tenga que descomprimir object content, que aca viene comprimido con zlib
+            HashObjectCreator::write_object_file(
+                content_to_string,
+                object_type,
+                content.len() as u64,
+            )?; //tal vez antes tenga que descomprimir object content, que aca viene comprimido con zlib
             offset += size as u64;
             objects_unpacked += 1;
         }
@@ -994,7 +1091,12 @@ impl Fetch {
         Fetch {}
     }
 
-    pub fn add_remote_ref(&self, ref_hash: &str, ref_name: &str, remote_name: &str) -> Result<(), Box<dyn Error>> {
+    pub fn add_remote_ref(
+        &self,
+        ref_hash: &str,
+        ref_name: &str,
+        remote_name: &str,
+    ) -> Result<(), Box<dyn Error>> {
         let split_ref_name: Vec<&str> = ref_name.split('/').collect(); //aca tendria que ver si es un tag o un branch
         let remote_ref_name = split_ref_name[2];
         let mut ref_path = String::new();
@@ -1003,9 +1105,10 @@ impl Fetch {
                 ref_path = format!("{}/{}/{}", R_REMOTES, remote_name, remote_ref_name);
                 // helpers::update_local_branch_with_commit(remote_name, remote_ref_name, ref_hash); //no hace falta hacer esto aca
             } 
+  
             "tags" => ref_path = format!("{}/{}", R_TAGS, remote_ref_name),
             _ => {}
-        } 
+        }
         println!("{}", ref_path);
         let mut ref_file = fs::File::create(ref_path)?;
         ref_file.write_all(ref_hash.as_bytes())?;
@@ -1014,7 +1117,7 @@ impl Fetch {
 
     // pub fn update_remote_tracking_branches(&self) -> Result<(), Box<dyn Error>> {
     //     let branches_and_remotes = helpers::get_remote_tracking_branches()?;
-        
+
     //     for (branch_name, (remote, merge)) in branches_and_remotes.iter() {
     //         // let split_value = value.split('/').collect();
     //         println!("Key: {}, Values: remote:{} merge:{}", branch_name, remote, merge);
@@ -1024,21 +1127,18 @@ impl Fetch {
     // }
 }
 
-
 impl Command for Fetch {
     fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
-        let mut remote_url = String::new();
+        let remote_url ;
         let mut remote_name = DEFAULT_REMOTE_REPOSITORY;
         match args {
-            Some(args) => {
-                match helpers::get_remote_url(args[0]) {
-                    Ok(url) => {
-                        remote_url = url;
-                        remote_name = args[0];
-                    }
-                    Err(_) => remote_url = args[0].to_string(),
+            Some(args) => match helpers::get_remote_url(args[0]) {
+                Ok(url) => {
+                    remote_url = url;
+                    remote_name = args[0];
                 }
-            }
+                Err(_) => remote_url = args[0].to_string(),
+            },
             None => {
                 remote_url = helpers::get_remote_url(DEFAULT_REMOTE_REPOSITORY)?;
             }
@@ -1086,12 +1186,15 @@ impl Push {
     }
 }
 
-
 impl Command for Push {
-    fn execute(&self, _head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+    fn execute(
+        &self,
+        _head: &mut Head,
+        _args: Option<Vec<&str>>,
+    ) -> Result<String, Box<dyn Error>> {
         //Pack and index files are created in .git/pack/ directory
-        let pack_objects = PackObjects::new();
-        // pack_objects.execute(_head, None)?; 
+        let _pack_objects = PackObjects::new();
+        // pack_objects.execute(_head, None)?;
 
         let mut server_connection = ClientProtocol::new();
         server_connection.receive_pack()?;
@@ -1099,6 +1202,27 @@ impl Command for Push {
         Ok(String::new())
     }
 }
+
+pub struct Pull;
+
+impl Pull {
+    /// Creates a new `Push` instance.
+    pub fn new() -> Self {
+        Pull {}
+    }
+}
+
+
+impl Command for Pull {
+    fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        Fetch::new().execute(_head, None)?;
+
+        // Merge::new().execute(_head, Some(vec!["origin"]))?;
+        Ok(String::new())
+    }
+}
+
+
 
 pub struct Clone;
 
@@ -1138,14 +1262,23 @@ impl Log {
     /// * `base_commit` - The base commit ID to start generating logs from./// # Returns
     ///
     /// A `Result` containing the execution result or an error message.    
-    pub fn generate_log_entries(&self, entries: &mut Vec<(String, String)>, base_commit: String) -> Result<String, Box<dyn Error>> {        if base_commit.len() < 4 {
-            return Err(Box::new(io::Error::new(
-                        io::ErrorKind::Other,
-                        "Error: Invalid Commit ID. It's too short",
-                    )))
-        }
+   fn generate_log_entries(
+        &self,
+        entries: &mut Vec<String>,
+        base_commit: String,
+    ) -> Result<String, Box<dyn Error>> {
+        if base_commit.len() < 4 {
 
-        let current_commit = if base_commit == HEAD { helpers::get_branch_last_commit(&helpers::get_current_branch_path()?)? } else { base_commit };
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "Error: Invalid Commit ID. It's too short",
+            )));
+        }
+        let current_commit = if base_commit == HEAD {
+            helpers::get_head_commit()?
+        } else {
+            base_commit
+        };
 
         if entries.iter().any(|(key, _)| key == &current_commit) {
             // don't process it again
@@ -1166,7 +1299,13 @@ impl Log {
                     )))
         }
         // trim header
-        let commit_file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
+        let commit_file_content: Vec<String> =
+            decompressed_data.split('\0').map(String::from).collect();
+
+        let commit_file_lines: Vec<String> = commit_file_content[1]
+            .lines()
+            .map(|s| s.to_string())
+            .collect();
 
         let commit_file_lines: Vec<String> = commit_file_content[1].lines().map(|s| s.to_string()).collect();
         // println!("commit lines: {:?}", commit_file_lines);
@@ -1181,9 +1320,10 @@ impl Log {
 
         let message = if commit_file_lines.len() >= 4 { commit_file_lines[3].clone() } else { String::new() };
 
+
         entries.push((current_commit, message));
 
-        if parent_commit_trimmed.is_empty() {            
+        if parent_commit_trimmed.is_empty() {
             //root commit
             // println!("returning, found root commit");
             return Ok(String::new());
@@ -1205,18 +1345,18 @@ impl Command for Log {
     ///
     /// # Returns
     ///
-    /// A `Result` containing the execution result or an error message. 
+    /// A `Result` containing the execution result or an error message.
     fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         // Extract the arguments from the provided slice or use an empty slice if none is provided
         let arg_slice = args.unwrap_or(Vec::new());
 
-        // Initialize vectors to store log entries (included and excluded)        
+        // Initialize vectors to store log entries (included and excluded)
         let mut log_entries = Vec::new();
         let mut log_entries_excluded = Vec::new();
 
-
         // Iterate through the provided arguments
-        for arg in arg_slice { // Note the & in for &arg
+        for arg in arg_slice {
+            // Note the & in for &arg
             // Check the first character of each argument
             if let Some(first_char) = arg.chars().next() {
                 match first_char {
@@ -1224,8 +1364,7 @@ impl Command for Log {
                         // Generate log entries for exclusion and store them in the excluded entries vector
                         self.generate_log_entries(&mut log_entries_excluded, arg[1..].to_string())?;
                         //println!("exclude {:?}", log_entries_excluded);
-
-                    },
+                    }
                     _ => {
                         // Generate log entries for inclusion and store them in the included entries vector
                         self.generate_log_entries(&mut log_entries, arg.to_string())?;
@@ -1254,6 +1393,95 @@ impl Command for Log {
                 println!("{:?}, {:?}", commit, message);
             }
         }
+
+        // Return a successful result (an empty string in this case)
+        Ok(String::new())
+    }
+}
+
+pub struct LsFiles {    
+    stg_area: StagingArea,
+}
+
+impl LsFiles {
+    /// Creates a new `LsFiles` instance.
+    pub fn new() -> Self {
+        LsFiles {            
+            stg_area: StagingArea::new(),
+        }
+    }
+}
+
+impl Command for LsFiles {
+    /// Execute the LSFILES command
+    ///
+    /// This command retrieves and prints file entries based on the specified flags and options.
+    /// It supports flags such as DELETE_FLAG, CACHED_FLAG, STAGE_FLAG, MODIFIED_FLAG, and IGNORE_FLAG.
+    ///
+    /// # Arguments
+    ///
+    /// * `_head`: A mutable reference to the Git repository's `Head`.
+    /// * `args`: An optional vector of string slices representing command-line arguments and flags.
+    ///            Supported flags: DELETE_FLAG, CACHED_FLAG, STAGE_FLAG, MODIFIED_FLAG, IGNORE_FLAG.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing a string or an error. In case of success, the string is empty.
+    /// In case of an error, a `Box<dyn Error>` is returned with details about the error.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// // Create an instance of the LSFilesCommand
+    /// let lsfiles_command = LsFiles::new();
+    ///
+    /// // Execute the LSFILES command with specific flags
+    /// let result = lsfiles_command.execute(&mut head, Some(vec!["-c"]));
+    /// assert!(result.is_ok());
+    /// ```
+    fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        let mut file_entries: HashSet<String> = HashSet::new();
+        let whole_index_flag = args.is_none();
+        let arg_slice = args.unwrap_or(Vec::new());
+
+        for arg in arg_slice {
+            match arg {
+                DELETE_FLAG | CACHED_FLAG | STAGE_FLAG | MODIFIED_FLAG => {
+                    let state = match arg {
+                        DELETE_FLAG => IndexFileEntryState::Deleted,
+                        CACHED_FLAG => IndexFileEntryState::Cached,
+                        STAGE_FLAG => IndexFileEntryState::Staged,
+                        MODIFIED_FLAG => IndexFileEntryState::Modified,
+                        _ => unreachable!(), // This should not happen
+                    };
+
+                    let entries = self.stg_area.get_entries_index_file(state)?;
+                    for entry in entries {
+                        file_entries.insert(entry);
+                    }
+                }
+                IGNORE_FLAG => {
+                    let file = fs::File::open(".gitignore.txt")?;
+                    let reader = io::BufReader::new(file);
+                    for line in reader.lines() {
+                        let line = line?;
+                        file_entries.insert(line);
+                    }
+                }
+                _ => {/* ignore invalid flags */}
+            }
+        }
+
+        if whole_index_flag {
+            let entries = self.stg_area.get_entries_index_file(IndexFileEntryState::Cached)?;
+            for entry in entries {
+                file_entries.insert(entry);
+            }
+        }
+
+        for entry in file_entries {
+            println!("{:?}", entry);
+        }
         // Return a successful result (an empty string in this case)
         Ok(String::new())
     }
@@ -1276,7 +1504,7 @@ impl Command for CheckIgnore {
     fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         //Checking if a .gitignore file exists
         if !fs::metadata(".gitignore.txt").is_ok() {
-            return Ok(String::new())
+            return Ok(String::new());
         }
 
         // Extract the arguments from the provided slice or use an empty slice if none is provided
@@ -1286,10 +1514,12 @@ impl Command for CheckIgnore {
         let file = fs::File::open(".gitignore.txt")?;
         let reader = io::BufReader::new(file);
 
-        let line_exists = reader.lines().any(|line| line.map_or(false, |l| l == file_path));
+        let line_exists = reader
+            .lines()
+            .any(|line| line.map_or(false, |l| l == file_path));
         if line_exists {
             println!("{}", file_path);
-            return Ok(file_path.to_string())
+            return Ok(file_path.to_string());
         }
 
         Ok(String::new())
@@ -1312,7 +1542,7 @@ impl Tag {
             let entry = entry?;
             let file_name = entry.file_name();
             let file_name_str = file_name.to_string_lossy(); // Convert to a String
-    
+
             println!("{}", file_name_str);
         }
 
@@ -1331,14 +1561,14 @@ impl Tag {
         Ok(())
     }
 
-    fn verify_tag(&self, name: &str) -> bool {
+    /* fn verify_tag(&self, name: &str) -> bool {
         let tag_path = format!("{}{}", R_TAGS, name);
 
         if fs::metadata(tag_path).is_ok() {
-            return true
+            return true;
         }
         false
-    }
+    } */
 
     fn delete_tag(&self, name: &str) -> Result<(), Box<dyn Error>> {
         let tag_path = format!("{}{}", R_TAGS, name);
@@ -1351,7 +1581,7 @@ impl Command for Tag {
     fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         if args.is_none() {
             self.list_all_tags()?;
-            return Ok(String::new())
+            return Ok(String::new());
         }
 
         let mut verify_flag = false;
@@ -1370,17 +1600,16 @@ impl Command for Tag {
         }
 
         match (verify_flag, delete_flag, list_flag, name) {
-	        (false, false, false, Some(name)) => self.add_new_lightweight_tag(name)?,
+            (false, false, false, Some(name)) => self.add_new_lightweight_tag(name)?,
             // (true, _, _, Some(name)) => self.verify_tag(name),
-	        (_, true, _, Some(name)) => self.delete_tag(name)?,
+            (_, true, _, Some(name)) => self.delete_tag(name)?,
             (_, _, true, _) => self.list_all_tags()?,
-	        _ => {}
-	    }
-        
+            _ => {}
+        }
+
         Ok(String::new())
     }
 }
-
 
 pub struct ShowRef;
 
@@ -1390,12 +1619,16 @@ impl ShowRef {
         ShowRef {}
     }
 
-    fn show_refs_in_directory(&self, directory_entries: ReadDir, partial_path: &str) -> Result<(), Box<dyn Error>> {
+    fn show_refs_in_directory(
+        &self,
+        directory_entries: ReadDir,
+        partial_path: &str,
+    ) -> Result<(), Box<dyn Error>> {
         for entry in directory_entries {
             let entry = entry?;
             let file_name = entry.file_name();
             let file_name_str = file_name.to_string_lossy(); // Convert to a String
-    
+
             let content = std::fs::read_to_string(entry.path())?;
 
             println!("{} {}{}", content, partial_path, file_name_str);
@@ -1405,7 +1638,11 @@ impl ShowRef {
 }
 
 impl Command for ShowRef {
-    fn execute(&self, _head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+    fn execute(
+        &self,
+        _head: &mut Head,
+        _args: Option<Vec<&str>>,
+    ) -> Result<String, Box<dyn Error>> {
         // Read the contents of the directory
         let branch_entries = fs::read_dir(R_HEADS)?;
         self.show_refs_in_directory(branch_entries, "refs/heads/")?;
@@ -1451,5 +1688,351 @@ impl Command for Merge { //ver que pasa cuando uno commit ancestro es commit roo
 
         Ok(String::new())
     }
+}
+
+=======
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use tempfile::tempdir;
+
+    fn common_setup() -> (tempfile::TempDir, String) {
+        // Create a temporary directory
+        let temp_dir = tempdir().unwrap();
+        let temp_path = temp_dir.path().to_str().unwrap().to_string();
+
+        // Set the environment variable for the relative path
+        env::set_var(RELATIVE_PATH, &temp_path);
+
+        // Create and execute the Init command
+        let init_command = Init::new();
+        let result = init_command.execute(&mut Head::new(), None);
+
+        // Check if the Init command was successful
+        assert!(result.is_ok(), "Init command failed: {:?}", result);
+
+        (temp_dir, temp_path)
+    }
+
+    #[test]
+    fn test_init_command() {
+        // Create a temporary directory for testing
+        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_path = temp_dir.path();
+
+        // Set the environment variable for relative path
+        env::set_var(RELATIVE_PATH, temp_path);
+
+        // Create and execute the Init command
+        let init_command = Init::new();
+        let result = init_command.execute(&mut Head::new(), None);
+
+        // Assert that the command executed successfully
+        assert!(result.is_ok());
+
+        // Verify the directory structure and necessary files
+        assert!(temp_path
+            .join(PathHandler::get_relative_path(R_HEADS))
+            .exists());
+        assert!(temp_path
+            .join(PathHandler::get_relative_path(R_TAGS))
+            .exists());
+        assert!(temp_path
+            .join(PathHandler::get_relative_path(OBJECT))
+            .exists());
+        assert!(temp_path
+            .join(PathHandler::get_relative_path(PACK))
+            .exists());
+        assert!(temp_path
+            .join(PathHandler::get_relative_path(R_REMOTES))
+            .exists());
+        assert!(temp_path
+            .join(PathHandler::get_relative_path(CONFIG_FILE))
+            .exists());
+        assert!(temp_path
+            .join(PathHandler::get_relative_path(HEAD_FILE))
+            .exists());
+        // Add more assertions for other files and folders as needed
+    }
+
+    #[test]
+    fn test_branch_command() {
+        let (_temp_dir,_temp_pathh) = common_setup();
+        // Create a Head instance
+        let mut head = Head::new();
+
+        // Execute the Branch command with various scenarios
+        // Example 1: List branches
+        let args1 = None;
+        let result1 = Branch.execute(&mut head, args1);
+        assert!(result1.is_ok());
+
+        // Example 2: Delete a branch
+        let args2 = Some(vec!["-d", "branch_to_delete"]);
+        let result2 = Branch.execute(&mut head, args2);
+        assert!(result2.is_ok());
+
+        // Example 3: Rename a branch
+        let args3 = Some(vec!["-m", "old_branch", "new_branch"]);
+        let result3 = Branch.execute(&mut head, args3);
+        assert!(result3.is_ok());
+
+        // Example 4: Create a new branch
+        let args4 = Some(vec!["new_branch"]);
+        let result4 = Branch.execute(&mut head, args4);
+        assert!(result4.is_ok());
+    }
+
+    #[test]
+    fn test_checkout_command() {
+        let (_temp_dir,_temp_pathh) = common_setup();
+        // Create a Head instance
+        let mut head = Head::new();
+
+        // Execute the Checkout command with various scenarios
+        // Example 1: Successful checkout
+        let args1 = Some(vec!["branch_to_checkout"]);
+        let _result4 = Branch.execute(&mut head, args1.clone());
+        let result1 = Checkout.execute(&mut head, args1);
+        assert!(result1.is_ok());
+
+        // Example 2: Attempt to checkout the same branch (should result in an error)
+        let args2 = Some(vec!["branch_to_checkout"]);
+        let result2 = Checkout.execute(&mut head, args2);
+        assert!(result2.is_err());
+
+        // Example 3: Attempt to checkout a non-existing branch (should result in an error)
+        let args3 = Some(vec!["non_existing_branch"]);
+        let result3 = Checkout.execute(&mut head, args3);
+        assert!(result3.is_err());
+
+        // Example 4: No branch name provided (should result in an error)
+        let args4 = None;
+        let result4 = Checkout.execute(&mut head, args4);
+        assert!(result4.is_err());
+    }
+
+    #[test]
+    fn test_hashobject_command() {
+        let (_temp_dir,_temp_pathh) = common_setup();
+        // Create a Head instance
+        let mut head = Head::new();
+
+        // Execute the HashObject command with various scenarios
+        // Example 1: Calculate hash and print (no write flag)
+
+        let _file = fs::File::create("file.txt");
+        let args1 = Some(vec!["file.txt"]);
+
+        let result1 = HashObject.execute(&mut head, args1);
+        assert!(result1.is_ok());
+
+        // Example 2: Calculate hash and write to object file (with write flag)
+        let args2 = Some(vec![WRITE_FLAG, "file.txt"]);
+        let result2 = HashObject.execute(&mut head, args2);
+        assert!(result2.is_ok());
+
+        // Example 3: Specify object type (blob)
+        let args3 = Some(vec![TYPE_FLAG, "blob", "file.txt"]);
+        let result3 = HashObject.execute(&mut head, args3);
+        assert!(result3.is_ok());
+
+        // Example 4: No path provided (should result in an error)
+        let args5 = None;
+        let result5 = HashObject.execute(&mut head, args5);
+        assert!(result5.is_err());
+    }
+
+    #[test]
+    fn test_catfile_command() {
+        let (_temp_dir,_temp_pathh) = common_setup();
+        // Create a Head instance
+        let mut head = Head::new();
+
+        let _file = fs::File::create("file.txt");
+        let args1 = Some(vec![WRITE_FLAG, "file.txt"]);
+
+        let hash_object = HashObject.execute(&mut head, args1).unwrap();
+        // Execute the CatFile command with various scenarios
+        // Example 1: Display object type
+        let args1 = Some(vec![TYPE_FLAG, &hash_object]);
+        let result1 = CatFile.execute(&mut head, args1);
+        assert!(result1.is_ok());
+
+        // Example 2: Display object size
+        let args2 = Some(vec![SIZE_FLAG, &hash_object]);
+        let result2 = CatFile.execute(&mut head, args2);
+        assert!(result2.is_ok());
+
+        // Example 3: Invalid flag (should result in an error)
+        let args3 = Some(vec!["invalid_flag", &hash_object]);
+        let result3 = CatFile.execute(&mut head, args3);
+        assert!(result3.is_err());
+
+        // Example 4: No arguments provided (should result in an error)
+        let args4 = None;
+        let result4 = CatFile.execute(&mut head, args4);
+        assert!(result4.is_err());
+    }
+
+    #[test]
+    fn test_add_command() {
+        // Common setup
+        let (_temp_dir, temp_path) = common_setup();
+    
+        // Create a sample file to be added
+        let file_path = temp_path.clone() + "/sample.txt";
+        fs::write(&file_path, "Sample file content").expect("Failed to create a sample file");
+    
+        // Execute the Add command
+        let mut head = Head::new();
+        let add_command = Add::new();
+        
+    
+        // Convert &str to String before creating the args vector
+        let args: Option<Vec<&str>> = Some(vec![&file_path]);
+    
+        let result = add_command.execute(&mut head, args);
+    
+        // Assert that the command executed successfully
+        assert!(result.is_ok(), "Add command failed: {:?}", result);
+    
+        // Cleanup: The temporary directory will be automatically deleted when temp_dir goes out of scope
+    }
+    
+    #[test]
+    fn test_commit_command() {
+        // Common setup
+        let (_temp_dir, temp_path) = common_setup();
+    
+        // Create a sample file to be added
+        let file_path = temp_path.clone() + "/sample.txt";
+        fs::write(&file_path, "Sample file content").expect("Failed to create a sample file");
+    
+        // Execute the Init command
+        let mut head = Head::new();
+    
+        // Execute the Add command
+        let add_command = Add::new();
+        let args_add: Option<Vec<&str>> = Some(vec![&file_path]);
+        let _result_add = add_command.execute(&mut head, args_add);
+    
+        // Execute the Commit command
+        let commit_command = Commit::new();
+        let args_commit: Option<Vec<&str>> = Some(vec!["-m", "Initial commit"]);
+        let result_commit = commit_command.execute(&mut head, args_commit);
+    
+        // Assert that the command executed successfully
+        assert!(result_commit.is_ok(), "Commit command failed: {:?}", result_commit);
+    
+        // Cleanup: The temporary directory will be automatically deleted when temp_dir goes out of scope
+    }
+    
+    #[test]
+    fn test_remove_file_from_staging_area() {
+
+        // Common setup
+        let (_temp_dir, temp_path) = common_setup();
+
+        // Create a sample file to be added
+        let file_path = temp_path.clone() + "/sample.txt";
+        fs::write(&file_path, "Sample file content").expect("Failed to create a sample file");
+
+        // Execute the Add command
+        let add_command = Add::new();
+        let mut head = Head::new();
+        let args_add: Option<Vec<&str>>  = Some(vec![&file_path]);
+        add_command.execute(&mut head, args_add).expect("Add command failed");
+
+        // Execute the Rm command
+        let rm_command = Rm::new();
+        let args_rm: Option<Vec<&str>>  = Some(vec![&file_path]);
+        let result = rm_command.execute(&mut head, args_rm);
+
+        // Assert that the command executed successfully
+        assert!(result.is_ok(), "Rm command failed: {:?}", result);
+
+        // TODO: Add assertions for the expected state after removal
+
+    }
+
+    #[test]
+    fn test_status_command() {
+        // Common setup
+        let (_temp_dir, temp_path) = common_setup();
+
+        // Create a sample file in the working directory
+        let working_dir_file_path = temp_path.clone() + "sample.txt";
+        fs::write(&working_dir_file_path, "Working directory file content")
+            .expect("Failed to create a working directory file");
+
+        // Execute the Status command
+        let status_command = Status::new();
+        let mut head = Head::new();
+        let args = None; // You might adjust this based on how your Status command is designed
+        let result = status_command.execute(&mut head, args);
+
+        // Assert that the command executed successfully
+        assert!(result.is_ok(), "Status command failed: {:?}", result);
+        
+         // Execute the Add command to stage changes
+         let add_command = Add::new();
+         let args: Option<Vec<&str>> = Some(vec![&working_dir_file_path]);
+         let _ = add_command.execute(&mut head, args);
+ 
+         // Execute the Commit command to make a commit
+         let commit_command = Commit::new();
+         let args = Some(vec!["-m", "Test commit message"]);
+         let _ = commit_command.execute(&mut head, args);
+ 
+         // Execute the Status command
+         let args = None; // You might adjust this based on how your Status command is designed
+         let result = status_command.execute(&mut head, args);
+ 
+         // Assert that the command executed successfully
+         assert!(result.is_ok(), "Status command (With previous commit) failed: {:?}", result);
+        // Clean up: The temporary directory will be automatically deleted when temp_dir goes out of scope
+    }
+    const REMOTE_NAME: &str = "origin";
+    const REMOTE_URL: &str = "127.0.0.1:9418";
+    
+    /* #[test]
+    fn test_add_remote() {
+        // Common setup
+        let _temp_dir = common_setup();
+
+        // Create a new Remote instance
+        let remote = Remote::new();
+
+        // Execute the add remote command
+        let result = remote.add_new_remote(REMOTE_NAME.to_string(), REMOTE_URL.to_string());
+
+        // Assert that the command executed successfully
+        assert!(result.is_ok(), "Add remote command failed: {:?}", result);
+
+    // Clean up: The temporary directory will be automatically deleted when temp_dir goes out of scope
+    }
+
+    #[test]
+    fn test_remove_remote() { */
+        // Common setup
+        let temp_dir = common_setup();
+
+        // Create a new Remote instance
+        let remote = Remote::new();
+
+        // Add a remote for testing
+        remote.add_new_remote(REMOTE_NAME.to_string(), REMOTE_URL.to_string()).unwrap();
+
+        // Execute the remove remote command
+        let result = remote.remove_remote(REMOTE_NAME.to_string());
+
+        // Assert that the command executed successfully
+        assert!(result.is_ok(), "Remove remote command failed: {:?}", result);
+
+        // Clean up: The temporary directory will be automatically deleted when temp_dir goes out of scope
+    }
+
 }
 
