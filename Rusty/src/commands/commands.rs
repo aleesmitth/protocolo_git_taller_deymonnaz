@@ -1,5 +1,5 @@
 use std::fs::ReadDir;
-use std::{fs, error::Error, io, io::Write, io::Read, str, env, io::BufRead, io::Seek, io::SeekFrom, io::ErrorKind, collections::HashMap};
+use std::{fs, error::Error, io, io::Write, io::Read, str, env, io::BufRead, io::Seek, io::SeekFrom, io::ErrorKind, collections::HashMap, path::Path};
 
 extern crate libflate;
 use libflate::zlib::Decoder;
@@ -7,6 +7,8 @@ use libflate::zlib::Decoder;
 const OBJECT: &str = ".git/objects";
 const PACK: &str = ".git/pack";
 
+const TREE_FILE_MODE: &str = "100644";
+const TREE_SUBTREE_MODE: &str = "040000";
 const DELETE_FLAG: &str = "-d";
 const RENAME_FLAG: &str = "-m";
 const TYPE_FLAG: &str = "-t";
@@ -47,6 +49,8 @@ use crate::commands::structs::ObjectType;
 use crate::commands::structs::PackObjectType;
 use crate::commands::structs::Head;
 use crate::commands::structs::StagingArea;
+use crate::commands::structs::WorkingDirectory;
+
 
 use crate::client::client_protocol::ClientProtocol;
 
@@ -1134,25 +1138,25 @@ impl Log {
     /// * `base_commit` - The base commit ID to start generating logs from./// # Returns
     ///
     /// A `Result` containing the execution result or an error message.    
-    fn generate_log_entries(&self, entries: &mut Vec<(String, String)>, base_commit: String) -> Result<String, Box<dyn Error>> {        if base_commit.len() < 4 {
+    pub fn generate_log_entries(&self, entries: &mut Vec<(String, String)>, base_commit: String) -> Result<String, Box<dyn Error>> {        if base_commit.len() < 4 {
             return Err(Box::new(io::Error::new(
                         io::ErrorKind::Other,
                         "Error: Invalid Commit ID. It's too short",
                     )))
         }
 
-        let current_commit = if base_commit == HEAD { helpers::get_head_commit()? } else { base_commit };
+        let current_commit = if base_commit == HEAD { helpers::get_branch_last_commit(&helpers::get_current_branch_path()?)? } else { base_commit };
 
         if entries.iter().any(|(key, _)| key == &current_commit) {
             // don't process it again
             return Ok(String::new());
         }
 
-        println!("starting to generate logs for {:?}", current_commit.clone());
+        // println!("starting to generate logs for {:?}", current_commit.clone());
         let commit_path = format!("{}/{}/{}", OBJECT, &current_commit[..2], &current_commit[2..]);
-        println!("going to {:?}", commit_path.clone());
+        // println!("going to {:?}", commit_path.clone());
         let decompressed_data = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&commit_path)?)?;
-        println!("decompressed data {:?}", decompressed_data.clone());
+        // println!("decompressed data {:?}", decompressed_data.clone());
         let object_type = decompressed_data.splitn(2, ' ').next().ok_or("")?;
 
         if object_type != ObjectType::Commit.to_string() {
@@ -1165,11 +1169,11 @@ impl Log {
         let commit_file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
 
         let commit_file_lines: Vec<String> = commit_file_content[1].lines().map(|s| s.to_string()).collect();
-        println!("commit lines: {:?}", commit_file_lines);
+        // println!("commit lines: {:?}", commit_file_lines);
         let parent_commit_split_line: Vec<String> = commit_file_lines[1].split_whitespace().map(String::from).collect();
-        println!("{:?}", parent_commit_split_line);
+        // println!("{:?}", parent_commit_split_line);
         if parent_commit_split_line.len() < 2 {
-            println!("returning, found root commit");
+            // println!("returning, found root commit");
             return Ok(String::new());
         }
 
@@ -1181,11 +1185,11 @@ impl Log {
 
         if parent_commit_trimmed.is_empty() {            
             //root commit
-            println!("returning, found root commit");
+            // println!("returning, found root commit");
             return Ok(String::new());
         }
 
-        println!("parent commit {:?}", parent_commit_trimmed.clone());
+        // println!("parent commit {:?}", parent_commit_trimmed.clone());
         self.generate_log_entries(entries, parent_commit_trimmed.clone())?;
         Ok(String::new())
     }
@@ -1422,16 +1426,30 @@ impl Merge {
     }
 }
 
-// impl Command for Merge {
-//     fn execute(&self, _head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
-//         let arg_slice = args.unwrap_or(Vec::new()); //aca tendria que chequear que sea valido el branch que recibo por parametro
+impl Command for Merge { //ver que pasa cuando uno commit ancestro es commit root
+    fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        let arg_slice = args.unwrap_or(Vec::new()); //aca tendria que chequear que sea valido el branch que recibo por parametro
 
-//         let branch_to_merge = arg_slice[0];
-//         let current_branch_path = helpers::get_current_branch_path()?;
-//         // habria que buscar ancestor en comun
-//         // ver si en el branch actual se hicieron mas commits despues de ese ancestro
-//         // si no hubo mas commits puedo hacer fastforward merge y listo
-//         helpers::find_common_ancestor_commit();
-//         Ok(String::new())
-//     }
-// }
+        let branch_to_merge = arg_slice[0];
+        let current_branch = "main";
+
+        println!("merging {} -> {}", branch_to_merge, current_branch);
+        // habria que buscar ancestor en comun
+        // ver si en el branch actual se hicieron mas commits despues de ese ancestro
+        // si no hubo mas commits puedo hacer fastforward merge y listo
+        let common_ancestor_commit = helpers::find_common_ancestor_commit(current_branch, branch_to_merge)?;
+        println!("ancestor: {}", common_ancestor_commit);
+        if let Ok(last_commit) = helpers::is_fast_forward_merge_possible(current_branch, branch_to_merge) {
+            // helpers::update_branch_hash(current_branch, last_commit)?;
+            println!("updating branch last commit in current branch... to commit: {}", last_commit);
+            WorkingDirectory::clean_working_directory()?;
+            println!("cleaning working directory...");
+            let commit_tree = helpers::get_commit_tree(&last_commit)?;
+            WorkingDirectory::update_working_directory_to(&commit_tree)?;
+            // StagingArea::change_index_file(&commit_tree)?;
+        }
+
+        Ok(String::new())
+    }
+}
+

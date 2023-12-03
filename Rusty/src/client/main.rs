@@ -15,6 +15,7 @@ use rusty::commands::commands::Command;
 use rusty::commands::commands::Remote;
 use rusty::commands::commands::Fetch;
 use rusty::commands::commands::Log;
+use rusty::commands::commands::Merge;
 use std::{env, io};
 
 /// This function takes a slice of strings and converts it into a vector of string slices.
@@ -59,14 +60,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // };
     // Init::new().execute(&mut head, None)?;
     // Branch::new().execute(&mut head, Some(vec!["new"]))?;
-    // Checkout::new().execute(&mut head, Some(vec!["new"]))?;
+    // Checkout::new().execute(&mut head, Some(vec!["main"]))?;
     // Add::new().execute(&mut head, Some(vec!["ejemplo.txt"]))?;
+    // Add::new().execute(&mut head, Some(vec!["b/c/2.txt"]))?;
+    // Add::new().execute(&mut head, Some(vec!["d/c/3.txt"]))?;
     // Commit::new().execute(&mut head, Some(vec!["-m", "test"]))?;
     // if let Err(error) = Clone::new().execute(&mut head, None) {
     //     println!("{}", error);
     //     return Ok(())
     // }
-    if let Err(error) = Log::new().execute(&mut head, Some(vec!["HEAD"])) {
+    if let Err(error) = Merge::new().execute(&mut head, Some(vec!["new"])) {
         println!("{}", error);
         return Ok(())
     }
