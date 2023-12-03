@@ -5,6 +5,7 @@ extern crate crypto;
 extern crate libflate;
 
 use crate::commands::structs::Head;
+use crate::commands::commands::Log;
 use crypto::digest::Digest;
 use crypto::sha1::Sha1;
 use libflate::zlib::{Decoder, Encoder};

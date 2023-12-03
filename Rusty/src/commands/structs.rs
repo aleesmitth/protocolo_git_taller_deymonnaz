@@ -1,9 +1,12 @@
-use std::{error::Error, fmt, fs, io::BufRead, io::Write, net::TcpStream, io};
+use std::{error::Error, fmt, fs, io::BufRead, io::Write, net::TcpStream, io, path::PathBuf, path::Path, collections::HashMap};
 const OBJECT: &str = ".git/objects";
 const INDEX_FILE: &str = ".git/index";
+const TREE_SUBTREE_MODE: &str = "040000";
+const TREE_FILE_MODE: &str = "100644";
 //const DEFAULT_REMOTE: &str = "origin";
 
 use crate::commands::helpers;
+use crate::commands::commands::Log;
 
 use super::{commands::PathHandler, helpers::get_file_length};
 
