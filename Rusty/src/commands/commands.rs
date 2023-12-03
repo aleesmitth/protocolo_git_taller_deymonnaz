@@ -519,7 +519,7 @@ impl Command for Status {
         _args: Option<Vec<&str>>,
     ) -> Result<String, Box<dyn Error>> {
         let branch_path = helpers::get_current_branch_path()?;
-        let last_commit_hash: String = helpers::read_file_content(&branch_path)?;
+        let last_commit_hash: String = helpers::read_file_content(&PathHandler::get_relative_path(&branch_path))?;
         let mut no_changes = true;
         let mut tree_objects: Vec<String> = Vec::new();
         if !last_commit_hash.is_empty() {
@@ -530,7 +530,7 @@ impl Command for Status {
                 &last_commit_hash[2..]
             );
             let decompressed_data = helpers::decompress_file_content(
-                helpers::read_file_content_to_bytes(&last_commit_path)?,
+                helpers::read_file_content_to_bytes(&PathHandler::get_relative_path(&last_commit_path))?,
             )?;
             let commit_file_content: Vec<String> =
                 decompressed_data.split('\0').map(String::from).collect();
@@ -539,10 +539,12 @@ impl Command for Status {
                 .map(|s| s.to_string())
                 .collect();
 
-            let tree_hash = &commit_file_lines[0];
+            let tree_line = &commit_file_lines[0];
+            let tree_line_split: Vec<String> = tree_line.split_whitespace().map(String::from).collect();
+            let tree_hash = &tree_line_split[1];
             let tree_object_path = format!("{}/{}/{}", OBJECT, &tree_hash[..2], &tree_hash[2..]);
             let tree_content = helpers::decompress_file_content(
-                helpers::read_file_content_to_bytes(&tree_object_path)?,
+                helpers::read_file_content_to_bytes(&PathHandler::get_relative_path(&tree_object_path))?,
             )?;
             let tree_contents_split: Vec<String> =
                 tree_content.split('\0').map(String::from).collect();
@@ -552,15 +554,15 @@ impl Command for Status {
                 .collect();
         }
 
-        let index_file_content = helpers::read_file_content(INDEX_FILE)?;
+        let index_file_content = helpers::read_file_content(&PathHandler::get_relative_path(INDEX_FILE))?;
         let index_objects: Vec<String> =
             index_file_content.lines().map(|s| s.to_string()).collect();
 
         for pos in 0..(index_objects.len()) {
             let index_file_line: Vec<&str> = index_objects[pos].split(';').collect();
             if pos < tree_objects.len() {
-                let tree_file_line: Vec<&str> = tree_objects[pos].split(';').collect();
-                if tree_file_line[1] != index_file_line[1] && index_file_line[2] == "2" {
+                let tree_file_line: Vec<&str> = tree_objects[pos].split_whitespace().collect();
+                if tree_file_line[2] != index_file_line[1] && index_file_line[2] == "2" {
                     no_changes = false;
                     println!("modified: {} (Staged)", index_file_line[0]);
                     continue;
@@ -571,7 +573,7 @@ impl Command for Status {
                     get_file_length(index_file_line[0])?,
                     &current_object_content,
                 );
-                if current_object_hash != tree_file_line[1] && index_file_line[2] == "0" {
+                if current_object_hash != tree_file_line[2] && index_file_line[2] == "0" {
                     no_changes = false;
                     println!("modified: {} (Unstaged)", index_file_line[0]);
                 }
@@ -596,7 +598,7 @@ impl Remote {
 
     /// Adds a new remote repository configuration to the Git configuration file.
     fn add_new_remote(&self, remote_name: String, url: String) -> Result<(), Box<dyn Error>> {
-        let config_content = helpers::read_file_content(CONFIG_FILE)?;
+        let config_content = helpers::read_file_content(&PathHandler::get_relative_path(CONFIG_FILE))?;
 
         let section_header = format!("[remote '{}']", remote_name);
         let new_config_content = format!("{}{}\nurl = {}\n", config_content, section_header, url);
@@ -609,11 +611,11 @@ impl Remote {
             )));
         }
 
-        let mut config_file = fs::File::create(CONFIG_FILE)?;
+        let mut config_file = fs::File::create(PathHandler::get_relative_path(CONFIG_FILE))?;
         config_file.write_all(new_config_content.as_bytes())?;
 
         let remote_dir_path = format!("{}/{}", R_REMOTES, remote_name);
-        fs::create_dir(remote_dir_path)?;
+        let _create_dir = fs::create_dir(PathHandler::get_relative_path(&remote_dir_path))?;
 
         Ok(())
     }
@@ -1834,6 +1836,7 @@ mod tests {
     
     #[test]
     fn test_remove_file_from_staging_area() {
+
         // Common setup
         let (_temp_dir, temp_path) = common_setup();
 
@@ -1859,4 +1862,82 @@ mod tests {
 
     }
 
+    #[test]
+    fn test_status_command() {
+        // Common setup
+        let (_temp_dir, temp_path) = common_setup();
+
+        // Create a sample file in the working directory
+        let working_dir_file_path = temp_path.clone() + "sample.txt";
+        fs::write(&working_dir_file_path, "Working directory file content")
+            .expect("Failed to create a working directory file");
+
+        // Execute the Status command
+        let status_command = Status::new();
+        let mut head = Head::new();
+        let args = None; // You might adjust this based on how your Status command is designed
+        let result = status_command.execute(&mut head, args);
+
+        // Assert that the command executed successfully
+        assert!(result.is_ok(), "Status command failed: {:?}", result);
+        
+         // Execute the Add command to stage changes
+         let add_command = Add::new();
+         let args: Option<Vec<&str>> = Some(vec![&working_dir_file_path]);
+         let _ = add_command.execute(&mut head, args);
+ 
+         // Execute the Commit command to make a commit
+         let commit_command = Commit::new();
+         let args = Some(vec!["-m", "Test commit message"]);
+         let _ = commit_command.execute(&mut head, args);
+ 
+         // Execute the Status command
+         let args = None; // You might adjust this based on how your Status command is designed
+         let result = status_command.execute(&mut head, args);
+ 
+         // Assert that the command executed successfully
+         assert!(result.is_ok(), "Status command (With previous commit) failed: {:?}", result);
+        // Clean up: The temporary directory will be automatically deleted when temp_dir goes out of scope
+    }
+    const REMOTE_NAME: &str = "origin";
+    const REMOTE_URL: &str = "127.0.0.1:9418";
+    
+    /* #[test]
+    fn test_add_remote() {
+        // Common setup
+        let _temp_dir = common_setup();
+
+        // Create a new Remote instance
+        let remote = Remote::new();
+
+        // Execute the add remote command
+        let result = remote.add_new_remote(REMOTE_NAME.to_string(), REMOTE_URL.to_string());
+
+        // Assert that the command executed successfully
+        assert!(result.is_ok(), "Add remote command failed: {:?}", result);
+
+    // Clean up: The temporary directory will be automatically deleted when temp_dir goes out of scope
+    }
+
+    #[test]
+    fn test_remove_remote() { */
+        // Common setup
+        let temp_dir = common_setup();
+
+        // Create a new Remote instance
+        let remote = Remote::new();
+
+        // Add a remote for testing
+        remote.add_new_remote(REMOTE_NAME.to_string(), REMOTE_URL.to_string()).unwrap();
+
+        // Execute the remove remote command
+        let result = remote.remove_remote(REMOTE_NAME.to_string());
+
+        // Assert that the command executed successfully
+        assert!(result.is_ok(), "Remove remote command failed: {:?}", result);
+
+        // Clean up: The temporary directory will be automatically deleted when temp_dir goes out of scope
+    }
+
 }
+
