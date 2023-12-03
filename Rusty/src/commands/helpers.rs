@@ -128,7 +128,7 @@ pub fn update_file_with_hash(
     file_path: &str,
 ) -> io::Result<()> {
     // Read the file into a vector of lines.
-    let file_contents = fs::read_to_string(INDEX_FILE)?;
+    let file_contents = fs::read_to_string(PathHandler::get_relative_path(INDEX_FILE))?;
 
     // Split the file contents into lines.
     let mut lines: Vec<String> = file_contents.lines().map(|s| s.to_string()).collect();
@@ -153,7 +153,7 @@ pub fn update_file_with_hash(
     let updated_contents = lines.join("\n");
 
     // Write the updated contents back to the file.
-    fs::write(INDEX_FILE, updated_contents)?;
+    fs::write(PathHandler::get_relative_path(INDEX_FILE), updated_contents)?;
 
     Ok(())
 }

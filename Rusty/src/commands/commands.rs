@@ -224,8 +224,7 @@ impl Command for Checkout {
                 }
                 let new_head_content = format!("ref: refs/heads/{}", args[0]);
 
-                let head_file_content =
-                    helpers::read_file_content(&PathHandler::get_relative_path(HEAD_FILE))?;
+                let head_file_content = helpers::read_file_content(&PathHandler::get_relative_path(HEAD_FILE))?;
 
                 if head_file_content == new_head_content {
                     return Err(Box::new(io::Error::new(
@@ -375,7 +374,7 @@ impl Commit {
         message: Option<&str>,
         branch_path: &str,
     ) -> Result<String, Box<dyn Error>> {
-        let head_commit = helpers::read_file_content(branch_path)?;
+        let head_commit = helpers::read_file_content(&PathHandler::get_relative_path(branch_path))?;
         let mut content = format!("tree {}\nparent {}\n", tree_hash, head_commit);
         if let Some(message) = message {
             content = format!("{}\n{}", content, message);
@@ -390,7 +389,7 @@ impl Command for Commit {
     /// Then it creates a commit file, which contains the tree object hash, the commit's parent
     /// commits and the given message with the message flag.
     fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
-        if helpers::get_file_length(INDEX_FILE)? == 0 {
+        if helpers::get_file_length(&PathHandler::get_relative_path(INDEX_FILE))? == 0 {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
                 "No changes staged for commit",
@@ -418,7 +417,7 @@ impl Command for Commit {
             commit_content.as_bytes().len() as u64,
         )?;
 
-        let mut branch_file = fs::File::create(branch_path)?;
+        let mut branch_file = fs::File::create(PathHandler::get_relative_path(&branch_path))?;
         branch_file.write_all(commit_object_hash.as_bytes())?;
 
         self.stg_area.unstage_index_file()?;
@@ -1682,4 +1681,58 @@ mod tests {
         let result4 = CatFile.execute(&mut head, args4);
         assert!(result4.is_err());
     }
+
+    #[test]
+    fn test_add_command() {
+        // Common setup
+        let (temp_dir, temp_path) = common_setup();
+    
+        // Create a sample file to be added
+        let file_path = temp_path.clone() + "/sample.txt";
+        fs::write(&file_path, "Sample file content").expect("Failed to create a sample file");
+    
+        // Execute the Add command
+        let add_command = Add::new();
+        let mut head = Head::new();
+    
+        // Convert &str to String before creating the args vector
+        let args: Option<Vec<&str>> = Some(vec![&file_path]);
+    
+        let result = add_command.execute(&mut head, args);
+    
+        // Assert that the command executed successfully
+        assert!(result.is_ok(), "Add command failed: {:?}", result);
+    
+        // Cleanup: The temporary directory will be automatically deleted when temp_dir goes out of scope
+    }
+    
+    #[test]
+    fn test_commit_command() {
+        // Common setup
+        let (temp_dir, temp_path) = common_setup();
+    
+        // Create a sample file to be added
+        let file_path = temp_path.clone() + "/sample.txt";
+        fs::write(&file_path, "Sample file content").expect("Failed to create a sample file");
+    
+        // Execute the Init command
+        let mut head = Head::new();
+    
+        // Execute the Add command
+        let add_command = Add::new();
+        let args_add: Option<Vec<&str>> = Some(vec![&file_path]);
+        let _result_add = add_command.execute(&mut head, args_add);
+    
+        // Execute the Commit command
+        let commit_command = Commit::new();
+        let args_commit: Option<Vec<&str>> = Some(vec!["-m", "Initial commit"]);
+        let result_commit = commit_command.execute(&mut head, args_commit);
+    
+        // Assert that the command executed successfully
+        assert!(result_commit.is_ok(), "Commit command failed: {:?}", result_commit);
+    
+        // Cleanup: The temporary directory will be automatically deleted when temp_dir goes out of scope
+    }
+    
+
 }

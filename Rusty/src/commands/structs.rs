@@ -49,7 +49,7 @@ impl HashObjectCreator {
     }
 
     pub fn create_tree_object() -> Result<String, Box<dyn Error>> {
-        let index_file_content = helpers::read_file_content(INDEX_FILE)?;
+        let index_file_content = helpers::read_file_content(&PathHandler::get_relative_path(INDEX_FILE))?;
         let mut tree_content = String::new();
         let index_file_lines: Vec<&str> = index_file_content.split("\n").collect();
         for line in index_file_lines {
@@ -100,7 +100,7 @@ impl StagingArea {
     }
 
     pub fn unstage_index_file(&self) -> Result<(), Box<dyn Error>> {
-        let index_file_content = helpers::read_file_content(INDEX_FILE)?;
+        let index_file_content = helpers::read_file_content(&PathHandler::get_relative_path(INDEX_FILE))?;
         let mut lines: Vec<String> = index_file_content.lines().map(|s| s.to_string()).collect();
         let mut new_index_file_content = String::new();
 
@@ -111,7 +111,7 @@ impl StagingArea {
             new_index_file_content.push('\n'); // Add a newline between lines
         }
 
-        let mut index_file = fs::File::create(INDEX_FILE)?;
+        let mut index_file = fs::File::create(PathHandler::get_relative_path(INDEX_FILE))?;
         index_file.write_all(new_index_file_content.as_bytes())?;
         Ok(())
     }
