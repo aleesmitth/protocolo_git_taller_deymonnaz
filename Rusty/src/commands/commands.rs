@@ -1,6 +1,6 @@
 use std::fs::ReadDir;
 use std::{
-    collections::HashMap, collections::HashSet, env, error::Error, fs, io, io::BufRead, io::ErrorKind, io::Read,
+    collections::HashSet, env, error::Error, fs, io, io::BufRead, io::ErrorKind, io::Read,
     io::Seek, io::SeekFrom, io::Write, str,
 };
 
@@ -61,7 +61,7 @@ use crate::commands::structs::IndexFileEntryState;
 use crate::client::client_protocol::ClientProtocol;
 
 use crate::commands::helpers;
-use crate::server::server_protocol;
+
 
 // TODO MOVER A OTRA CARPETA. NO TIENE SENTIDO commands::commands::PathHandler
 pub struct PathHandler;
@@ -352,7 +352,7 @@ impl Command for HashObject {
             return Ok(String::new());
         }
         let content = helpers::read_file_content(path)?;
-        let mut object_hash = String::new();
+        let object_hash;
         if write {
             let file_len = helpers::get_file_length(path)?;
             return HashObjectCreator::write_object_file(content, obj_type, file_len);
@@ -1029,7 +1029,7 @@ impl UnpackObjects {
                 ))?;
                 // Save and restore the offset since read_pack_offset() will change it
                 // let offset = Self::get_offset(pack_file)?; ver esto
-                let (base_object_type, base_object_content, size) =
+                let (base_object_type, base_object_content, _size) =
                     Self::read_pack_object(pack_file, base_offset)?;
                 Self::seek(pack_file, offset)?;
                 return Self::apply_delta(pack_file, &base_object_content, base_object_type);
@@ -1046,7 +1046,7 @@ impl UnpackObjects {
 }
 
 impl Command for UnpackObjects {
-    fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, _head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         // let arg_slice = args.unwrap_or(Vec::new());
         let mut pack_file = fs::File::open(".git/pack/received_pack_file.pack")?;
         let pack_file_size = helpers::get_file_length(".git/pack/received_pack_file.pack")?;
@@ -1127,7 +1127,7 @@ impl Fetch {
 
 impl Command for Fetch {
     fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
-        let mut remote_url = String::new();
+        let remote_url ;
         let mut remote_name = DEFAULT_REMOTE_REPOSITORY;
         match args {
             Some(args) => match helpers::get_remote_url(args[0]) {
@@ -1170,7 +1170,7 @@ impl Command for Push {
         _args: Option<Vec<&str>>,
     ) -> Result<String, Box<dyn Error>> {
         //Pack and index files are created in .git/pack/ directory
-        let pack_objects = PackObjects::new();
+        let _pack_objects = PackObjects::new();
         // pack_objects.execute(_head, None)?;
 
         let mut server_connection = ClientProtocol::new();
@@ -1501,14 +1501,14 @@ impl Tag {
         Ok(())
     }
 
-    fn verify_tag(&self, name: &str) -> bool {
+    /* fn verify_tag(&self, name: &str) -> bool {
         let tag_path = format!("{}{}", R_TAGS, name);
 
         if fs::metadata(tag_path).is_ok() {
             return true;
         }
         false
-    }
+    } */
 
     fn delete_tag(&self, name: &str) -> Result<(), Box<dyn Error>> {
         let tag_path = format!("{}{}", R_TAGS, name);
@@ -1661,7 +1661,7 @@ mod tests {
 
     #[test]
     fn test_branch_command() {
-        let (temp_dir, temp_path) = common_setup();
+        let (_temp_dir,_temp_pathh) = common_setup();
         // Create a Head instance
         let mut head = Head::new();
 
@@ -1689,7 +1689,7 @@ mod tests {
 
     #[test]
     fn test_checkout_command() {
-        let (temp_dir, temp_path) = common_setup();
+        let (_temp_dir,_temp_pathh) = common_setup();
         // Create a Head instance
         let mut head = Head::new();
 
@@ -1718,7 +1718,7 @@ mod tests {
 
     #[test]
     fn test_hashobject_command() {
-        let (temp_dir, temp_path) = common_setup();
+        let (_temp_dir,_temp_pathh) = common_setup();
         // Create a Head instance
         let mut head = Head::new();
 
@@ -1749,7 +1749,7 @@ mod tests {
 
     #[test]
     fn test_catfile_command() {
-        let (temp_dir, temp_path) = common_setup();
+        let (_temp_dir,_temp_pathh) = common_setup();
         // Create a Head instance
         let mut head = Head::new();
 
@@ -1782,15 +1782,16 @@ mod tests {
     #[test]
     fn test_add_command() {
         // Common setup
-        let (temp_dir, temp_path) = common_setup();
+        let (_temp_dir, temp_path) = common_setup();
     
         // Create a sample file to be added
         let file_path = temp_path.clone() + "/sample.txt";
         fs::write(&file_path, "Sample file content").expect("Failed to create a sample file");
     
         // Execute the Add command
-        let add_command = Add::new();
         let mut head = Head::new();
+        let add_command = Add::new();
+        
     
         // Convert &str to String before creating the args vector
         let args: Option<Vec<&str>> = Some(vec![&file_path]);
@@ -1806,7 +1807,7 @@ mod tests {
     #[test]
     fn test_commit_command() {
         // Common setup
-        let (temp_dir, temp_path) = common_setup();
+        let (_temp_dir, temp_path) = common_setup();
     
         // Create a sample file to be added
         let file_path = temp_path.clone() + "/sample.txt";
@@ -1831,5 +1832,31 @@ mod tests {
         // Cleanup: The temporary directory will be automatically deleted when temp_dir goes out of scope
     }
     
+    #[test]
+    fn test_remove_file_from_staging_area() {
+        // Common setup
+        let (_temp_dir, temp_path) = common_setup();
+
+        // Create a sample file to be added
+        let file_path = temp_path.clone() + "/sample.txt";
+        fs::write(&file_path, "Sample file content").expect("Failed to create a sample file");
+
+        // Execute the Add command
+        let add_command = Add::new();
+        let mut head = Head::new();
+        let args_add: Option<Vec<&str>>  = Some(vec![&file_path]);
+        add_command.execute(&mut head, args_add).expect("Add command failed");
+
+        // Execute the Rm command
+        let rm_command = Rm::new();
+        let args_rm: Option<Vec<&str>>  = Some(vec![&file_path]);
+        let result = rm_command.execute(&mut head, args_rm);
+
+        // Assert that the command executed successfully
+        assert!(result.is_ok(), "Rm command failed: {:?}", result);
+
+        // TODO: Add assertions for the expected state after removal
+
+    }
 
 }

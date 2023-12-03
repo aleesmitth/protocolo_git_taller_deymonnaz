@@ -1,8 +1,8 @@
 use crate::commands::helpers;
-use std::sync::{mpsc, Arc, Mutex};
-use std::thread::current;
+use std::sync::mpsc;
+
 use std::{
-    env, error::Error, fs, io, io::BufRead, io::Read, io::Write, net::Shutdown, net::TcpStream,
+    error::Error, fs, io::BufRead, io::Read, io::Write, net::Shutdown, net::TcpStream,
     str, thread, time::Duration,
 };
 pub struct ClientProtocol;
@@ -27,7 +27,7 @@ impl ClientProtocol {
         println!("request {}", request);
         // Send the Git service request
         stream.write_all(request.as_bytes())?;
-        stream.flush();
+        let _ = stream.flush();
         println!("request sent");
         // Read the response from the server
         let mut response = String::new();
@@ -87,11 +87,11 @@ impl ClientProtocol {
         let stream_clone = stream.try_clone()?;
         // Spawn a new thread to handle reading from the server
         let thread_handle = thread::spawn(move || {
-            ClientProtocol::read_response_from_server(stream_clone, tx);
+            let _ = ClientProtocol::read_response_from_server(stream_clone, tx);
         });
 
         let mut refs_in_remote: Vec<(String, String)> = Vec::new();
-        let mut current_commit = String::new();
+        let mut current_commit ;
         thread::sleep(Duration::from_millis(10));
         loop {
             match rx.try_recv() {
@@ -119,7 +119,7 @@ impl ClientProtocol {
 
         println!("\nafter response");
         println!("{:?}", refs_in_remote);
-        for (ref_hash, ref_name) in &refs_in_remote {
+        for (ref_hash, _ref_name) in &refs_in_remote {
             let line = format!("want {}\n", ref_hash);
             let actual_line = format!("{:04x}{}", line.len() + 4, line);
             println!("request line: {}", actual_line);
@@ -181,7 +181,7 @@ impl ClientProtocol {
         Ok(())
     }
 
-    fn write_lines_to_stream(
+    /* fn write_lines_to_stream(
         stream: &mut TcpStream,
         lines: Vec<String>,
     ) -> Result<(), Box<dyn Error + '_>> {
@@ -190,5 +190,5 @@ impl ClientProtocol {
         }
         stream.flush()?;
         Ok(())
-    }
+    } */
 }

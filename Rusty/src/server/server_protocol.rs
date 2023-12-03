@@ -1,7 +1,6 @@
 use crate::commands::helpers;
 use std::{
-    env, error::Error, fs, io, io::BufRead, io::Read, io::Write, net::TcpListener, net::TcpStream,
-    str,
+    error::Error, io, io::Read, io::Write, net::TcpListener, net::TcpStream,
 };
 const RECEIVE_PACK: &str = "git-receive-pack";
 const UPLOAD_PACK: &str = "git-upload-pack";
@@ -23,7 +22,7 @@ impl ServerProtocol {
 
     fn get_request_length(reader: &mut dyn Read) -> Result<usize, Box<dyn std::error::Error>> {
         let mut message_length: [u8; LENGTH_BYTES] = [0; LENGTH_BYTES];
-        if let Err(e) = reader.read_exact(&mut message_length) {
+        if let Err(_e) = reader.read_exact(&mut message_length) {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
                 "Invalid length in line",
@@ -148,7 +147,7 @@ impl ServerProtocol {
             stream.write_all(line_to_send.as_bytes())?;
         }
 
-        stream.write_all(REQUEST_LENGTH_CERO.as_bytes());
+        let _ = stream.write_all(REQUEST_LENGTH_CERO.as_bytes());
         println!("-sent end of message delimiter-");
 
         let mut reader = std::io::BufReader::new(stream);
@@ -191,7 +190,7 @@ impl ServerProtocol {
         stop_when_length_cero: bool,
     ) -> Result<Vec<String>, Box<dyn Error>> {
         let mut requests_received: Vec<String> = Vec::new();
-        while true {
+        loop {
             println!("waiting for request..");
             let request_length = ServerProtocol::get_request_length(reader)?;
             println!("request length: {:?}", request_length);

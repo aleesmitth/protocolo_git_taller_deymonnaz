@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap, error::Error, fmt::format, fs, io, io::Read, io::Write, path::Path,
+    collections::HashMap, error::Error, fs, io, io::Read, io::Write, path::Path,
 };
 extern crate crypto;
 extern crate libflate;
@@ -17,7 +17,7 @@ const HEAD_FILE: &str = ".git/HEAD";
 const DEFAULT_BRANCH_NAME: &str = "main";
 const INDEX_FILE: &str = ".git/index";
 const CONFIG_FILE: &str = ".git/config";
-const R_REMOTES: &str = ".git/refs/remotes";
+//const R_REMOTES: &str = ".git/refs/remotes";
 
 /// Retrieves the path to the current branch from the Git HEAD file.
 pub fn get_current_branch_path() -> Result<String, Box<dyn Error>> {
@@ -290,7 +290,7 @@ pub fn generate_sha1_string_from_bytes(data: &Vec<u8>) -> String {
 pub fn read_object(hash: String) -> Result<(ObjectType, String), Box<dyn Error>> {
     let (directory, file) = hash.split_at(2);
     let object_path = format!("{}/{}/{}", OBJECT, directory, file);
-    let mut file = fs::File::open(object_path)?;
+    let file = fs::File::open(object_path)?;
     let mut buffer = String::new();
     Decoder::new(file)?.read_to_string(&mut buffer)?;
 
@@ -370,7 +370,7 @@ pub fn update_local_branch_with_commit(
             }
             if let Some(remote) = remote {
                 if remote == remote_name {
-                    update_branch_hash(branch_name, remote_hash);
+                    let _ = update_branch_hash(branch_name, remote_hash);
                 }
             }
         }

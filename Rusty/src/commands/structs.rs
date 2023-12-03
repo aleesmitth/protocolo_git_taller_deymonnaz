@@ -1,7 +1,7 @@
-use std::{error::Error, fmt, fs, io::BufRead, io::Write, net::TcpStream, io, io::ErrorKind};
+use std::{error::Error, fmt, fs, io::BufRead, io::Write, net::TcpStream, io};
 const OBJECT: &str = ".git/objects";
 const INDEX_FILE: &str = ".git/index";
-const DEFAULT_REMOTE: &str = "origin";
+//const DEFAULT_REMOTE: &str = "origin";
 
 use crate::commands::helpers;
 
@@ -136,7 +136,7 @@ impl StagingArea {
     /// Removes a file from the staging area.
     pub fn remove_file(&self, path: &str) -> Result<(), Box<dyn Error>> {
     	// Read the file into a vector of lines.
-	    let file_contents = fs::read_to_string(INDEX_FILE)?;
+	    let file_contents = fs::read_to_string(PathHandler::get_relative_path(INDEX_FILE))?;
 
 	    // Split the file contents into lines.
 	    let mut lines: Vec<String> = file_contents.lines().map(|s| s.to_string()).collect();
@@ -161,7 +161,7 @@ impl StagingArea {
 	    let updated_contents = lines.join("\n");
 
 	    // Write the updated contents back to the file.
-	    fs::write(INDEX_FILE, updated_contents)?;
+	    fs::write(PathHandler::get_relative_path(INDEX_FILE), updated_contents)?;
 
 	    Ok(())
     }
