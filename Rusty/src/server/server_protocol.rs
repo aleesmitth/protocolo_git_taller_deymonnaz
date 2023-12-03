@@ -1,5 +1,7 @@
 use crate::commands::helpers;
-use std::{fs, error::Error, io, io::Write, io::Read, str, env, io::BufRead, net::TcpStream, net::TcpListener};
+use std::{
+    error::Error, io, io::Read, io::Write, net::TcpListener, net::TcpStream,
+};
 const RECEIVE_PACK: &str = "git-receive-pack";
 const UPLOAD_PACK: &str = "git-upload-pack";
 pub struct ServerProtocol;
@@ -20,7 +22,7 @@ impl ServerProtocol {
 
     fn get_request_length(reader: &mut dyn Read) -> Result<usize, Box<dyn std::error::Error>> {
         let mut message_length: [u8; LENGTH_BYTES] = [0; LENGTH_BYTES];
-        if let Err(e) = reader.read_exact(&mut message_length) {
+        if let Err(_e) = reader.read_exact(&mut message_length) {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
                 "Invalid length in line",
@@ -41,7 +43,10 @@ impl ServerProtocol {
     //     Ok(buffer)
     // }
 
-    fn read_exact_length_to_string(reader: &mut dyn Read, message_length: usize) -> Result<String, Box<dyn std::error::Error>> {
+    fn read_exact_length_to_string(
+        reader: &mut dyn Read,
+        message_length: usize,
+    ) -> Result<String, Box<dyn std::error::Error>> {
         let mut buffer = vec![0; message_length - 4];
         if let Err(e) = reader.read_exact(&mut buffer) {
             return Err(Box::new(io::Error::new(
@@ -61,8 +66,8 @@ impl ServerProtocol {
         let request_length = ServerProtocol::get_request_length(&mut reader)?;
         println!("request_length: {:?}", request_length);
         if request_length == 0 {
-        	// TODO gracefully end connection, message length is 0
-        	return Err(Box::new(io::Error::new(
+            // TODO gracefully end connection, message length is 0
+            return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
                 "Error: Request length 0",
             )));
@@ -82,10 +87,7 @@ impl ServerProtocol {
             RECEIVE_PACK => println!("push: {:?}", request_array),
             _ => {}
         }
-        
-        
 
-        
         // for byte in reader.bytes() {
         //     match byte {
         //         Ok(b'\0') => {
@@ -131,91 +133,103 @@ impl ServerProtocol {
                 break;
             }
         }*/
-        
+
         println!("end handling connection");
         Ok(())
     }
-    
 
     pub fn upload_pack(stream: &mut TcpStream) -> Result<(), Box<dyn Error>> {
         println!("git-upload-pack");
         let branches: Vec<String> = helpers::get_all_branches()?;
         for branch in &branches {
-	        let line_to_send = ServerProtocol::format_line_to_send(branch.clone());
-	        println!("sending line: {:?}", line_to_send);
-	        stream.write_all(line_to_send.as_bytes())?;
+            let line_to_send = ServerProtocol::format_line_to_send(branch.clone());
+            println!("sending line: {:?}", line_to_send);
+            stream.write_all(line_to_send.as_bytes())?;
         }
 
-        stream.write_all(REQUEST_LENGTH_CERO.as_bytes());
+        let _ = stream.write_all(REQUEST_LENGTH_CERO.as_bytes());
         println!("-sent end of message delimiter-");
 
         let mut reader = std::io::BufReader::new(stream);
-        let requests_received: Vec<String> = ServerProtocol::read_until(&mut reader, REQUEST_DELIMITER_DONE, false)?;
+        let requests_received: Vec<String> =
+            ServerProtocol::read_until(&mut reader, REQUEST_DELIMITER_DONE, false)?;
         for request_received in requests_received {
-	        let request_array: Vec<&str> = request_received.split_whitespace().collect();
-	        println!("request in array: {:?}", request_array);
-	        if request_array[0] != WANT_REQUEST {
-	        	//TODO not want request, handle error gracefully
-	        	println!("Error: expected want request but got: {:?}", request_array[0]);
-	        	return Err(Box::new(io::Error::new(
-	                        io::ErrorKind::Other,
-	                        "Error: Expecting want request but got something else",
-	                    )))
-	        }
-	        // TODO should probably go read the branches again in case some other client updated the latest commit
-	        let is_valid_commit = ServerProtocol::validate_is_latest_commit_any_branch(request_array[1], &branches);
-	        if !is_valid_commit {
-		        println!("invalid commit: {:?}", request_array);
-		        return Err(Box::new(io::Error::new(
-		                        io::ErrorKind::Other,
-		                        "Error: Received invalid commit hash for want request",
-		                    )))
-	    	}
+            let request_array: Vec<&str> = request_received.split_whitespace().collect();
+            println!("request in array: {:?}", request_array);
+            if request_array[0] != WANT_REQUEST {
+                //TODO not want request, handle error gracefully
+                println!(
+                    "Error: expected want request but got: {:?}",
+                    request_array[0]
+                );
+                return Err(Box::new(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Error: Expecting want request but got something else",
+                )));
+            }
+            // TODO should probably go read the branches again in case some other client updated the latest commit
+            let is_valid_commit =
+                ServerProtocol::validate_is_latest_commit_any_branch(request_array[1], &branches);
+            if !is_valid_commit {
+                println!("invalid commit: {:?}", request_array);
+                return Err(Box::new(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Error: Received invalid commit hash for want request",
+                )));
+            }
 
-	    	println!("valid want request.");
-	    }
+            println!("valid want request.");
+        }
 
         Ok(())
     }
 
-    pub fn read_until(reader: &mut dyn Read, delimiter: &str, stop_when_length_cero: bool) -> Result<Vec<String>, Box<dyn Error>> {
-    	let mut requests_received: Vec<String> = Vec::new();
-    	while true {
-	    	println!("waiting for request..");
-	        let request_length = ServerProtocol::get_request_length(reader)?;
-	        println!("request length: {:?}", request_length);
-	        if request_length == 0 {
-	            if stop_when_length_cero { break; } else { continue; }
-	        }
-	        println!("reading request..");
-	        let request = ServerProtocol::read_exact_length_to_string(reader, request_length)?;
-	        println!("request: {:?}", request);
+    pub fn read_until(
+        reader: &mut dyn Read,
+        delimiter: &str,
+        stop_when_length_cero: bool,
+    ) -> Result<Vec<String>, Box<dyn Error>> {
+        let mut requests_received: Vec<String> = Vec::new();
+        loop {
+            println!("waiting for request..");
+            let request_length = ServerProtocol::get_request_length(reader)?;
+            println!("request length: {:?}", request_length);
+            if request_length == 0 {
+                if stop_when_length_cero {
+                    break;
+                } else {
+                    continue;
+                }
+            }
+            println!("reading request..");
+            let request = ServerProtocol::read_exact_length_to_string(reader, request_length)?;
+            println!("request: {:?}", request);
 
-	        // received a message delimiter
-	        if &request == delimiter {
-	        	println!("found delimiter {:?}", delimiter);
-			    break;
-			}
-	        requests_received.push(request);
-	    }
+            // received a message delimiter
+            if &request == delimiter {
+                println!("found delimiter {:?}", delimiter);
+                break;
+            }
+            requests_received.push(request);
+        }
         Ok(requests_received)
     }
 
     pub fn validate_is_latest_commit_any_branch(commit: &str, branches: &Vec<String>) -> bool {
-    	for branch in branches {    		
-		    // Split the string into words
-		    let branch_commit_and_name: Vec<&str> = branch.split_whitespace().collect();
-    		if let Some(first_word) = branch_commit_and_name.first() {
-		        if first_word == &commit {
-		        	return true;
-		        }
-		    }
-    	}
-    	false
+        for branch in branches {
+            // Split the string into words
+            let branch_commit_and_name: Vec<&str> = branch.split_whitespace().collect();
+            if let Some(first_word) = branch_commit_and_name.first() {
+                if first_word == &commit {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     pub fn format_line_to_send(line: String) -> String {
-    	format!("{:04x}{}", line.len() + 4, line)
+        format!("{:04x}{}", line.len() + 4, line)
     }
 
     pub fn receive_pack(&mut self) -> Result<(), Box<dyn Error>> {
@@ -230,7 +244,7 @@ impl ServerProtocol {
 
         // Read the response from the server
         let mut response = String::new();
-    
+
         let reader = std::io::BufReader::new(&stream);
         let mut remote_hash  = String::new();
         for line in reader.lines() {
@@ -253,12 +267,12 @@ impl ServerProtocol {
         stream.write_all(actual_line.as_bytes())?;
         stream.write_all(b"0000")?;
         stream.flush()?;
-        
+
         let mut pack_file = fs::File::open(".git/pack/pack_file.pack")?;
         std::io::copy(&mut pack_file, &mut stream)?;
         //stream.flush()?;
 
-        
+
         let reader = std::io::BufReader::new(&stream);
         for line in reader.lines() {
             let line = line?;

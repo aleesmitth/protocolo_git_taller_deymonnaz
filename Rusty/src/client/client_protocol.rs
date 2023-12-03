@@ -1,7 +1,10 @@
 use crate::commands::helpers;
-use std::thread::current;
-use std::{fs, error::Error, io, io::Write, io::Read, str, env, io::BufRead, net::TcpStream, net::Shutdown, thread, time::Duration};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::mpsc;
+
+use std::{
+    error::Error, fs, io::BufRead, io::Read, io::Write, net::Shutdown, net::TcpStream,
+    str, thread, time::Duration,
+};
 pub struct ClientProtocol;
 
 impl ClientProtocol {
@@ -24,13 +27,13 @@ impl ClientProtocol {
         println!("request {}", request);
         // Send the Git service request
         stream.write_all(request.as_bytes())?;
-        stream.flush();
+        let _ = stream.flush();
         println!("request sent");
         // Read the response from the server
         let mut response = String::new();
-    
+
         let reader = std::io::BufReader::new(&stream);
-        let mut remote_hash  = String::new();
+        let mut remote_hash = String::new();
         for line in reader.lines() {
             if let Ok(value) = line {
                 let split_value: Vec<&str> = value.split_whitespace().collect();
@@ -51,12 +54,11 @@ impl ClientProtocol {
         stream.write_all(actual_line.as_bytes())?;
         stream.write_all(b"0000")?;
         stream.flush()?;
-        
+
         let mut pack_file = fs::File::open(".git/pack/pack_file.pack")?;
         std::io::copy(&mut pack_file, &mut stream)?;
         // stream.flush()?;
 
-        
         let reader = std::io::BufReader::new(&stream);
         for line in reader.lines() {
             let line = line?;
@@ -67,10 +69,16 @@ impl ClientProtocol {
         Ok(())
     }
 
-    pub fn fetch_from_remote(&mut self, remote_url: String) -> Result<Vec<(String, String)>, Box<dyn Error>> {
+    pub fn fetch_from_remote(
+        &mut self,
+        remote_url: String,
+    ) -> Result<Vec<(String, String)>, Box<dyn Error>> {
         let mut stream = ClientProtocol::connect(&remote_url)?;
 
-        let request = format!("{:04x}git-upload-pack /projects/.git\0host=127.0.0.1\0", "git-upload-pack /projects/.git\0host=127.0.0.1\0".len() + 4);
+        let request = format!(
+            "{:04x}git-upload-pack /projects/.git\0host=127.0.0.1\0",
+            "git-upload-pack /projects/.git\0host=127.0.0.1\0".len() + 4
+        );
         println!("{}", request);
         stream.write_all(request.as_bytes())?;
         stream.flush()?;
@@ -79,11 +87,11 @@ impl ClientProtocol {
         let stream_clone = stream.try_clone()?;
         // Spawn a new thread to handle reading from the server
         let thread_handle = thread::spawn(move || {
-            ClientProtocol::read_response_from_server(stream_clone, tx);
+            let _ = ClientProtocol::read_response_from_server(stream_clone, tx);
         });
 
         let mut refs_in_remote: Vec<(String, String)> = Vec::new();
-        let mut current_commit = String::new();
+        let mut current_commit ;
         thread::sleep(Duration::from_millis(10));
         loop {
             match rx.try_recv() {
@@ -111,7 +119,7 @@ impl ClientProtocol {
 
         println!("\nafter response");
         println!("{:?}", refs_in_remote);
-        for (ref_hash, ref_name) in &refs_in_remote {
+        for (ref_hash, _ref_name) in &refs_in_remote {
             let line = format!("want {}\n", ref_hash);
             let actual_line = format!("{:04x}{}", line.len() + 4, line);
             println!("request line: {}", actual_line);
@@ -132,14 +140,13 @@ impl ClientProtocol {
             match rx.try_recv() {
                 Ok(message) => {
                     if message == "00000008NAK" {
-                        let mut buffer = Vec::new(); 
+                        let mut buffer = Vec::new();
                         stream.read_to_end(&mut buffer)?;
                         println!("{:?}", buffer);
                         // std::fs::write(".git/pack/received_pack_file.pack", &buffer)?;
                         let mut file = fs::File::create(".git/pack/received_pack_file.pack")?;
                         file.write_all(&buffer)?;
                     }
-                    
                 }
                 Err(_) => break,
             }
@@ -152,9 +159,12 @@ impl ClientProtocol {
         Ok(refs_in_remote)
     }
 
-    fn read_response_from_server(stream: TcpStream, tx: mpsc::Sender<String>) -> Result<(), Box<dyn Error>> {
+    fn read_response_from_server(
+        stream: TcpStream,
+        tx: mpsc::Sender<String>,
+    ) -> Result<(), Box<dyn Error>> {
         let reader = std::io::BufReader::new(&stream);
-    
+
         for line in reader.lines() {
             if let Ok(value) = line {
                 // Send the received line to the main thread
@@ -165,17 +175,20 @@ impl ClientProtocol {
                 }
             }
         }
-    
+
         // Send a signal to the main thread that reading is done
         tx.send("ReadingDone".to_string())?;
         Ok(())
     }
 
-    fn write_lines_to_stream(stream: &mut TcpStream, lines: Vec<String>) -> Result<(), Box<dyn Error + '_>> {
+    /* fn write_lines_to_stream(
+        stream: &mut TcpStream,
+        lines: Vec<String>,
+    ) -> Result<(), Box<dyn Error + '_>> {
         for line in lines {
             stream.write_all(line.as_bytes())?;
         }
         stream.flush()?;
         Ok(())
-    }
+    } */
 }
