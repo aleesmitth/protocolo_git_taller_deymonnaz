@@ -65,6 +65,46 @@ impl HashObjectCreator {
     }
 }
 
+pub enum IndexFileEntryState {
+    Cached,
+    Staged,
+    Modified,
+    Deleted,
+}
+
+impl IndexFileEntryState {
+    pub fn new(state: &str) -> Option<Self> {
+        match state {
+            "0" => Some(IndexFileEntryState::Cached),
+            "1" => Some(IndexFileEntryState::Modified),
+            "2" => Some(IndexFileEntryState::Staged),
+            "3" => Some(IndexFileEntryState::Deleted),
+            _ => None,
+        }
+    }
+    pub fn get_entry_state_for_file(&self) -> u8 {
+        let state = match self {
+            IndexFileEntryState::Cached => 0,
+            IndexFileEntryState::Modified => 1,
+            IndexFileEntryState::Staged => 2,
+            IndexFileEntryState::Deleted => 3,
+        };
+        state
+    }
+}
+
+impl fmt::Display for IndexFileEntryState {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let string = match self {
+            IndexFileEntryState::Cached => "0",
+            IndexFileEntryState::Modified => "1",
+            IndexFileEntryState::Staged => "2",
+            IndexFileEntryState::Deleted => "3",
+        };
+        write!(f, "{}", string)
+    }
+}
+
 /// Represents the staging area for Git. Where files can be added and removed. They can have 3 possible states,
 /// stage, modified and untracked.
 #[derive(Debug)]
@@ -88,7 +128,7 @@ impl StagingArea {
         )?;
         //no se si aca esta bien escribir directamente el objeto o seria mejor usar hash-object
 
-        helpers::update_file_with_hash(&object_hash.as_str(), "2", path)?;
+        helpers::update_file_with_hash(&object_hash.as_str(), IndexFileEntryState::Staged.to_string().as_str(), path)?;
 
         Ok(())
     }
@@ -106,7 +146,7 @@ impl StagingArea {
 
         for line in lines.iter_mut() {
             line.pop();
-            line.push_str("0");
+            line.push_str(IndexFileEntryState::Cached.to_string().as_str());
             new_index_file_content.push_str(line);
             new_index_file_content.push('\n'); // Add a newline between lines
         }
@@ -115,6 +155,34 @@ impl StagingArea {
         index_file.write_all(new_index_file_content.as_bytes())?;
         Ok(())
     }
+
+	pub fn get_entries_index_file(&self, state: IndexFileEntryState) -> Result<Vec<String>, Box<dyn Error>> {
+	    let index_file_content = helpers::read_file_content(INDEX_FILE)?;
+	    let lines: Vec<String> = index_file_content.lines().map(|s| s.to_string()).collect();
+
+	    let mut result: Vec<String> = Vec::new();
+
+	    for line in lines {
+	        let parts: Vec<&str> = line.split(';').map(|s| s.trim()).collect();
+
+	        // Assuming each line in the index file has at least two parts: state and file path
+	        if parts.len() >= 3 {
+	            let file_name = parts[0];
+	            let file_state = parts[2];
+
+	            // Check if the file state is not empty and matches the specified state
+	            match file_state {
+	            	state => result.push(file_name.to_string()),
+	            	_ => {}
+	            }
+	        }
+	    }
+	    println!("state: {:?}, result: {:?}", state.to_string(), result);
+
+	    Ok(result)
+	}
+
+
 
     // fn unstage_file(&mut self, path: &str) {
     //     if let Some(status) = self.files.get_mut(path) {

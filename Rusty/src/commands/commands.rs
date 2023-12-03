@@ -1,6 +1,6 @@
 use std::fs::ReadDir;
 use std::{
-    collections::HashMap, env, error::Error, fs, io, io::BufRead, io::ErrorKind, io::Read,
+    collections::HashMap, collections::HashSet, env, error::Error, fs, io, io::BufRead, io::ErrorKind, io::Read,
     io::Seek, io::SeekFrom, io::Write, str,
 };
 
@@ -18,6 +18,13 @@ const SIZE_FLAG: &str = "-s";
 const MESSAGE_FLAG: &str = "-m";
 const VERIFY_FLAG: &str = "-v";
 const LIST_FLAG: &str = "-l";
+
+// flags for ls-files. also DELETE_FLAG is being used
+const CACHED_FLAG: &str = "-c";
+const IGNORE_FLAG: &str = "-i";
+const STAGE_FLAG: &str = "-s";
+const MODIFIED_FLAG: &str = "-m";
+
 const EXCLUDE_LOG_ENTRY: char = '^';
 const HEAD: &str = "HEAD";
 const ADD_FLAG: &str = "add";
@@ -49,6 +56,7 @@ use crate::commands::structs::Head;
 use crate::commands::structs::ObjectType;
 use crate::commands::structs::PackObjectType;
 use crate::commands::structs::StagingArea;
+use crate::commands::structs::IndexFileEntryState;
 
 use crate::client::client_protocol::ClientProtocol;
 
@@ -1322,6 +1330,95 @@ impl Command for Log {
 
         // Display the resulting log entries
         for entry in &log_entries {
+            println!("{:?}", entry);
+        }
+
+        // Return a successful result (an empty string in this case)
+        Ok(String::new())
+    }
+}
+
+pub struct LsFiles {    
+    stg_area: StagingArea,
+}
+
+impl LsFiles {
+    /// Creates a new `LsFiles` instance.
+    pub fn new() -> Self {
+        LsFiles {            
+            stg_area: StagingArea::new(),
+        }
+    }
+}
+
+impl Command for LsFiles {
+    /// Execute the LSFILES command
+    ///
+    /// This command retrieves and prints file entries based on the specified flags and options.
+    /// It supports flags such as DELETE_FLAG, CACHED_FLAG, STAGE_FLAG, MODIFIED_FLAG, and IGNORE_FLAG.
+    ///
+    /// # Arguments
+    ///
+    /// * `_head`: A mutable reference to the Git repository's `Head`.
+    /// * `args`: An optional vector of string slices representing command-line arguments and flags.
+    ///            Supported flags: DELETE_FLAG, CACHED_FLAG, STAGE_FLAG, MODIFIED_FLAG, IGNORE_FLAG.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing a string or an error. In case of success, the string is empty.
+    /// In case of an error, a `Box<dyn Error>` is returned with details about the error.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// // Create an instance of the LSFilesCommand
+    /// let lsfiles_command = LsFiles::new();
+    ///
+    /// // Execute the LSFILES command with specific flags
+    /// let result = lsfiles_command.execute(&mut head, Some(vec!["-c"]));
+    /// assert!(result.is_ok());
+    /// ```
+    fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        let mut file_entries: HashSet<String> = HashSet::new();
+        let whole_index_flag = args.is_none();
+        let arg_slice = args.unwrap_or(Vec::new());
+
+        for arg in arg_slice {
+            match arg {
+                DELETE_FLAG | CACHED_FLAG | STAGE_FLAG | MODIFIED_FLAG => {
+                    let state = match arg {
+                        DELETE_FLAG => IndexFileEntryState::Deleted,
+                        CACHED_FLAG => IndexFileEntryState::Cached,
+                        STAGE_FLAG => IndexFileEntryState::Staged,
+                        MODIFIED_FLAG => IndexFileEntryState::Modified,
+                        _ => unreachable!(), // This should not happen
+                    };
+
+                    let entries = self.stg_area.get_entries_index_file(state)?;
+                    for entry in entries {
+                        file_entries.insert(entry);
+                    }
+                }
+                IGNORE_FLAG => {
+                    let file = fs::File::open(".gitignore.txt")?;
+                    let reader = io::BufReader::new(file);
+                    for line in reader.lines() {
+                        let line = line?;
+                        file_entries.insert(line);
+                    }
+                }
+                _ => {/* ignore invalid flags */}
+            }
+        }
+
+        if whole_index_flag {
+            let entries = self.stg_area.get_entries_index_file(IndexFileEntryState::Cached)?;
+            for entry in entries {
+                file_entries.insert(entry);
+            }
+        }
+
+        for entry in file_entries {
             println!("{:?}", entry);
         }
 
