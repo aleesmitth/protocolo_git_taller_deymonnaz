@@ -1,4 +1,4 @@
-use std::{error::Error, fmt, fs, io::BufRead, io::Write, net::TcpStream};
+use std::{error::Error, fmt, fs, io::BufRead, io::Write, net::TcpStream, io, io::ErrorKind};
 const OBJECT: &str = ".git/objects";
 const INDEX_FILE: &str = ".git/index";
 const DEFAULT_REMOTE: &str = "origin";
@@ -135,8 +135,35 @@ impl StagingArea {
 
     /// Removes a file from the staging area.
     pub fn remove_file(&self, path: &str) -> Result<(), Box<dyn Error>> {
-        helpers::remove_object_from_file(path)?;
-        Ok(())
+    	// Read the file into a vector of lines.
+	    let file_contents = fs::read_to_string(INDEX_FILE)?;
+
+	    // Split the file contents into lines.
+	    let mut lines: Vec<String> = file_contents.lines().map(|s| s.to_string()).collect();
+
+	    // Search for the hash in the lines.
+	    if let Some(index) = lines.iter_mut().position(|line| line.starts_with(path)) {
+	        if let Some(state_index) = lines[index].rfind(';') {
+	            // Check if there is a state digit after the last ";"
+	            if state_index + 1 < lines[index].len() {
+	                // Modify the state to "3".
+	                lines[index].replace_range(state_index + 1..state_index + 2, IndexFileEntryState::Deleted.to_string().as_str());
+	            }
+	        }
+	    } else {
+	        return Err(Box::new(io::Error::new(
+                        io::ErrorKind::Other,
+                        "Error: Branch name did not match any file known.",
+                    )));
+	    }
+
+	    // Join the lines back into a single string.
+	    let updated_contents = lines.join("\n");
+
+	    // Write the updated contents back to the file.
+	    fs::write(INDEX_FILE, updated_contents)?;
+
+	    Ok(())
     }
 
     pub fn unstage_index_file(&self) -> Result<(), Box<dyn Error>> {

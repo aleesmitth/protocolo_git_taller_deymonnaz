@@ -13,6 +13,7 @@ use rusty::commands::commands::ShowRef;
 use rusty::commands::commands::Tag;
 use rusty::commands::commands::UnpackObjects;
 use rusty::commands::commands::LsFiles;
+use rusty::commands::commands::Rm;
 use rusty::commands::commands::RELATIVE_PATH;
 use rusty::commands::structs::Head;
 use std::{env, io};
@@ -71,7 +72,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     return Ok(())
     // }
     // Remote::new().execute(&mut head, Some(vec!["add", "origin", "127.0.0.1:9418"]))?;
-    if let Err(error) = LsFiles::new().execute(&mut head, Some(vec!["-i"])) {
+    if let Err(error) = LsFiles::new().execute(&mut head, Some(vec!["-d"])) {
+    //if let Err(error) = Rm::new().execute(&mut head, Some(vec!["ejemplo.txt"])) {
         println!("{}", error);
         return Ok(());
     }
