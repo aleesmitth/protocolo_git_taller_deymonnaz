@@ -384,3 +384,80 @@ fn update_branch_hash(branch_name: &str, new_commit_hash: &str) -> Result<(), Bo
     file.write_all(new_commit_hash.as_bytes())?;
     Ok(())
 }
+
+pub fn get_branch_last_commit(branch_path: &str) -> Result<String, Box<dyn Error>> {
+    let mut file: fs::File = fs::File::open(branch_path)?;
+    let mut content = String::new();
+    file.read_to_string(&mut content)?;
+    Ok(content)
+}
+
+pub fn get_branch_path(branch_name: &str) -> String {
+    format!("{}/{}", R_HEADS, branch_name)
+}
+
+pub fn get_object_path(object_hash: &str) -> String {
+    format!("{}/{}/{}", OBJECT, object_hash[..2].to_string(), object_hash[2..].to_string())
+}
+
+pub fn find_common_ancestor_commit(current_branch: &str, merging_branch: &str) -> Result<String, Box<dyn Error>> {
+    let mut current_branch_log = Vec::new();
+    let current_branch_commit = get_branch_last_commit(&get_current_branch_path()?)?;
+    Log::new().generate_log_entries(&mut current_branch_log, current_branch_commit);
+    println!("current branch log: {:?}", current_branch_log);
+
+
+    let mut merging_branch_log = Vec::new();
+    let merging_branch_commit = get_branch_last_commit(&get_branch_path(merging_branch))?;
+    Log::new().generate_log_entries(&mut merging_branch_log, merging_branch_commit);
+    println!("merging branch log: {:?}", merging_branch_log);
+    // tal vez eso parametrizarlo en una funcion
+
+    for (commit, _message) in merging_branch_log {
+        if current_branch_log.contains(&(commit.clone(), _message)) {
+            return Ok(commit);
+        }
+    }
+
+    Ok(String::new())
+}
+
+pub fn is_fast_forward_merge_possible(current_branch: &str, merging_branch: &str) -> Result<String, Box<dyn Error>> {
+    let current_branch_commit = get_branch_last_commit(&get_current_branch_path()?)?;
+    println!("current commit: {}", current_branch_commit);
+    let mut merging_branch_log = Vec::new();
+    let merging_branch_commit = get_branch_last_commit(&get_branch_path(merging_branch))?;
+    println!("mergin commit: {}", merging_branch_commit);
+    if current_branch_commit.is_empty() {
+        println!("trtue");
+        return Ok(merging_branch_commit);
+    }
+    
+    Log::new().generate_log_entries(&mut merging_branch_log, merging_branch_commit.clone());
+
+    for (commit, _message) in merging_branch_log {
+        if commit == current_branch_commit{
+            return Ok(merging_branch_commit);
+        }
+    }
+    Err(Box::new(io::Error::new(
+        io::ErrorKind::Other,
+        "No fast forward is possible",
+    )))
+}
+
+/// Given a commit's hash it accesses its file and returns the hash of its associated
+/// tree object.
+pub fn get_commit_tree(commit_hash: &str) -> Result<String, Box<dyn Error>> {
+    println!("commit hash: {}", commit_hash);
+    let decompressed_data = decompress_file_content(read_file_content_to_bytes(&get_object_path(commit_hash))?)?;
+
+    let commit_file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
+
+    let commit_file_lines: Vec<String> = commit_file_content[1].lines().map(|s| s.to_string()).collect();
+    let tree_split_line: Vec<String> = commit_file_lines[0].split_whitespace().map(String::from).collect();
+    
+    let tree_hash_trimmed = &tree_split_line[1];
+
+    Ok(tree_hash_trimmed.to_string())
+}

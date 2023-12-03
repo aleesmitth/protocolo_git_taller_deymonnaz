@@ -49,19 +49,83 @@ impl HashObjectCreator {
     }
 
     pub fn create_tree_object() -> Result<String, Box<dyn Error>> {
-        let index_file_content = helpers::read_file_content(&PathHandler::get_relative_path(INDEX_FILE))?;
-        let mut tree_content = String::new();
+        let index_file_content = helpers::read_file_content(INDEX_FILE)?;
+        let mut subdirectories: HashMap<String, Vec<String>> = HashMap::new();
+    
         let index_file_lines: Vec<&str> = index_file_content.split("\n").collect();
+    
         for line in index_file_lines {
             let split_line: Vec<&str> = line.split(";").collect();
-            let new_line = format!("100644 blob {} {}\n", split_line[1], split_line[0]);
-            tree_content.push_str(&new_line);
+
+            let path = Path::new(split_line[0]);
+            let hash = split_line[1];
+            
+            let mut current_dir = path.parent();
+            let mut file_directory = String::new();
+            if let Some(directory) = current_dir {
+                file_directory = directory.to_string_lossy().to_string();
+            }
+
+            let split_path: Vec<&str> = index_file_content.split("/").collect();
+            let mut file_name = String::new();
+            if let Some(name) = path.file_name().and_then(|name| name.to_str()) {
+                println!("File name: {}", name);
+                file_name = name.to_string();
+            }
+            let file_entry = format!("{} {} {} {}\n", TREE_FILE_MODE, ObjectType::Blob, hash, file_name);
+            if let Some(parent) = current_dir {
+                subdirectories
+                            .entry(file_directory)
+                            .or_insert_with(Vec::new)
+                            .push(file_entry);
+            }
+
+            while let Some(parent) = current_dir {
+                let mut subdirectory_entry = String::new();
+                if let Some(directory) = current_dir {
+                    subdirectory_entry = directory.to_string_lossy().to_string();
+                }
+                subdirectories
+                        .entry(parent.to_string_lossy().to_string())
+                        .or_insert_with(Vec::new)
+                        .push(subdirectory_entry);
+                current_dir = parent.parent();
+            }
         }
-        HashObjectCreator::write_object_file(
-            tree_content.clone(),
-            ObjectType::Tree,
-            tree_content.as_bytes().len() as u64,
-        )
+        let mut super_tree_hash = String::new();
+        for (parent_directory, entries) in &subdirectories {
+            let sub_tree_content = Self::process_files_and_subdirectories(&mut subdirectories.clone(), &entries)?;
+            let tree_hash = Self::write_object_file(sub_tree_content.clone(), ObjectType::Tree, sub_tree_content.len() as u64)?;
+            if parent_directory.is_empty() {
+                super_tree_hash = tree_hash;
+            }
+        }
+        Ok(super_tree_hash)
+    }
+
+    fn process_files_and_subdirectories(subdirectories: &mut HashMap<String, Vec<String>>, entries: &Vec<String>) -> Result<String, Box<dyn Error>> {
+        let mut sub_tree_content = String::new();
+        for entry in entries {
+            if !entry.starts_with(TREE_FILE_MODE) {
+                match subdirectories.remove(&entry.clone()) {
+                    Some(value) => {
+                        let mut directory_name = String::new();
+                        if let Some(file_name) = entry.rsplit('/').next() {
+                            println!("File name: {}", file_name);
+                            directory_name = file_name.to_string();
+                        }
+                        let tree_content = Self::process_files_and_subdirectories(subdirectories, &value)?;
+                        let tree_hash = Self::write_object_file(tree_content.clone(), ObjectType::Tree, tree_content.len() as u64)?;
+                        let tree_entry = format!("{} {} {} {}\n", TREE_SUBTREE_MODE, ObjectType::Tree, tree_hash, directory_name);
+                        sub_tree_content.push_str(&tree_entry);
+                    }
+                    None => {}
+                }
+            } else {
+                sub_tree_content.push_str(entry);
+            }
+        }
+        Ok(sub_tree_content)
     }
 }
 
@@ -409,6 +473,83 @@ impl ServerConnection {
         stream.write_all(done.as_bytes())?;
         stream.flush()?;
 
+        Ok(())
+    }
+}
+
+
+pub struct WorkingDirectory;
+
+impl WorkingDirectory {
+    fn remove_file_and_empty_parent_directories(file_path: &Path) -> Result<(), Box<dyn Error>> {
+        fs::remove_file(file_path)?;
+    
+        let mut current_dir = file_path.parent();
+    
+        while let Some(parent) = current_dir {
+            println!("{:?}", parent);
+            if parent == Path::new("") {
+                break;
+            }
+            if fs::read_dir(parent)?.next().is_none() {
+                fs::remove_dir(parent)?;
+                current_dir = parent.parent();
+            } else {
+                break;
+            }
+        }
+        Ok(())
+    }
+    
+    pub fn clean_working_directory() -> Result<(), Box<dyn Error>> {
+        println!("cleaning working directory");
+        let index_file_content = helpers::read_file_content(INDEX_FILE)?;
+        let mut lines: Vec<String> = index_file_content.lines().map(|s| s.to_string()).collect();
+    
+        for line in lines.iter() {
+            let split_line: Vec<String> = line.split(';').map(String::from).collect();
+            let file_path_str = split_line[0].clone();
+            println!("path to delete: {}", file_path_str);
+            let file_path = PathBuf::from(file_path_str);
+            Self::remove_file_and_empty_parent_directories(&file_path)?;
+        }
+    
+        Ok(())
+    }
+    
+    pub fn update_working_directory_to(new_tree: &str) -> Result<(), Box<dyn Error>> {
+        println!("new_tree: {}", new_tree);
+    
+        Self::create_files_for_directory(new_tree, &String::new());
+    
+        Ok(())
+    }
+    
+    fn create_files_for_directory(tree: &str, current_directory: &str) -> Result<(), Box<dyn Error>> {
+        let (_, tree_content) = helpers::read_object(tree.to_string())?;
+        let tree_content_lines: Vec<String> = tree_content.lines().map(|s| s.to_string()).collect();
+        println!("tree_content: {}", tree_content);
+        for line in tree_content_lines {
+            let split_line: Vec<String> = line.split_whitespace().map(String::from).collect();
+            let file_mode = split_line[0].as_str();
+            let object_hash = split_line[1].clone();
+            let file_path = &split_line[2];
+            let relative_file_path = format!("{}/{}", current_directory, file_path);
+    
+            match file_mode {
+                TREE_FILE_MODE => {
+                    let (_, object_content) = helpers::read_object(object_hash)?;
+                    let mut object_file = fs::File::create(relative_file_path)?;
+                    object_file.write_all(&helpers::compress_content(&object_content)?)?;
+                } // crear archivo en dir actual
+                TREE_SUBTREE_MODE => {
+                    fs::create_dir(relative_file_path.clone())?;
+                    return Self::create_files_for_directory(&object_hash, &relative_file_path);
+                } // crear directorio y moverse recursivamente dentro para seguir creando
+                _ => {}
+            }
+        }
+    
         Ok(())
     }
 }
