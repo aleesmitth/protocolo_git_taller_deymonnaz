@@ -197,10 +197,16 @@ impl StagingArea {
 	            let file_name = parts[0];
 	            let file_state = parts[2];
 
-	            // Check if the file state is not empty and matches the specified state
-	            match file_state {
-	            	state => result.push(file_name.to_string()),
+	            match state {
+	            	IndexFileEntryState::Cached => {
+	            		result.push(file_name.to_string());
+	            		continue;
+	            	},
 	            	_ => {}
+	            }
+
+	            if file_state == state.to_string() {	            	
+	            	result.push(file_name.to_string());
 	            }
 	        }
 	    }
