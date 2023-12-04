@@ -1148,7 +1148,7 @@ impl Command for Fetch {
             }
         }
 
-        let refs = client::client_protocol::ClientProtocol::new().fetch_from_remote(remote_url)?;
+        let refs = client::client_protocol::ClientProtocol::new().fetch_from_remote_with_our_server(remote_url)?;
         for (ref_hash, ref_name) in refs {
             println!("ref: {} {}", ref_hash, ref_name);
             self.add_remote_ref(&ref_hash, &ref_name, remote_name)?;

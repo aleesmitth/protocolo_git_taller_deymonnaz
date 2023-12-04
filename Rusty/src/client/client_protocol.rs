@@ -1,5 +1,6 @@
 use crate::commands::helpers;
 use std::sync::mpsc;
+use crate::commands::protocol_utils;
 
 use std::{
     error::Error, fs, io::BufRead, io::Read, io::Write, net::Shutdown, net::TcpStream,
@@ -69,6 +70,67 @@ impl ClientProtocol {
         Ok(())
     }
 
+    pub fn fetch_from_remote_with_our_server(
+        &mut self,
+        remote_url: String,
+    ) -> Result<Vec<(String, String)>, Box<dyn Error>> {
+        let mut stream = ClientProtocol::connect(&remote_url)?;
+
+        // TODO a nuestro server no le importa el relative path por ahora, que pasa si tenemos mas de 1 repo en el sv? arreglar.
+        let request = protocol_utils::format_line_to_send("git-upload-pack /projects/.git\0host=127.0.0.1\0".to_string());
+        println!("{}", request);
+
+        stream.write_all(request.as_bytes())?;
+
+        stream.flush()?;
+        println!("request enviada");
+
+        let mut refs_in_remote: Vec<(String, String)> = Vec::new();
+        let mut reader = std::io::BufReader::new(stream.try_clone()?);
+        let response_received: Vec<String> =
+            protocol_utils::read_until(&mut reader, protocol_utils::REQUEST_DELIMITER_DONE, true)?;
+
+        println!("response received {:?}", response_received);
+        for line in response_received {
+            if let [remote_hash, branch_name, ..] = line.split_whitespace().collect::<Vec<&str>>().as_slice() {
+                refs_in_remote.push((remote_hash.to_string(), branch_name.to_string()));
+            }
+        }
+        println!("branches received");
+        //return Ok(Vec::new());
+        for (ref_hash, _ref_name) in &refs_in_remote {
+            let want_request = protocol_utils::format_line_to_send(format!("{} {}\n", protocol_utils::WANT_REQUEST, ref_hash));
+            println!("want_request sent: {}", want_request.clone());
+            stream.write_all(want_request.as_bytes())?;
+            break;
+        }
+        let _ = stream.write_all(protocol_utils::REQUEST_LENGTH_CERO.as_bytes());
+        println!("sent 0000");
+        let _ = stream.write_all(protocol_utils::format_line_to_send(protocol_utils::REQUEST_DELIMITER_DONE.to_string()).as_bytes());
+        println!("sent done");
+        stream.flush()?;
+
+        let _: Vec<String> =
+            protocol_utils::read_until(&mut reader, protocol_utils::NAK_RESPONSE, false)?;
+        println!("received NAK");
+        let _ = stream.write_all(protocol_utils::format_line_to_send(protocol_utils::REQUEST_DELIMITER_DONE.to_string()).as_bytes());
+        println!("sent done");
+        // TODO RECEIVE PACKFILE
+        println!("TODO RECEIVE PACKFILE");
+                        /*
+                        stream.read_to_end(&mut buffer)?;
+                        println!("{:?}", buffer);
+                        // std::fs::write(".git/pack/received_pack_file.pack", &buffer)?;
+                        let mut file = fs::File::create(".git/pack/received_pack_file.pack")?;
+                        file.write_all(&buffer)?;
+                        */
+
+        stream.shutdown(Shutdown::Both)?;
+
+        Ok(refs_in_remote)
+    }
+
+//TODO MATAR ESTA FUNCION
     pub fn fetch_from_remote(
         &mut self,
         remote_url: String,
@@ -159,6 +221,7 @@ impl ClientProtocol {
         Ok(refs_in_remote)
     }
 
+//TODO MATAR ESTA FUNCION
     fn read_response_from_server(
         stream: TcpStream,
         tx: mpsc::Sender<String>,

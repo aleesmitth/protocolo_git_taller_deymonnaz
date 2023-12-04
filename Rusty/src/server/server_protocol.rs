@@ -1,14 +1,12 @@
 use crate::commands::helpers;
+use crate::commands::protocol_utils;
 use std::{
     error::Error, io, io::Read, io::Write, net::TcpListener, net::TcpStream,
 };
 const RECEIVE_PACK: &str = "git-receive-pack";
 const UPLOAD_PACK: &str = "git-upload-pack";
+
 pub struct ServerProtocol;
-const LENGTH_BYTES: usize = 4;
-const WANT_REQUEST: &str = "want";
-const REQUEST_LENGTH_CERO: &str = "0000";
-const REQUEST_DELIMITER_DONE: &str = "done\n";
 
 impl ServerProtocol {
     pub fn new() -> Self {
@@ -18,18 +16,6 @@ impl ServerProtocol {
     pub fn bind(address: &str) -> Result<TcpListener, Box<dyn std::error::Error>> {
         println!("binding to client...");
         Ok(TcpListener::bind(address)?)
-    }
-
-    fn get_request_length(reader: &mut dyn Read) -> Result<usize, Box<dyn std::error::Error>> {
-        let mut message_length: [u8; LENGTH_BYTES] = [0; LENGTH_BYTES];
-        if let Err(_e) = reader.read_exact(&mut message_length) {
-            return Err(Box::new(io::Error::new(
-                io::ErrorKind::Other,
-                "Invalid length in line",
-            )));
-        }
-        let hex_string = String::from_utf8_lossy(&message_length);
-        Ok(u32::from_str_radix(&hex_string, 16)? as usize)
     }
 
     // fn read_message_to_buffer(reader: &mut dyn Read, message_length: u32) -> Result<[u8; message_length], Box<dyn std::error::Error>> {
@@ -43,27 +29,13 @@ impl ServerProtocol {
     //     Ok(buffer)
     // }
 
-    fn read_exact_length_to_string(
-        reader: &mut dyn Read,
-        message_length: usize,
-    ) -> Result<String, Box<dyn std::error::Error>> {
-        let mut buffer = vec![0; message_length - 4];
-        if let Err(e) = reader.read_exact(&mut buffer) {
-            return Err(Box::new(io::Error::new(
-                io::ErrorKind::Other,
-                format!("Error reading request: {}", e),
-            )));
-        }
-        Ok(String::from_utf8_lossy(&buffer).to_string())
-    }
-
     pub fn handle_client_conection(stream: &mut TcpStream) -> Result<(), Box<dyn Error>> {
         // In the Git Dumb Protocol, Git commands are sent as text lines.
         // You would parse the incoming lines and respond accordingly.
         let stream_clone = stream.try_clone()?;
         let mut reader = std::io::BufReader::new(stream_clone);
         println!("waiting for request...");
-        let request_length = ServerProtocol::get_request_length(&mut reader)?;
+        let request_length = protocol_utils::get_request_length(&mut reader)?;
         println!("request_length: {:?}", request_length);
         if request_length == 0 {
             // TODO gracefully end connection, message length is 0
@@ -78,7 +50,7 @@ impl ServerProtocol {
         // let mut buffer = [0; 1024];
         // let _ = stream.read(&mut buffer);
         // println!("{:?}", buffer);
-        let request = ServerProtocol::read_exact_length_to_string(&mut reader, request_length)?;
+        let request = protocol_utils::read_exact_length_to_string(&mut reader, request_length)?;
         println!("request: {:?}", request);
         let request_array: Vec<&str> = request.split_whitespace().collect();
         println!("request in array: {:?}", request_array);
@@ -142,21 +114,21 @@ impl ServerProtocol {
         println!("git-upload-pack");
         let branches: Vec<String> = helpers::get_all_branches()?;
         for branch in &branches {
-            let line_to_send = ServerProtocol::format_line_to_send(branch.clone());
+            let line_to_send = protocol_utils::format_line_to_send(branch.clone());
             println!("sending line: {:?}", line_to_send);
             stream.write_all(line_to_send.as_bytes())?;
         }
 
-        let _ = stream.write_all(REQUEST_LENGTH_CERO.as_bytes());
+        let _ = stream.write_all(protocol_utils::REQUEST_LENGTH_CERO.as_bytes());
         println!("-sent end of message delimiter-");
 
-        let mut reader = std::io::BufReader::new(stream);
+        let mut reader = std::io::BufReader::new(stream.try_clone()?);
         let requests_received: Vec<String> =
-            ServerProtocol::read_until(&mut reader, REQUEST_DELIMITER_DONE, false)?;
+            protocol_utils::read_until(&mut reader, protocol_utils::REQUEST_DELIMITER_DONE, false)?;
         for request_received in requests_received {
             let request_array: Vec<&str> = request_received.split_whitespace().collect();
             println!("request in array: {:?}", request_array);
-            if request_array[0] != WANT_REQUEST {
+            if request_array[0] != protocol_utils::WANT_REQUEST {
                 //TODO not want request, handle error gracefully
                 println!(
                     "Error: expected want request but got: {:?}",
@@ -181,38 +153,15 @@ impl ServerProtocol {
             println!("valid want request.");
         }
 
+        let _ = stream.write_all(protocol_utils::format_line_to_send(protocol_utils::NAK_RESPONSE.to_string()).as_bytes());
+        println!("sent NAK");
+        let _: Vec<String> =
+            protocol_utils::read_until(&mut reader, protocol_utils::REQUEST_DELIMITER_DONE, false)?;
+        println!("received done");
+        println!("TODO SEND PACKFILE");
+        // TODO SEND PACKFILE
+
         Ok(())
-    }
-
-    pub fn read_until(
-        reader: &mut dyn Read,
-        delimiter: &str,
-        stop_when_length_cero: bool,
-    ) -> Result<Vec<String>, Box<dyn Error>> {
-        let mut requests_received: Vec<String> = Vec::new();
-        loop {
-            println!("waiting for request..");
-            let request_length = ServerProtocol::get_request_length(reader)?;
-            println!("request length: {:?}", request_length);
-            if request_length == 0 {
-                if stop_when_length_cero {
-                    break;
-                } else {
-                    continue;
-                }
-            }
-            println!("reading request..");
-            let request = ServerProtocol::read_exact_length_to_string(reader, request_length)?;
-            println!("request: {:?}", request);
-
-            // received a message delimiter
-            if &request == delimiter {
-                println!("found delimiter {:?}", delimiter);
-                break;
-            }
-            requests_received.push(request);
-        }
-        Ok(requests_received)
     }
 
     pub fn validate_is_latest_commit_any_branch(commit: &str, branches: &Vec<String>) -> bool {
@@ -226,10 +175,6 @@ impl ServerProtocol {
             }
         }
         false
-    }
-
-    pub fn format_line_to_send(line: String) -> String {
-        format!("{:04x}{}", line.len() + 4, line)
     }
 
     pub fn receive_pack(&mut self) -> Result<(), Box<dyn Error>> {
