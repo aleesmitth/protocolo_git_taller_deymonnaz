@@ -1,2 +1,1 @@
-a.txt
-hola
+ignored_file.txt

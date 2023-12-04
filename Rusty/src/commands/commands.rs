@@ -436,7 +436,7 @@ impl Command for Commit {
         branch_file.write_all(commit_object_hash.as_bytes())?;
 
          self.stg_area.unstage_index_file()?;
-        Ok(String::new())
+        Ok(commit_content)
     }
 }
 
@@ -1622,10 +1622,10 @@ impl Tag {
 
     fn add_new_lightweight_tag(&self, name: &str) -> Result<(), Box<dyn Error>> {
         let current_branch_path = helpers::get_current_branch_path()?;
-        let last_commit = helpers::read_file_content(&current_branch_path)?;
+        let last_commit = helpers::read_file_content(&PathHandler::get_relative_path(&current_branch_path))?;
 
-        let tag_path = format!("{}{}", R_TAGS, name);
-        let mut tag_file = fs::File::create(tag_path)?;
+        let tag_path = format!("{}/{}", R_TAGS, name);
+        let mut tag_file = fs::File::create(PathHandler::get_relative_path(&tag_path))?;
 
         tag_file.write_all(last_commit.as_bytes())?;
 
@@ -1642,8 +1642,8 @@ impl Tag {
     } */
 
     fn delete_tag(&self, name: &str) -> Result<(), Box<dyn Error>> {
-        let tag_path = format!("{}{}", R_TAGS, name);
-        fs::remove_file(tag_path)?;
+        let tag_path = format!("{}/{}", R_TAGS, name);
+        fs::remove_file(PathHandler::get_relative_path(&tag_path))?;
         Ok(())
     }
 }
@@ -1763,6 +1763,8 @@ impl Command for Merge { //ver que pasa cuando uno commit ancestro es commit roo
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
 
     use tempfile::tempdir;
@@ -2103,5 +2105,128 @@ mod tests {
 
         // Clean up: The temporary directory will be automatically deleted when temp_dir goes out of scope
     } 
+    
+    #[test]
+    fn test_add_new_lightweight_tag() {
+        // Create a temporary directory
+        let (_temp_dir, temp_path) = common_setup();
+
+        // Create a sample file to be added
+        let file_path = temp_path.clone() + "/sample.txt";
+        fs::write(&file_path, "Sample file content").expect("Failed to create a sample file");
+    
+        // Execute the Init command
+        let mut head = Head::new();
+    
+        // Execute the Add command
+        let add_command = Add::new();
+        let args_add: Option<Vec<&str>> = Some(vec![&file_path]);
+        let _result_add = add_command.execute(&mut head, args_add);
+    
+        // Execute the Commit command
+        let commit_command = Commit::new();
+        let args_commit: Option<Vec<&str>> = Some(vec!["-m", "Initial commit"]);
+        let _result_commit = commit_command.execute(&mut head, args_commit);
+        
+        let last_commit = helpers::read_file_content(&(temp_path.clone() + ".git/refs/heads/main"));
+        // Create a Tag instance
+        let tag = Tag::new();
+
+        // Execute add_new_lightweight_tag
+        let _result = tag.add_new_lightweight_tag("new_tag").expect("Failed to add new tag");
+
+        // Read the content of the created tag file
+        let tag_content = fs::read_to_string(temp_path + ".git/refs/tags/new_tag")
+            .expect("Failed to read tag file");
+
+        // Assertions based on tag content
+        assert_eq!(tag_content, last_commit.unwrap());
+    }
+
+    #[test]
+    fn test_delete_tag() {
+        // Create a temporary directory
+        let (_temp_dir, temp_path) = common_setup();
+
+        // Create a sample file to be added
+        let file_path = temp_path.clone() + "/sample.txt";
+        fs::write(&file_path, "Sample file content").expect("Failed to create a sample file");
+    
+        // Execute the Init command
+        let mut head = Head::new();
+    
+        // Execute the Add command
+        let add_command = Add::new();
+        let args_add: Option<Vec<&str>> = Some(vec![&file_path]);
+        let _result_add = add_command.execute(&mut head, args_add);
+    
+        // Execute the Commit command
+        let commit_command = Commit::new();
+        let args_commit: Option<Vec<&str>> = Some(vec!["-m", "Initial commit"]);
+        let _result_commit = commit_command.execute(&mut head, args_commit);
+        
+        let _last_commit = helpers::read_file_content(&(temp_path.clone() + ".git/refs/heads/main"));
+        // Create a Tag instance
+        let tag = Tag::new();
+
+        // Execute add_new_lightweight_tag
+        let _result = tag.add_new_lightweight_tag("new_tag").expect("Failed to add new tag");
+
+
+        // Execute delete_tag
+        tag.delete_tag("new_tag").expect("Failed to delete tag");
+
+        // Check that the tag file is deleted
+        assert!(!(Path::new(&(temp_path.clone() + "tags/new_tag"))).exists());
+    }
+
+    #[test]
+    fn test_check_ignore_file_exists() {
+        // Create a temporary directory
+        let (_temp_dir, _temp_path) = common_setup();
+
+        // Create a .gitignore.txt file in the temporary directory
+        let gitignore_path = (".gitignore.txt");
+        fs::write(&gitignore_path, "ignored_file.txt").expect("Failed to create .gitignore.txt file");
+
+        // Create a CheckIgnore instance
+        let check_ignore = CheckIgnore::new();
+
+        // Execute the check_ignore command
+        let result = check_ignore.execute(&mut Head::new(), Some(vec!["ignored_file.txt"]));
+        
+        // Assert that the result is the provided file path
+        assert_eq!(result.unwrap(), "ignored_file.txt");
+    }
+
+    #[test]
+    fn test_check_ignore_file_not_exists() {
+        // Create a temporary directory
+        let (temp_dir, temp_path) = common_setup();
+
+        // Create a CheckIgnore instance
+        let check_ignore = CheckIgnore::new();
+
+        // Execute the check_ignore command with a file that does not exist in .gitignore.txt
+        let result = check_ignore.execute(&mut Head::new(), Some(vec!["non_existent_file.txt"]));
+        
+        // Assert that the result is an empty string
+        assert_eq!(result.unwrap(), "");
+    }
+
+    #[test]
+    fn test_check_ignore_no_gitignore_file() {
+        // Create a temporary directory
+        let (temp_dir, temp_path) = common_setup();
+
+        // Create a CheckIgnore instance
+        let check_ignore = CheckIgnore::new();
+
+        // Execute the check_ignore command without a .gitignore.txt file
+        let result = check_ignore.execute(&mut Head::new(), Some(vec!["some_file.txt"]));
+        
+        // Assert that the result is an empty string
+        assert_eq!(result.unwrap(), "");
+    }
  
 }
