@@ -1357,6 +1357,7 @@ impl Log {
     ///
     /// A `Result` containing the execution result or an error message.    
     pub fn generate_log_entries(&self, entries: &mut Vec<(String, String)>, base_commit: String) -> Result<String, Box<dyn Error>> {
+
         if base_commit.len() < 4 {
             return Err(Box::new(io::Error::new(
                         io::ErrorKind::Other,
@@ -1371,11 +1372,8 @@ impl Log {
             return Ok(String::new());
         }
 
-        // println!("starting to generate logs for {:?}", current_commit.clone());
         let commit_path = format!("{}/{}/{}", OBJECT, &current_commit[..2], &current_commit[2..]);
-        // println!("going to {:?}", commit_path.clone());
         let decompressed_data = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&commit_path)?)?;
-        // println!("decompressed data {:?}", decompressed_data.clone());
         let object_type = decompressed_data.splitn(2, ' ').next().ok_or("")?;
 
         if object_type != ObjectType::Commit.to_string() {
@@ -1388,13 +1386,14 @@ impl Log {
         let commit_file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
 
         let commit_file_lines: Vec<String> = commit_file_content[1].lines().map(|s| s.to_string()).collect();
-        // println!("commit lines: {:?}", commit_file_lines);
         let parent_commit_split_line: Vec<String> = commit_file_lines[1].split_whitespace().map(String::from).collect();
-        // println!("{:?}", parent_commit_split_line);
+
         if parent_commit_split_line.len() < 2 {
-            // println!("returning, found root commit");
+            let message = if commit_file_lines.len() >= 4 { commit_file_lines[3].clone() } else { String::new() };
+            entries.push((current_commit, message));
             return Ok(String::new());
         }
+
 
         let parent_commit_trimmed = &parent_commit_split_line[1]; //aca esta bien pero rompe en caso base
 
@@ -1427,6 +1426,7 @@ impl Command for Log {
     /// A `Result` containing the execution result or an error message. 
     fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         // Extract the arguments from the provided slice or use an empty slice if none is provided
+        let empty_args = args.is_none();
         let arg_slice = args.unwrap_or(Vec::new());
 
         // Initialize vectors to store log entries (included and excluded)        
@@ -1454,6 +1454,10 @@ impl Command for Log {
                 }
             }
         }
+
+        if empty_args {
+            self.generate_log_entries(&mut log_entries, HEAD.to_string())?;
+        }
         // println!("result {:?}", log_entries.iter()
         //     .filter(| entry | !log_entries_excluded.contains(entry))
         //     .cloned()
@@ -1473,8 +1477,12 @@ impl Command for Log {
                 println!("{:?}, {:?}", commit, message);
             }
         }
+        let result: String = log_entries
+            .into_iter()
+            .map(|(key, value)| format!("{} {}\n", key, value))
+            .collect();
         // Return a successful result (an empty string in this case)
-        Ok(String::new())
+        Ok(result)
     }
 }pub struct LsTree;
 

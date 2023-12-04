@@ -74,12 +74,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     /*if let Err(error) = Init::new().execute(&mut head, None) {
         println!("{}", error);
         return Ok(())
-    }
-    if let Err(error) = Add::new().execute(&mut head, Some(vec!["file.txt"])) {
+    }*/
+    /*if let Err(error) = Add::new().execute(&mut head, Some(vec!["file.txt"])) {
         println!("{}", error);
         return Ok(())
     }
-    if let Err(error) = Commit::new().execute(&mut head, Some(vec!["-m", "un mensaje de commit file.txt"])) {
+    if let Err(error) = Commit::new().execute(&mut head, Some(vec!["-m", "un mensaje de commit file222222222.txt"])) {
         println!("{}", error);
         return Ok(())
     }*/
@@ -92,11 +92,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     println!("{}", error);
     //     return Ok(())
     // }
-    if let Err(error) = PackObjects::new().execute(&mut head, Some(vec!["6e932b119bb537da3c1a404ee5a57095b7ad4846"])) {
+    /*if let Err(error) = PackObjects::new().execute(&mut head, Some(vec!["6e932b119bb537da3c1a404ee5a57095b7ad4846"])) {
         println!("{}", error);
         return Ok(())
-    }
-    if let Err(error) = UnpackObjects::new().execute(&mut head, None) {
+    }*/
+    if let Err(error) = Log::new().execute(&mut head, None) {
         println!("{}", error);
         return Ok(())
     }
