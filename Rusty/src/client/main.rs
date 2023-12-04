@@ -16,6 +16,7 @@ use rusty::commands::commands::Remote;
 use rusty::commands::commands::Fetch;
 use rusty::commands::commands::Log;
 use rusty::commands::commands::Merge;
+use rusty::commands::commands::LsTree;
 use std::{env, io};
 
 /// This function takes a slice of strings and converts it into a vector of string slices.
@@ -69,7 +70,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     println!("{}", error);
     //     return Ok(())
     // }
-    if let Err(error) = Merge::new().execute(&mut head, Some(vec!["new"])) {
+    /*if let Err(error) = Init::new().execute(&mut head, None) {
+        println!("{}", error);
+        return Ok(())
+    }
+    if let Err(error) = Add::new().execute(&mut head, Some(vec!["file.txt"])) {
+        println!("{}", error);
+        return Ok(())
+    }
+    if let Err(error) = Commit::new().execute(&mut head, Some(vec!["-m", "un mensaje de commit file.txt"])) {
+        println!("{}", error);
+        return Ok(())
+    }*/
+    if let Err(error) = LsTree::new().execute(&mut head, Some(vec!["-d", "HEAD"])) {
         println!("{}", error);
         return Ok(())
     }

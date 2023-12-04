@@ -25,6 +25,11 @@ const IGNORE_FLAG: &str = "-i";
 const STAGE_FLAG: &str = "-s";
 const MODIFIED_FLAG: &str = "-m";
 
+// flags for ls-tree
+const DIRECT_FLAG: &str = "-d";
+const RECURSE_FLAG: &str = "-r";
+const LONG_FLAG: &str = "-l";
+
 const EXCLUDE_LOG_ENTRY: char = '^';
 const HEAD: &str = "HEAD";
 const ADD_FLAG: &str = "add";
@@ -1239,7 +1244,8 @@ impl Log {
     /// * `base_commit` - The base commit ID to start generating logs from./// # Returns
     ///
     /// A `Result` containing the execution result or an error message.    
-    pub fn generate_log_entries(&self, entries: &mut Vec<(String, String)>, base_commit: String) -> Result<String, Box<dyn Error>> {        if base_commit.len() < 4 {
+    pub fn generate_log_entries(&self, entries: &mut Vec<(String, String)>, base_commit: String) -> Result<String, Box<dyn Error>> {
+        if base_commit.len() < 4 {
             return Err(Box::new(io::Error::new(
                         io::ErrorKind::Other,
                         "Error: Invalid Commit ID. It's too short",
@@ -1355,6 +1361,90 @@ impl Command for Log {
                 println!("{:?}, {:?}", commit, message);
             }
         }
+        // Return a successful result (an empty string in this case)
+        Ok(String::new())
+    }
+}pub struct LsTree;
+
+impl LsTree {
+    /// Creates a new `Log` instance.
+    pub fn new() -> Self {
+        LsTree {}
+    }
+
+    pub fn generate_tree_entries(&self, entries: &mut Vec<String>, tree_hash: String, direct_flag: bool, recurse_flag: bool, long_flag: bool) -> Result<(), Box<dyn Error>> {
+        //let (_, tree_content) = helpers::read_object(tree_hash.to_string())?;
+
+        
+        // TODO terminar esto
+
+
+        /*let (_, tree_content) = helpers::read_object(helpers::get_commit_tree(helpers::get_head_commit()?.as_str())?)?;
+        let tree_content_lines: Vec<String> = tree_content.lines().map(|s| s.to_string()).collect();
+        println!("[LSTREE]tree_content: {}", tree_content);
+        for line in tree_content_lines {
+            let split_line: Vec<String> = line.split_whitespace().map(String::from).collect();
+            let file_mode = split_line[0].as_str();
+            let object_hash = split_line[1].clone();
+            let file_path = &split_line[2];
+            //let relative_file_path = format!("{}/{}", current_directory, file_path);
+    
+            match file_mode {
+                TREE_FILE_MODE => {
+                    println!("[LSTREE]tree file mode");
+                    let (_, object_content) = helpers::read_object(object_hash)?;
+                    println!("[LSTREE]file content: {}", object_content);
+                    //let mut object_file = fs::File::create(relative_file_path)?;
+                    //object_file.write_all(&helpers::compress_content(&object_content)?)?;
+                } // crear archivo en dir actual
+                TREE_SUBTREE_MODE => {
+                    println!("[LSTREE]should go into recursive");
+                    //fs::create_dir(relative_file_path.clone())?;
+                    //return Self::create_files_for_directory(&object_hash, &relative_file_path);
+                } // crear directorio y moverse recursivamente dentro para seguir creando
+                _ => {}
+            }
+        }*/
+        Ok(())
+    }
+}
+
+impl Command for LsTree {
+    /// Executes the "git ls-tree" command.    
+    fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        let mut direct_flag = false;
+        let mut recurse_flag = false;
+        let mut long_flag = false;
+        let mut tree_entries: Vec<String> = Vec::new();        
+        let mut tree_hash: Option<String> = None;
+        let arg_slice = args.unwrap_or(Vec::new());
+
+        for arg in arg_slice {
+            // Note the & in for &arg
+            match arg {
+                DIRECT_FLAG => direct_flag = true,
+                RECURSE_FLAG => recurse_flag = true,
+                LONG_FLAG => long_flag = true,
+                _ => tree_hash = Some(arg.to_string()),
+            }
+        }
+
+        if !direct_flag && !recurse_flag && !long_flag {
+            return Err(Box::new(io::Error::new(
+                        io::ErrorKind::Other,
+                        "Error: ls-tree wrong arguments received. supported flags are -d -r -l followed by a tree hash",
+                    )));
+        }
+
+        if let Some(tree) = tree_hash {
+            self.generate_tree_entries(&mut tree_entries, tree, direct_flag, recurse_flag, long_flag)?;
+        } else {
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "Error: ls-tree wrong arguments received. supported flags are -d -r -l followed by a tree hash",
+            )));
+        }
+
         // Return a successful result (an empty string in this case)
         Ok(String::new())
     }
