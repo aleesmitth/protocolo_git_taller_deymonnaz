@@ -400,16 +400,16 @@ pub fn get_object_path(object_hash: &str) -> String {
     format!("{}/{}/{}", OBJECT, object_hash[..2].to_string(), object_hash[2..].to_string())
 }
 
-pub fn find_common_ancestor_commit(current_branch: &str, merging_branch: &str) -> Result<String, Box<dyn Error>> {
+pub fn find_common_ancestor_commit(_current_branch: &str, merging_branch: &str) -> Result<String, Box<dyn Error>> {
     let mut current_branch_log = Vec::new();
     let current_branch_commit = get_branch_last_commit(&get_current_branch_path()?)?;
-    Log::new().generate_log_entries(&mut current_branch_log, current_branch_commit);
+    let _ = Log::new().generate_log_entries(&mut current_branch_log, current_branch_commit);
     println!("current branch log: {:?}", current_branch_log);
 
 
     let mut merging_branch_log = Vec::new();
     let merging_branch_commit = get_branch_last_commit(&get_branch_path(merging_branch))?;
-    Log::new().generate_log_entries(&mut merging_branch_log, merging_branch_commit);
+    let _ = Log::new().generate_log_entries(&mut merging_branch_log, merging_branch_commit);
     println!("merging branch log: {:?}", merging_branch_log);
     // tal vez eso parametrizarlo en una funcion
 
@@ -422,7 +422,7 @@ pub fn find_common_ancestor_commit(current_branch: &str, merging_branch: &str) -
     Ok(String::new())
 }
 
-pub fn is_fast_forward_merge_possible(current_branch: &str, merging_branch: &str) -> Result<String, Box<dyn Error>> {
+pub fn is_fast_forward_merge_possible(_current_branch: &str, merging_branch: &str) -> Result<String, Box<dyn Error>> {
     let current_branch_commit = get_branch_last_commit(&get_current_branch_path()?)?;
     println!("current commit: {}", current_branch_commit);
     let mut merging_branch_log = Vec::new();
@@ -433,7 +433,7 @@ pub fn is_fast_forward_merge_possible(current_branch: &str, merging_branch: &str
         return Ok(merging_branch_commit);
     }
     
-    Log::new().generate_log_entries(&mut merging_branch_log, merging_branch_commit.clone());
+    let _ = Log::new().generate_log_entries(&mut merging_branch_log, merging_branch_commit.clone());
 
     for (commit, _message) in merging_branch_log {
         if commit == current_branch_commit{
@@ -460,4 +460,132 @@ pub fn get_commit_tree(commit_hash: &str) -> Result<String, Box<dyn Error>> {
     let tree_hash_trimmed = &tree_split_line[1];
 
     Ok(tree_hash_trimmed.to_string())
+}
+
+
+pub const RELATIVE_PATH: &str = "RELATIVE_PATH";
+#[cfg(test)]
+mod tests {
+    use crate::commands::commands::{Init, Command, Branch};
+
+    use super::*;
+    use std::{fs, env};
+    use tempfile::tempdir;
+
+    fn common_setup() -> (tempfile::TempDir, String) {
+        // Create a temporary directory
+        let temp_dir = tempdir().unwrap();
+        let temp_path = temp_dir.path().to_str().unwrap().to_string();
+
+        // Set the environment variable for the relative path
+        env::set_var(RELATIVE_PATH, &temp_path);
+
+        // Create and execute the Init command
+        let init_command = Init::new();
+        let result = init_command.execute(&mut Head::new(), None);
+
+        // Check if the Init command was successful
+        assert!(result.is_ok(), "Init command failed: {:?}", result);
+
+        (temp_dir, temp_path)
+    }
+
+    #[test]
+    fn test_get_current_branch_path() {
+        // Common setup: create a temporary directory and initialize a Git repository
+        let (_temp_dir, _temp_path) = common_setup();
+
+        // Create a sample branch name
+        let branch_name = "main";
+
+        // Create and execute the Branch command to set the initial branch
+        let branch_command = Branch::new();
+        let result = branch_command.execute(&mut Head::new(), Some((&[branch_name]).to_vec()));
+        assert!(result.is_ok(), "Branch command failed: {:?}", result);
+
+        // Call the function to get the current branch path
+        let current_branch_path = get_current_branch_path().expect("Failed to get current branch path");
+
+        // Check if the current branch path matches the expected path
+        let expected_branch_path = format!(".git/refs/heads/{}", branch_name);
+        assert_eq!(current_branch_path, expected_branch_path);
+    }
+
+
+    #[test]
+    fn test_get_file_length() {
+        // Create a temporary file with some content
+        let temp_dir = tempdir().expect("Failed to create temporary directory");
+        let file_path = temp_dir.path().join("test_file.txt");
+        fs::write(&file_path, "Test content").expect("Failed to write to file");
+
+        // Call the function to get the file length
+        let file_length = get_file_length(file_path.to_str().unwrap()).unwrap();
+
+        // Check if the file length is as expected
+        assert_eq!(file_length, 12);
+    }
+
+    #[test]
+    fn test_read_file_content() {
+        // Create a temporary file with some content
+        let temp_dir = tempdir().expect("Failed to create temporary directory");
+        let file_path = temp_dir.path().join("test_file.txt");
+        fs::write(&file_path, "Test content").expect("Failed to write to file");
+
+        // Call the function to read file content
+        let content = read_file_content(file_path.to_str().unwrap()).unwrap();
+
+        // Check if the content is as expected
+        assert_eq!(content, "Test content");
+    }
+
+    #[test]
+    fn test_read_file_content_to_bytes() {
+        // Create a temporary file with some content
+        let temp_dir = tempdir().expect("Failed to create temporary directory");
+        let file_path = temp_dir.path().join("test_file.txt");
+        fs::write(&file_path, "Test content").expect("Failed to write to file");
+
+        // Call the function to read file content to bytes
+        let content_bytes = read_file_content_to_bytes(file_path.to_str().unwrap()).unwrap();
+
+        // Check if the content bytes are as expected
+        assert_eq!(content_bytes, b"Test content");
+    }
+    #[test]
+    fn test_compress_and_decompress_content() {
+        let original_content = "This is a test content.";
+        let compressed_content = compress_content(original_content).unwrap();
+        let decompressed_content = decompress_file_content(compressed_content).unwrap();
+        assert_eq!(original_content, decompressed_content);
+    }
+
+    #[test]
+    fn test_generate_sha1_string() {
+        let input_str = "Hello, world!";
+        let hash = generate_sha1_string(input_str);
+        // TODO: Add assertions based on known hash values
+        assert_eq!(hash.len(), 40);
+    }
+
+    #[test]
+    fn test_create_new_branch() {
+        // Common setup: create a temporary directory and initialize a Git repository
+        let (_temp_dir, _temp_path) = common_setup();
+    
+        // Create a new branch
+        let mut head = Head::new();
+        let branch_name = "test_branch";
+        create_new_branch(branch_name, &mut head).expect("Failed to create new branch");
+    
+        // Check if the branch file was created
+        let branch_file_path = format!(".git/refs/heads/{}", branch_name);
+        assert!(Path::new(&PathHandler::get_relative_path(&branch_file_path)).exists(), "Branch file not created");
+    
+        // Check if the Head state was updated
+        let current_branch = head.get_current_branch().expect("Failed to get current branch");
+        assert_eq!(current_branch, branch_name, "Head state not updated");
+    }
+    
 }

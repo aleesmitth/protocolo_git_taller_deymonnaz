@@ -1,5 +1,5 @@
 use std::fs::ReadDir;
-use std::{fs, error::Error, io, io::Write, io::Read, str, env, io::BufRead, io::Seek, io::SeekFrom, io::ErrorKind, collections::HashMap, path::Path, collections::HashSet};
+use std::{fs, error::Error, io, io::Write, io::Read, str, env, io::BufRead, io::Seek, io::SeekFrom, io::ErrorKind, collections::HashSet};
 
 
 extern crate libflate;
@@ -8,8 +8,8 @@ use libflate::zlib::Decoder;
 const OBJECT: &str = ".git/objects";
 const PACK: &str = ".git/pack";
 
-const TREE_FILE_MODE: &str = "100644";
-const TREE_SUBTREE_MODE: &str = "040000";
+//const TREE_FILE_MODE: &str = "100644";
+//const TREE_SUBTREE_MODE: &str = "040000";
 const DELETE_FLAG: &str = "-d";
 const RENAME_FLAG: &str = "-m";
 const TYPE_FLAG: &str = "-t";

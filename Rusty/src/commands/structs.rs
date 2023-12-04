@@ -301,12 +301,14 @@ impl StagingArea {
 
 pub struct Head {
     branches: Vec<String>,
+    current_branch: Option<String>,
 }
 
 impl Head {
     pub fn new() -> Self {
         Head {
             branches: Vec::new(),
+            current_branch: None,
         }
     }
 
@@ -314,12 +316,20 @@ impl Head {
         // Check if the branch name is not already in the vector
         if !self.branches.iter().any(|branch| branch == name) {
             self.branches.push(name.to_string());
+
+            // Set current_branch to the newly added branch
+            self.current_branch = Some(name.to_string());
         }
     }
 
     pub fn delete_branch(&mut self, name: &str) -> Result<(), Box<dyn Error>> {
         // Use the retain method to remove branches with the specified name
         self.branches.retain(|branch| branch != name);
+
+        // If the deleted branch was the current branch, set current_branch to None
+        if self.current_branch == Some(name.to_string()) {
+            self.current_branch = None;
+        }
 
         Ok(())
     }
@@ -328,14 +338,23 @@ impl Head {
         // Find the branch with the old name and rename it to the new name
         if let Some(branch) = self.branches.iter_mut().find(|branch| *branch == old_name) {
             *branch = new_name.to_string();
+
+            // If the renamed branch was the current branch, update current_branch
+            if self.current_branch == Some(old_name.to_string()) {
+                self.current_branch = Some(new_name.to_string());
+            }
         }
 
         Ok(())
     }
 
+    pub fn get_current_branch(&self) -> Option<&str> {
+        self.current_branch.as_deref()
+    }
+
     pub fn print_all(&self) {
         for s in self.branches.iter() {
-            println!("branch:{}", s);
+            println!("branch: {}", s);
         }
     }
 }
@@ -596,7 +615,7 @@ mod tests {
     fn test_hash_object_creator() {
         // Common setup
         let _temp_dir = common_setup();
-
+        let _head = Head::new();
         // Test writing object file
         let obj_type = ObjectType::Blob;
         let file_len = TEST_FILE_CONTENT.len() as u64;
@@ -683,7 +702,6 @@ mod tests {
         let args: Option<Vec<&str>> = Some(vec![&file_paths[1]]);
         let _ = add.execute(&mut head, args1);
         let _ = add.execute(&mut head, args);
-
 
         let tree_hash = HashObjectCreator::create_tree_object().unwrap();
 
