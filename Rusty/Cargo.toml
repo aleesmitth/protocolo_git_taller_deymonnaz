@@ -9,6 +9,7 @@ edition = "2021"
 rust-crypto = "0.2.36"
 libflate = "2"
 tempfile = "3.2"
+gtk = { git = "https://github.com/gtk-rs/gtk3-rs.git" }
 
 [[bin]]
 name = "main"
@@ -17,3 +18,7 @@ path = "src/client/main.rs"
 [[bin]]
 name = "server"
 path = "src/server/main.rs"
+
+[[bin]]
+name = "ui"
+path = "src/ui/ui.rs"
