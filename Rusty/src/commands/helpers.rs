@@ -465,6 +465,17 @@ pub fn get_commit_tree(commit_hash: &str) -> Result<String, Box<dyn Error>> {
     Ok(tree_hash_trimmed.to_string())
 }
 
+pub fn get_current_branch_ref() -> Result<String, Box<dyn Error>> {
+    let head_file_content = read_file_content(&PathHandler::get_relative_path(HEAD_FILE))?;
+    let split_head_content: Vec<String> = head_file_content.split(" ").map(String::from).collect();
+    if let Some(branch_ref) = split_head_content.get(1) {
+        return Ok(branch_ref.clone());
+    }
+    Err(Box::new(io::Error::new(
+        io::ErrorKind::Other,
+        "Eror reading branch ref",
+    )))
+}
 
 pub const RELATIVE_PATH: &str = "RELATIVE_PATH";
 #[cfg(test)]

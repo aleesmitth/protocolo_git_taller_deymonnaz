@@ -64,10 +64,6 @@ use crate::commands::structs::StagingArea;
 
 use crate::commands::structs::WorkingDirectory;
 use crate::commands::structs::IndexFileEntryState;
-
-
-use crate::client::client_protocol::ClientProtocol;
-
 use crate::commands::helpers;
 
 
@@ -746,16 +742,22 @@ impl PackObjects {
 
         let binary_size = format!("{:b}", object_size);
 
-        let size = binary_size
+        let mut size: Vec<u8> = binary_size
             .chars()
             .map(|c| c.to_digit(2).unwrap() as u8)
             .collect();
-
         if size.len() > 4 {
-            
+            header[0] = 1;
+            while size.len() <= 11 {
+                size.insert(0, 0);
+            }
+            size.insert(4, 0);
         } else {
-            header.extend_from_slice(size);
+            while size.len() <= 4 {
+                size.insert(0, 0);
+            }
         }
+        header.extend_from_slice(&size);
 
         header
     }
@@ -1167,9 +1169,9 @@ impl Command for UnpackObjects {
     fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let arg_slice = args.unwrap_or(Vec::new());
         println!("unpacking...");
-        let mut pack_file = fs::File::open(".git/pack/pack_file.pack")?;
+        let mut pack_file = fs::File::open(".git/pack/received_pack_file.pack")?;
         println!("opened pack file");
-        let pack_file_size = helpers::get_file_length(".git/pack/pack_file.pack")?;
+        let pack_file_size = helpers::get_file_length(".git/pack/received_pack_file.pack")?;
         let mut header = vec![0; 12]; //Size of header is fixed
         pack_file.read_exact(&mut header)?;
         let object_amount = u32::from_be_bytes(header[8..12].try_into()?);
@@ -1287,11 +1289,10 @@ impl Command for Push {
         _args: Option<Vec<&str>>,
     ) -> Result<String, Box<dyn Error>> {
         //Pack and index files are created in .git/pack/ directory
-        let _pack_objects = PackObjects::new();
+        // let _pack_objects = PackObjects::new();
         // pack_objects.execute(_head, None)?;
 
-        let mut server_connection = ClientProtocol::new();
-        server_connection.receive_pack()?;
+
 
         Ok(String::new())
     }
@@ -1327,14 +1328,26 @@ impl Clone {
     }
 }
 
-// impl Command for Clone {
-//     fn execute(&self, _head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
-//         let mut server_connection = ClientProtocol::new();
-//         server_connection.clone_from_remote()?;
-//         UnpackObjects::new().execute(_head, None)?;
-//         Ok(String::new())
-//     }
-// }
+impl Command for Clone {
+    fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        Init::new().execute(_head, None)?;
+       
+        match args {
+            Some(remote_repository) => {
+                Remote::new().execute(_head, Some(vec!["add", "origin", remote_repository[0]]))?;
+                Fetch::new().execute(_head, None)?;
+                // aca tendria que crear las branches de remotes
+                Pull::new().execute(_head, Some(vec!["origin"]))?;
+            }
+            None => return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "Error: Invalid Commit ID. It's too short",
+            ))),
+        }
+        
+        Ok(String::new())
+    }
+}
 
 /// This module defines the `Log` struct, which is responsible for implementing the "git log" command.
 /// It provides methods to generate log entries and execute the command.

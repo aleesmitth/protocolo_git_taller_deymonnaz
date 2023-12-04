@@ -1,24 +1,27 @@
-use rusty::commands::commands::CheckIgnore;
-use rusty::commands::commands::PackObjects;
-use rusty::commands::commands::RELATIVE_PATH;
-use rusty::commands::commands::Init;
-use rusty::commands::commands::Add;
-use rusty::commands::commands::Commit;
-use rusty::commands::commands::Push;
-use rusty::commands::commands::Clone;
-use rusty::commands::commands::ShowRef;
-use rusty::commands::commands::UnpackObjects;
+// use rusty::commands::commands::CheckIgnore;
+// use rusty::commands::commands::PackObjects;
+
+// use rusty::commands::commands::Init;
+// use rusty::commands::commands::Add;
+// use rusty::commands::commands::Commit;
+// use rusty::commands::commands::Push;
+// use rusty::commands::commands::Clone;
+// use rusty::commands::commands::ShowRef;
+// use rusty::commands::commands::UnpackObjects;
 use rusty::commands::structs::Head;
-use rusty::commands::commands::Checkout;
-use rusty::commands::commands::Branch;
-use rusty::commands::commands::Tag;
+// use rusty::commands::commands::Checkout;
+// use rusty::commands::commands::Branch;
+// use rusty::commands::commands::Tag;
+// use rusty::commands::commands::Command;
+// use rusty::commands::commands::Remote;
+// use rusty::commands::commands::Fetch;
+// use rusty::commands::commands::Log;
+// use rusty::commands::commands::Merge;
+// use rusty::commands::commands::LsTree;
 use rusty::commands::commands::Command;
-use rusty::commands::commands::Remote;
-use rusty::commands::commands::Fetch;
-use rusty::commands::commands::Log;
-use rusty::commands::commands::Merge;
-use rusty::commands::commands::LsTree;
-use std::{env, io};
+use rusty::commands::commands;
+// use std::io::env;
+use std::{io, env};
 
 /// This function takes a slice of strings and converts it into a vector of string slices.
 /// Returns an `Option` containing a `Vec` of string slices if `args` is not empty. Returns `None` if `args` is empty.
@@ -41,64 +44,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
          println!("MY_VARIABLE is not set.");
      }*/
     let mut head = Head::new();
-    // let args: Vec<String> = env::args().collect();
-    // if args.len() >= 2 {
-    //     let command = &args[1];
-    //     match command.as_str() {
-    //         "init" => commands::Init::new().execute(&mut head, None)?,
-    //         "branch" => commands::Branch::new().execute(&mut head, parse_arguments(&args[2..]))?,
-    //         "checkout" => commands::Checkout::new().execute(&mut head, parse_arguments(&args[2..]))?,
-    //         "cat-file" => commands::CatFile::new().execute(&mut head, parse_arguments(&args[2..]))?,
-    //         "hash-object" => commands::HashObject::new().execute(&mut head, parse_arguments(&args[2..]))?,
-    //         "add" => commands::Add::new().execute(&mut head, parse_arguments(&args[2..]))?,
-    //         "rm" => commands::Rm::new().execute(&mut head, parse_arguments(&args[2..]))?,
-    //         "commit" => commands::Commit::new().execute(&mut head, parse_arguments(&args[2..]))?,
-    //         "status" => commands::Status::new().execute(&mut head, None)?,
-    //         "log" => commands::Log::new().execute(&mut head, parse_arguments(&args[2..]))?,
-    //         "remote" => commands::Remote::new().execute(&mut head, parse_arguments(&args[2..]))?,
-    //         "pack-objects" => commands::PackObjects::new().execute(&mut head, None)?,
-    //         _ => return Err(Box::new(io::Error::new(io::ErrorKind::Other,"Error: Invalid command."))),
-    //     };
-    // };
-    //let _init = Init::new().execute(&mut head, None)?;
-    // Branch::new().execute(&mut head, Some(vec!["new"]))?;
-    // Checkout::new().execute(&mut head, Some(vec!["main"]))?;
-    //Add::new().execute(&mut head, Some(vec!["file.txt"]))?;
-    // Add::new().execute(&mut head, Some(vec!["b/c/2.txt"]))?;
-    // Add::new().execute(&mut head, Some(vec!["d/c/3.txt"]))?;
-    //Commit::new().execute(&mut head, Some(vec!["-m", "test"]))?;
-    // if let Err(error) = Clone::new().execute(&mut head, None) {
-    //     println!("{}", error);
-    //     return Ok(())
-    // }
-    /*if let Err(error) = Init::new().execute(&mut head, None) {
-        println!("{}", error);
-        return Ok(())
-    }*/
-    /*if let Err(error) = Add::new().execute(&mut head, Some(vec!["file.txt"])) {
-        println!("{}", error);
-        return Ok(())
-    }
-    if let Err(error) = Commit::new().execute(&mut head, Some(vec!["-m", "un mensaje de commit file222222222.txt"])) {
-        println!("{}", error);
-        return Ok(())
-    }*/
-    // if let Err(error) = LsTree::new().execute(&mut head, Some(vec!["-d", "HEAD"])) {
-    //     println!("{}", error);
-    //     return Ok(())
-    // }
-    // Remote::new().execute(&mut head, Some(vec!["add", "origin", "127.0.0.1:9418"]))?;
-    // if let Err(error) = Fetch::new().execute(&mut head, None) {
-    //     println!("{}", error);
-    //     return Ok(())
-    // }
-    /*if let Err(error) = PackObjects::new().execute(&mut head, Some(vec!["6e932b119bb537da3c1a404ee5a57095b7ad4846"])) {
-        println!("{}", error);
-        return Ok(())
-    }*/
-    if let Err(error) = Log::new().execute(&mut head, None) {
-        println!("{}", error);
-        return Ok(())
-    }
+    let args: Vec<String> = env::args().collect();
+    if args.len() >= 2 {
+        let command = &args[1];
+        match command.as_str() {
+            "init" => commands::Init::new().execute(&mut head, None)?,
+            "branch" => commands::Branch::new().execute(&mut head, parse_arguments(&args[2..]))?,
+            "checkout" => commands::Checkout::new().execute(&mut head, parse_arguments(&args[2..]))?,
+            "cat-file" => commands::CatFile::new().execute(&mut head, parse_arguments(&args[2..]))?,
+            "hash-object" => commands::HashObject::new().execute(&mut head, parse_arguments(&args[2..]))?,
+            "add" => commands::Add::new().execute(&mut head, parse_arguments(&args[2..]))?,
+            "rm" => commands::Rm::new().execute(&mut head, parse_arguments(&args[2..]))?,
+            "commit" => commands::Commit::new().execute(&mut head, parse_arguments(&args[2..]))?,
+            "status" => commands::Status::new().execute(&mut head, None)?,
+            "log" => commands::Log::new().execute(&mut head, parse_arguments(&args[2..]))?,
+            "remote" => commands::Remote::new().execute(&mut head, parse_arguments(&args[2..]))?,
+            "pack-objects" => commands::PackObjects::new().execute(&mut head, None)?,
+            "fetch" => commands::Fetch::new().execute(&mut head, parse_arguments(&args[2..]))?,
+            "merge" => commands::Merge::new().execute(&mut head, parse_arguments(&args[2..]))?,
+            "clone" => commands::Clone::new().execute(&mut head, parse_arguments(&args[2..]))?,
+            "pull" => commands::Pull::new().execute(&mut head, None)?,
+            "push" => commands::Push::new().execute(&mut head, None)?,
+            "ls-tree" => commands::LsTree::new().execute(&mut head, parse_arguments(&args[2..]))?,
+            "ls-files" => commands::LsFiles::new().execute(&mut head, parse_arguments(&args[2..]))?,
+            "tag" => commands::Tag::new().execute(&mut head, parse_arguments(&args[2..]))?,
+            "check-ignore" => commands::CheckIgnore::new().execute(&mut head, parse_arguments(&args[2..]))?,
+            "show-ref" => commands::ShowRef::new().execute(&mut head, parse_arguments(&args[2..]))?,
+
+            _ => return Err(Box::new(io::Error::new(io::ErrorKind::Other,"Error: Invalid command."))),
+        };
+    };
     Ok(())
 }

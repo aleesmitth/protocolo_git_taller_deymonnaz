@@ -8,6 +8,7 @@ pub const REQUEST_DELIMITER_DONE: &str = "done\n";
 pub const REQUEST_LENGTH_CERO: &str = "0000";
 pub const NAK_RESPONSE: &str = "NAK\n";
 pub const WANT_REQUEST: &str = "want";
+pub const UNPACK_CONFIRMATION: &str = "unpack ok\n";
 
 
 

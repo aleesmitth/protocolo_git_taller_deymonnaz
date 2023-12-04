@@ -1,7 +1,10 @@
+use crate::commands::commands::UnpackObjects;
+use crate::commands::commands::Command;
 use crate::commands::helpers;
 use crate::commands::protocol_utils;
+use crate::commands::structs::Head;
 use std::{
-    error::Error, io, io::Write, net::TcpListener, net::TcpStream,
+    error::Error, io, io::Write, net::TcpListener, net::TcpStream, io::Read, fs::File
 };
 const RECEIVE_PACK: &str = "git-receive-pack";
 const UPLOAD_PACK: &str = "git-upload-pack";
@@ -56,55 +59,9 @@ impl ServerProtocol {
         println!("request in array: {:?}", request_array);
         match request_array[0] {
             UPLOAD_PACK => ServerProtocol::upload_pack(stream)?,
-            RECEIVE_PACK => println!("push: {:?}", request_array),
+            RECEIVE_PACK => ServerProtocol::receive_pack(stream)?,
             _ => {}
         }
-
-        // for byte in reader.bytes() {
-        //     match byte {
-        //         Ok(b'\0') => {
-        //             // '\0' encountered, end of data
-        //             break;
-        //         }
-        //         Ok(byte) => {
-        //             // Handle the byte (e.g., print it)
-        //             println!("Received byte: {}", byte as char);
-        //         }
-        //         Err(e) => {
-        //             eprintln!("Error reading byte: {}", e);
-        //             break;
-        //         }
-        //     }
-        // }
-        /*for line in reader.bytes() {
-            if let Ok(line) = line {
-                println!("incoming line: {:?}", line);
-                // writer.write_all(b"# service=git-upload-pack\n").unwrap();
-                // writer.flush().unwrap();
-                /*if line.starts_with("git-upload-pack") {
-                    println!("upload pack received");
-                    writer.write_all(b"# service=git-upload-pack\n").unwrap();
-                    writer.flush().unwrap();
-                } else if line.starts_with("git-receive-pack") {
-                    println!("git-receive-pack");
-                    writer.write_all(b"# service=git-receive-pack\n").unwrap();
-                    writer.flush().unwrap();
-                } else if line == "capabilities" {
-                    writer.write_all(b"delete-refs side-band-64k\n").unwrap();
-                    writer.write_all(b"multi_ack\n").unwrap();
-                    writer.write_all(b"side-band\n").unwrap();
-                    writer.write_all(b"ofs-delta\n").unwrap();
-                    writer.write_all(b"thin-pack\n").unwrap();
-                    writer.write_all(b"shallow\n").unwrap();
-                    writer.write_all(b"no-progress\n").unwrap();
-                    writer.write_all(b"include-tag\n").unwrap();
-                    writer.write_all(b"multi_ack_detailed\n").unwrap();
-                    writer.flush().unwrap();
-                }*/
-            } else {
-                break;
-            }
-        }*/
 
         println!("end handling connection");
         Ok(())
@@ -177,55 +134,42 @@ impl ServerProtocol {
         false
     }
 
-    pub fn receive_pack(&mut self) -> Result<(), Box<dyn Error>> {
-        /*println!("1");
-        //let remote_server_address = helpers::get_remote_url(DEFAULT_REMOTE)?;
-        let mut stream = TcpStream::connect("127.0.0.1:9418")?;
+    pub fn receive_pack(stream: &mut TcpStream) -> Result<(), Box<dyn Error>> {
+        println!("git-receive-pack");
 
-        let service = "git-receive-pack /.git\0host=127.0.0.1\0";
-        let request = format!("{:04x}{}", service.len() + 4, service);
-        // Send the Git service request
-        stream.write_all(request.as_bytes())?;
+        let branches: Vec<String> = helpers::get_all_branches()?;
+        for branch in &branches {
+            let line_to_send = protocol_utils::format_line_to_send(branch.clone());
+            println!("sending line: {:?}", line_to_send);
+            stream.write_all(line_to_send.as_bytes())?;
+        }
 
-        // Read the response from the server
-        let mut response = String::new();
+        let _ = stream.write_all(protocol_utils::REQUEST_LENGTH_CERO.as_bytes());
 
-        let reader = std::io::BufReader::new(&stream);
-        let mut remote_hash  = String::new();
-        for line in reader.lines() {
-            if let Ok(value) = line {
-                let split_value: Vec<&str> = value.split_whitespace().collect();
-                remote_hash = split_value[0].to_string()[4..].to_string();
-                println!("response line: {:?}", value);
-                println!("remote hash: {}", remote_hash);
+        let mut refs_to_update: Vec<(String, String, String)> = Vec::new();
+        let mut reader = std::io::BufReader::new(stream.try_clone()?);
+        let requests_received: Vec<String> =
+            protocol_utils::read_until(&mut reader, protocol_utils::REQUEST_LENGTH_CERO, false)?;
+        for request_received in requests_received {
+            if let [prev_remote_hash, new_remote_hash, branch_name] = request_received.split_whitespace().collect::<Vec<&str>>().as_slice() {
+                refs_to_update.push((prev_remote_hash.to_string(), new_remote_hash.to_string(), branch_name.to_string()));
             }
-            break;
         }
 
-        response.clear();
-        let branch_path = helpers::get_current_branch_path()?;
-        let last_commit_hash: String = helpers::read_file_content(&branch_path)?;
-        println!("last_commit: {}", last_commit_hash);
-        let line = format!("{} {} refs/heads/main", remote_hash, last_commit_hash);
-        let actual_line = format!("{:04x}{}\n", line.len() + 5, line);
-        println!("push line: {}", actual_line);
-        stream.write_all(actual_line.as_bytes())?;
-        stream.write_all(b"0000")?;
-        stream.flush()?;
+        let mut buffer = Vec::new();
+        stream.read_to_end(&mut buffer)?;
+        let mut file = File::create(".git/pack/received_pack_file.pack")?;
+        file.write_all(&buffer)?;
 
-        let mut pack_file = fs::File::open(".git/pack/pack_file.pack")?;
-        std::io::copy(&mut pack_file, &mut stream)?;
-        //stream.flush()?;
-
-
-        let reader = std::io::BufReader::new(&stream);
-        for line in reader.lines() {
-            let line = line?;
-            println!("response line: {}", line);
-            break;
+        let mut _head = Head::new();
+        match UnpackObjects::new().execute(&mut _head, None) {
+            Ok(_) => {
+                let unpack_confirmation = protocol_utils::format_line_to_send(protocol_utils::UNPACK_CONFIRMATION.to_string());
+                stream.write_all(unpack_confirmation.as_bytes())?;
+            }
+            Err(_) => {}
         }
 
-        Ok(())*/
         Ok(())
     }
 
