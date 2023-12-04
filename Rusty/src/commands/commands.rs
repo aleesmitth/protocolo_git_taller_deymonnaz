@@ -2197,6 +2197,7 @@ mod tests {
         
         // Assert that the result is the provided file path
         assert_eq!(result.unwrap(), "ignored_file.txt");
+        fs::remove_file("ignored_file.txt");
     }
 
     #[test]
