@@ -1148,13 +1148,13 @@ impl Command for Fetch {
             }
         }
 
-        let refs = client::client_protocol::ClientProtocol::new().fetch_from_remote_with_our_server(remote_url)?;
+        let refs = client::client_protocol::ClientProtocol::new().fetch_from_remote(remote_url)?;
         for (ref_hash, ref_name) in refs {
-            println!("ref: {} {}", ref_hash, ref_name);
+            // println!("ref: {} {}", ref_hash, ref_name);
             self.add_remote_ref(&ref_hash, &ref_name, remote_name)?;
         }
 
-        // self.update_remote_tracking_branches();
+        UnpackObjects::new().execute(_head, None)?;
 
         Ok(String::new())
     }
@@ -1197,15 +1197,15 @@ impl Pull {
 
 
 impl Command for Pull {
-    fn execute(&self, _head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        println!("pull");
         Fetch::new().execute(_head, None)?;
+        println!("merge");
+        Merge::new().execute(_head, Some(vec!["origin"]))?;
 
-        // Merge::new().execute(_head, Some(vec!["origin"]))?;
         Ok(String::new())
     }
 }
-
-
 
 pub struct Clone;
 
@@ -1216,14 +1216,30 @@ impl Clone {
     }
 }
 
-// impl Command for Clone {
-//     fn execute(&self, _head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
-//         let mut server_connection = ClientProtocol::new();
-//         server_connection.clone_from_remote()?;
-//         UnpackObjects::new().execute(_head, None)?;
-//         Ok(String::new())
-//     }
-// }
+impl Command for Clone {
+    fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        Init::new().execute(_head, None)?;
+        println!("despuies del init");
+        
+        match args {
+            Some(remote_repository) => {
+                println!("remote");
+                Remote::new().execute(_head, Some(vec!["add", "origin", remote_repository[0]]))?;
+                println!("fethc");
+                Fetch::new().execute(_head, None)?;
+                // aca tendria que crear las branches de remotes
+                Pull::new().execute(_head, Some(vec!["origin"]))?;
+                println!("after_pull");
+            }
+            None => return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "Error: Invalid Commit ID. It's too short",
+            ))),
+        }
+        
+        Ok(String::new())
+    }
+}
 
 /// This module defines the `Log` struct, which is responsible for implementing the "git log" command.
 /// It provides methods to generate log entries and execute the command.
@@ -1736,25 +1752,27 @@ impl Merge {
 
 impl Command for Merge { //ver que pasa cuando uno commit ancestro es commit root
     fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
-        let arg_slice = args.unwrap_or(Vec::new()); //aca tendria que chequear que sea valido el branch que recibo por parametro
-
+        let arg_slice = args.unwrap_or(Vec::new());
+        println!("0");
+        let current_branch = helpers::get_current_branch()?;
+        println!("1");
+        let current_branch_path = helpers::get_current_branch_path()?;
+        println!("2");
         let branch_to_merge = arg_slice[0];
-        let current_branch = "main";
-
-        println!("merging {} -> {}", branch_to_merge, current_branch);
-        // habria que buscar ancestor en comun
-        // ver si en el branch actual se hicieron mas commits despues de ese ancestro
-        // si no hubo mas commits puedo hacer fastforward merge y listo
-        let common_ancestor_commit = helpers::find_common_ancestor_commit(current_branch, branch_to_merge)?;
-        println!("ancestor: {}", common_ancestor_commit);
-        if let Ok(last_commit) = helpers::is_fast_forward_merge_possible(current_branch, branch_to_merge) {
-            // helpers::update_branch_hash(current_branch, last_commit)?;
-            println!("updating branch last commit in current branch... to commit: {}", last_commit);
+        println!("3");
+        let branch_to_merge_path = match branch_to_merge {
+            DEFAULT_REMOTE_REPOSITORY => format!("{}/{}/{}", R_REMOTES, DEFAULT_REMOTE_REPOSITORY, current_branch),
+            _ => format!("{}/{}", R_HEADS, branch_to_merge),
+        };
+        println!("branch to merge: {}", branch_to_merge_path);
+        if let Ok(last_commit) = helpers::is_fast_forward_merge_possible(&current_branch_path, &branch_to_merge_path) {
+            println!("fast forward merge");
+            helpers::update_branch_hash(&current_branch, &last_commit)?;
             WorkingDirectory::clean_working_directory()?;
-            println!("cleaning working directory...");
             let commit_tree = helpers::get_commit_tree(&last_commit)?;
             WorkingDirectory::update_working_directory_to(&commit_tree)?;
-            // StagingArea::change_index_file(&commit_tree)?;
+            println!("change index");
+            StagingArea::new().change_index_file(commit_tree)?;
         }
 
         Ok(String::new())

@@ -378,7 +378,7 @@ pub fn update_local_branch_with_commit(
     Ok(())
 }
 
-fn update_branch_hash(branch_name: &str, new_commit_hash: &str) -> Result<(), Box<dyn Error>> {
+pub fn update_branch_hash(branch_name: &str, new_commit_hash: &str) -> Result<(), Box<dyn Error>> {
     let path = format!("{}/{}", R_HEADS, branch_name);
     let mut file = fs::File::create(path)?;
     file.write_all(new_commit_hash.as_bytes())?;
@@ -465,6 +465,16 @@ pub fn get_commit_tree(commit_hash: &str) -> Result<String, Box<dyn Error>> {
     Ok(tree_hash_trimmed.to_string())
 }
 
+pub fn get_current_branch() -> Result<String, Box<dyn Error>> {
+    let current_branch_path = get_current_branch_path()?;
+    if let Some(branch_name) = Path::new(&current_branch_path).file_name().map(|s| s.to_str()).flatten() {
+        return Ok(branch_name.to_string())
+    }
+    Err(Box::new(io::Error::new(
+        io::ErrorKind::Other,
+        "Error getting current branch name",
+    )))
+}
 
 pub const RELATIVE_PATH: &str = "RELATIVE_PATH";
 #[cfg(test)]
@@ -592,3 +602,4 @@ mod tests {
     }
     
 }
+
