@@ -1,7 +1,6 @@
-mod commands;
-use crate::commands::structs::Head;
+use rusty::commands::commands::*;
+use rusty::commands::structs::Head;
 use std::collections::HashMap;
-use crate::commands::Command;
 use gtk::prelude::*;
 use gtk::*;
 use std::cell::RefCell;
@@ -73,7 +72,7 @@ fn main() {
         text_input.set_size_request(100, 50);
         let text_input_ref = Rc::new(RefCell::new(text_input.clone()));
 
-        let button_right = Button::with_label("1");
+        let button_right = Button::with_label("Commit");
         button_right.set_size_request(100, 50);
         let button_right_ref = Rc::new(RefCell::new(button_right.clone()));
 
@@ -199,23 +198,27 @@ fn main() {
             eprintln!("text: {}", text);
 
             let result = match *actual_command_mut {
-                CHECKOUT_COMMAND_NAME => commands::Checkout::new().execute(&mut head, args),
-                ADD_COMMAND_NAME => commands::Add::new().execute(&mut head, args), //simple
-                REMOVE_COMMAND_NAME => commands::Rm::new().execute(&mut head, args),//simple
-                COMMIT_COMMAND_NAME => commands::Commit::new().execute(&mut head, args),//complex
-                LOG_COMMAND_NAME => commands::Log::new().execute(&mut head, args), //simple
-                BRANCH_COMMAND_NAME => commands::Log::new().execute(&mut head, None), //simple
-                // PULL_COMMAND_NAME => commands::Pull::new().execute(&mut head, None),
-                // PUSH_COMMAND_NAME => commands::Push::new().execute(&mut head, None),
-                _ => commands::Log::new().execute(&mut head, args)
+                CHECKOUT_COMMAND_NAME => Checkout::new().execute(&mut head, args),
+                ADD_COMMAND_NAME => Add::new().execute(&mut head, args), //simple
+                REMOVE_COMMAND_NAME => Rm::new().execute(&mut head, args),//simple
+                COMMIT_COMMAND_NAME =>{
+                    let commit_vec: Vec<&str> = vec!["-m", &text];
+                    let commit_args: Option<Vec<&str>> = Option::from(commit_vec);
+                    Commit::new().execute(&mut head, commit_args)
+                }
+                LOG_COMMAND_NAME => Log::new().execute(&mut head, args), //simple
+                // BRANCH_COMMAND_NAME => Log::new().execute(&mut head, None), //simple
+                PULL_COMMAND_NAME => Pull::new().execute(&mut head, None),
+                PUSH_COMMAND_NAME => Push::new().execute(&mut head, None),
+                _ => return
             };
-            // -m Mensaje
             // Handle the result if needed
+            output_label_ref.borrow_mut().set_markup("<span></span>");
             match result {
-                Ok(_) => {
-                    let error_message = format!("<span font_desc='20'>Command run successfully</span>");
+                Ok(success_message) => {
+                    let message = format!("<span font_desc='20'>Command run successfully {}</span>",success_message);
                     let  output_label_mut = output_label_ref.borrow_mut();
-                    output_label_mut.set_markup(&error_message);
+                    output_label_mut.set_markup(&message);
                     eprintln!("Command successful!")
                 },
                 Err(err) => {
