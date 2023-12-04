@@ -52,7 +52,7 @@ impl HashObjectCreator {
     }
 
     pub fn create_tree_object() -> Result<String, Box<dyn Error>> {
-        let index_file_content = helpers::read_file_content(INDEX_FILE)?;
+        let index_file_content = helpers::read_file_content(&PathHandler::get_relative_path(INDEX_FILE))?;
         let mut subdirectories: HashMap<String, Vec<String>> = HashMap::new();
     
         let index_file_lines: Vec<&str> = index_file_content.split("\n").collect();
@@ -69,14 +69,14 @@ impl HashObjectCreator {
                 file_directory = directory.to_string_lossy().to_string();
             }
 
-            let split_path: Vec<&str> = index_file_content.split("/").collect();
+            let _split_path: Vec<&str> = index_file_content.split("/").collect();
             let mut file_name = String::new();
             if let Some(name) = path.file_name().and_then(|name| name.to_str()) {
                 println!("File name: {}", name);
                 file_name = name.to_string();
             }
             let file_entry = format!("{} {} {} {}\n", TREE_FILE_MODE, ObjectType::Blob, hash, file_name);
-            if let Some(parent) = current_dir {
+            if let Some(_parent) = current_dir {
                 subdirectories
                             .entry(file_directory)
                             .or_insert_with(Vec::new)
@@ -251,7 +251,7 @@ impl StagingArea {
     }
 
 	pub fn get_entries_index_file(&self, state: IndexFileEntryState) -> Result<Vec<String>, Box<dyn Error>> {
-	    let index_file_content = helpers::read_file_content(INDEX_FILE)?;
+	    let index_file_content = helpers::read_file_content(&PathHandler::get_relative_path(INDEX_FILE))?;
 	    let lines: Vec<String> = index_file_content.lines().map(|s| s.to_string()).collect();
 
 	    let mut result: Vec<String> = Vec::new();
@@ -341,6 +341,7 @@ impl Head {
 }
 
 /// Represents the type of a Git object.
+#[derive(Clone)]
 pub enum ObjectType {
     Blob,
     Commit,
@@ -507,7 +508,7 @@ impl WorkingDirectory {
     pub fn clean_working_directory() -> Result<(), Box<dyn Error>> {
         println!("cleaning working directory");
         let index_file_content = helpers::read_file_content(INDEX_FILE)?;
-        let mut lines: Vec<String> = index_file_content.lines().map(|s| s.to_string()).collect();
+        let lines: Vec<String> = index_file_content.lines().map(|s| s.to_string()).collect();
     
         for line in lines.iter() {
             let split_line: Vec<String> = line.split(';').map(String::from).collect();
@@ -554,5 +555,88 @@ impl WorkingDirectory {
         }
     
         Ok(())
+    }
+}
+
+pub const RELATIVE_PATH: &str = "RELATIVE_PATH";
+#[cfg(test)]
+mod tests {
+    use std::env;
+
+    use crate::commands::commands::{Init, Command};
+
+    use super::*;
+
+    const TEST_FILE_CONTENT: &str = "Test file content";
+    use tempfile::tempdir;
+
+    fn common_setup() -> (tempfile::TempDir, String) {
+        // Create a temporary directory
+        let temp_dir = tempdir().unwrap();
+        let temp_path = temp_dir.path().to_str().unwrap().to_string();
+
+        // Set the environment variable for the relative path
+        env::set_var(RELATIVE_PATH, &temp_path);
+
+        // Create and execute the Init command
+        let init_command = Init::new();
+        let result = init_command.execute(&mut Head::new(), None);
+
+        // Check if the Init command was successful
+        assert!(result.is_ok(), "Init command failed: {:?}", result);
+
+        (temp_dir, temp_path)
+    }
+
+    #[test]
+    fn test_hash_object_creator() {
+        // Common setup
+        let _temp_dir = common_setup();
+
+        // Test writing object file
+        let obj_type = ObjectType::Blob;
+        let file_len = TEST_FILE_CONTENT.len() as u64;
+        let result = HashObjectCreator::write_object_file(
+            TEST_FILE_CONTENT.to_string(),
+            obj_type.clone(),
+            file_len,
+        );
+
+        // Assert that the command executed successfully
+        assert!(result.is_ok(), "Write object file failed: {:?}", result);
+        let object_hash = result.unwrap();
+
+        // Test generate object hash
+        let generated_hash =
+            HashObjectCreator::generate_object_hash(obj_type, file_len, TEST_FILE_CONTENT);
+
+        // Assert that the generated hash matches the one obtained from writing the object file
+        assert_eq!(generated_hash, object_hash);
+    }
+
+    #[test]
+    fn test_staging_area() {
+        // Common setup
+        let _temp_dir = common_setup();
+
+        // Create a new StagingArea instance
+        let staging_area = StagingArea::new();
+
+        // Add a file to the staging area
+        let file_path = PathHandler::get_relative_path("test.txt");
+        fs::write(&file_path, TEST_FILE_CONTENT).expect("Failed to create test file");
+
+        let mut head = Head::new();
+        let result = staging_area.add_file(&mut head, &file_path);
+
+        // Assert that the command executed successfully
+        assert!(result.is_ok(), "Add file to staging area failed: {:?}", result);
+
+        // Get staged files from the index file
+        let staged_files =
+            staging_area.get_entries_index_file(IndexFileEntryState::Staged).unwrap();
+
+        // Assert that the added file is in the list of staged files
+        assert!(staged_files.contains(&file_path));
     }
 }

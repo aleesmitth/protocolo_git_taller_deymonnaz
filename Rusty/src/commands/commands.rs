@@ -102,8 +102,6 @@ impl Command for Init {
         let _obj = fs::create_dir(PathHandler::get_relative_path(OBJECT))?;
         let _pack = fs::create_dir(PathHandler::get_relative_path(PACK))?;
         let _remotes_dir = fs::create_dir(PathHandler::get_relative_path(R_REMOTES))?;
-        let default_remote_dir_path = format!("{}/{}", R_REMOTES, DEFAULT_REMOTE_REPOSITORY);
-        fs::create_dir(PathHandler::get_relative_path(&default_remote_dir_path))?;
 
         let mut _config_file = fs::File::create(PathHandler::get_relative_path(CONFIG_FILE))?;
         let mut head_file = fs::File::create(PathHandler::get_relative_path(HEAD_FILE))?;
@@ -431,7 +429,7 @@ impl Command for Commit {
         let mut branch_file = fs::File::create(PathHandler::get_relative_path(&branch_path))?;
         branch_file.write_all(commit_object_hash.as_bytes())?;
 
-        self.stg_area.unstage_index_file()?;
+         self.stg_area.unstage_index_file()?;
         Ok(String::new())
     }
 }
@@ -625,7 +623,7 @@ impl Remote {
 
     /// Removes a specified remote repository configuration from the Git configuration file.
     fn remove_remote(&self, remote_name: String) -> Result<(), Box<dyn Error>> {
-        let config_content = helpers::read_file_content(CONFIG_FILE)?;
+        let config_content = helpers::read_file_content(&PathHandler::get_relative_path(CONFIG_FILE))?;
 
         let remote_header = format!("[remote '{}']", remote_name);
         let mut new_config_content = String::new();
@@ -643,7 +641,7 @@ impl Remote {
             }
         }
 
-        let mut config_file = fs::File::create(CONFIG_FILE)?;
+        let mut config_file = fs::File::create(PathHandler::get_relative_path(CONFIG_FILE))?;
         config_file.write_all(new_config_content.as_bytes())?;
 
         Ok(())
@@ -1193,7 +1191,7 @@ impl Pull {
 
 
 impl Command for Pull {
-    fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, _head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         Fetch::new().execute(_head, None)?;
 
         // Merge::new().execute(_head, Some(vec!["origin"]))?;
@@ -1958,7 +1956,7 @@ mod tests {
     }
     const REMOTE_NAME: &str = "origin";
     const REMOTE_URL: &str = "127.0.0.1:9418";
-   /*  
+    
     #[test]
     fn test_add_remote() {
         // Common setup
@@ -1974,12 +1972,12 @@ mod tests {
         assert!(result.is_ok(), "Add remote command failed: {:?}", result);
 
     // Clean up: The temporary directory will be automatically deleted when temp_dir goes out of scope
-    }*/
+    }
 
     #[test]
     fn test_remove_remote() {
         // Common setup
-        let temp_dir = common_setup();
+        let _temp_dir = common_setup();
 
         // Create a new Remote instance
         let remote = Remote::new();
@@ -1994,6 +1992,6 @@ mod tests {
         assert!(result.is_ok(), "Remove remote command failed: {:?}", result);
 
         // Clean up: The temporary directory will be automatically deleted when temp_dir goes out of scope
-    }
- */
+    } 
+ 
 }
