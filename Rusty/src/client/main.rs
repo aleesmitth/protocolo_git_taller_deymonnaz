@@ -1,4 +1,5 @@
 use rusty::commands::commands::CheckIgnore;
+use rusty::commands::commands::PackObjects;
 use rusty::commands::commands::RELATIVE_PATH;
 use rusty::commands::commands::Init;
 use rusty::commands::commands::Add;
@@ -62,7 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Init::new().execute(&mut head, None)?;
     // Branch::new().execute(&mut head, Some(vec!["new"]))?;
     // Checkout::new().execute(&mut head, Some(vec!["main"]))?;
-    // Add::new().execute(&mut head, Some(vec!["ejemplo.txt"]))?;
+    // Add::new().execute(&mut head, Some(vec!["file.txt"]))?;
     // Add::new().execute(&mut head, Some(vec!["b/c/2.txt"]))?;
     // Add::new().execute(&mut head, Some(vec!["d/c/3.txt"]))?;
     // Commit::new().execute(&mut head, Some(vec!["-m", "test"]))?;
@@ -82,14 +83,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("{}", error);
         return Ok(())
     }*/
-    if let Err(error) = LsTree::new().execute(&mut head, Some(vec!["-d", "HEAD"])) {
-        println!("{}", error);
-        return Ok(())
-    }
+    // if let Err(error) = LsTree::new().execute(&mut head, Some(vec!["-d", "HEAD"])) {
+    //     println!("{}", error);
+    //     return Ok(())
+    // }
     // Remote::new().execute(&mut head, Some(vec!["add", "origin", "127.0.0.1:9418"]))?;
     // if let Err(error) = Fetch::new().execute(&mut head, None) {
     //     println!("{}", error);
     //     return Ok(())
     // }
+    if let Err(error) = PackObjects::new().execute(&mut head, Some(vec!["6e932b119bb537da3c1a404ee5a57095b7ad4846"])) {
+        println!("{}", error);
+        return Ok(())
+    }
+    if let Err(error) = UnpackObjects::new().execute(&mut head, None) {
+        println!("{}", error);
+        return Ok(())
+    }
     Ok(())
 }

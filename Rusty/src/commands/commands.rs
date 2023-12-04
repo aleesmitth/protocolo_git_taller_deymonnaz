@@ -711,86 +711,146 @@ impl PackObjects {
     pub fn new() -> Self {
         PackObjects {}
     }
+
+    fn get_tree_objects(&self, object_set: &mut HashSet<String>, tree_hash: &str) -> Result<(), Box<dyn Error>> {
+        object_set.insert(tree_hash.to_string());
+        let (tree_type, tree_content, tree_size) = helpers::read_object(tree_hash.to_string())?;
+
+        let mut tree_content_lines: Vec<String> = tree_content.lines().map(|s| s.to_string()).collect();
+
+        for line in &mut tree_content_lines {
+            println!("line: {}", line);
+            let split_line: Vec<String> = line.split_whitespace().map(String::from).collect();
+            let file_mode = split_line[0].as_str();
+            let object_hash = split_line[2].clone();
+            match file_mode {
+                TREE_FILE_MODE => {
+                    object_set.insert(object_hash.clone());
+                }
+                TREE_SUBTREE_MODE => {
+                    // object_set.insert(object_hash.clone());
+                    self.get_tree_objects(object_set, &object_hash)?;
+                }
+                _ => {}
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn calculate_object_header(&self, object_size: usize, object_type: ObjectType) -> Vec<u8> {
+        let mut header = Vec::new();
+    
+        // Encode type and size using variable-length encoding
+        let mut type_size_byte = (object_type.get_object_for_pack_file() << 4) as u8;
+    
+        let mut size = object_size;
+        while size >= 0x80 {
+            header.push((size & 0x7F) as u8 | 0x80);
+            size >>= 7;
+        }
+    
+        type_size_byte |= size as u8;
+        header.push(type_size_byte);
+    
+        header
+    }
 }
 
-// impl Command for PackObjects {
-//     /// Execute the `PackObjects` command.
-//     /// This command generates a Git pack file that contains compressed Git objects.
-//     /// The pack file format is used to efficiently store objects and their history.
-//     /// It also creates an index file that helps locate objects in the pack file.
-//     fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
-//         let arg_slice = args.unwrap_or(Vec::new());
-//         let objects_list: Vec<String> = arg_slice[0]; // aca tengo que tener los hashes de todos los objetos que quiero procesar
-//         // Open pack and index files
-//         let mut pack_file = fs::File::create(".git/pack/pack_file.pack")?;
-//         // Create an uncompressed pack file
-//         let mut pack_file_content = Vec::new();
-//         let mut index_entries: Vec<u8> = Vec::new();
+impl Command for PackObjects {
+    /// Execute the `PackObjects` command.
+    /// This command generates a Git pack file that contains compressed Git objects.
+    /// The pack file format is used to efficiently store objects and their history.
+    /// It also creates an index file that helps locate objects in the pack file.
+    fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        let commit_list = args.unwrap_or(Vec::new()); //aca recibo hashes de commits
+        //por cada hash de commit busco su hash de tree
+        let mut object_set: HashSet<String> = HashSet::new();
+        for commit_hash in commit_list {
+            object_set.insert(commit_hash.to_string());
+            let tree_hash = helpers::get_commit_tree(commit_hash)?;
+            self.get_tree_objects(&mut object_set, &tree_hash)?;
+        }
+        println!("object_set: {:?}", object_set);
+        // por cada hash de tree agrego objetos necesarios a una lista o hasta a un diccionario para chequear rapido que no este ya, pero sin ningun value
+        // let objects_list: Vec<String> = arg_slice[0]; // aca tengo que tener los hashes de todos los objetos que quiero procesar
+        // Open pack and index files
+        let mut pack_file = fs::File::create(".git/pack/pack_file.pack")?;
+        // Create an uncompressed pack file
+        let mut pack_file_content = Vec::new();
+        // let mut index_entries: Vec<u8> = Vec::new();
 
-//         // List all objects in the .git/objects directory
-//         helpers::list_files_recursively(".git/objects", &mut objects_list)?;
-//         let mut object_count: u32 = 0;
-//         let mut offset: u64 = 12;
-//         // Iterate through objects
-//         for object_path in objects_list {
-//             object_count += 1;
-//             let decompressed_data: String = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&object_path)?)?;
-//             let file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
-//             let object_header: Vec<String> = file_content[0].split(' ').map(String::from).collect();
-//             let object_type = ObjectType::new(&object_header[0]).unwrap_or(ObjectType::Blob);
-//             let object_size: u64 = object_header[1].parse()?;
-//             let object_content: &str = &file_content[1];
-//             println!("header: {:?}", object_header);
-//             println!("content: {}", object_content);
-//             // Calculate the SHA-1 hash of the object content
+        // List all objects in the .git/objects directory
+        // helpers::list_files_recursively(".git/objects", &mut objects_list)?;
+        let mut object_count: u32 = 0;
+        let mut offset: u64 = 12;
+        // Iterate through objects
+        for object_hash in object_set { // going through hashes in objects_list
+            object_count += 1;
+            
+            let (object_type, object_content, object_size) = helpers::read_object(object_hash.to_string())?;
+            // let decompressed_data: String = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&object_path)?)?;
+            // let file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
+            // let object_header: Vec<String> = file_content[0].split(' ').map(String::from).collect();
+            // let object_type = ObjectType::new(&object_header[0]).unwrap_or(ObjectType::Blob);
+            // let object_size: u64 = object_header[1].parse()?;
+            // let object_content: &str = &file_content[1];
+            println!("header=> type: {}, size: {}", object_type, object_size);
+            println!("content: {}", object_content);
+            // Calculate the SHA-1 hash of the object content
 
-//             index_entries.extend_from_slice(&object_type.get_object_for_pack_file().to_be_bytes());  // Object type
-//             index_entries.extend_from_slice(&(object_size as u32).to_be_bytes());  // Object size
-//             index_entries.extend_from_slice(helpers::generate_sha1_string(&decompressed_data).as_bytes());  // SHA-1 hash bytes
+            // index_entries.extend_from_slice(&object_type.get_object_for_pack_file().to_be_bytes());  // Object type
+            // index_entries.extend_from_slice(&(object_size as u32).to_be_bytes());  // Object size
+            // index_entries.extend_from_slice(helpers::generate_sha1_string(&decompressed_data).as_bytes());  // SHA-1 hash bytes
 
-//             // Calculate the offset in the pack file (you need to keep track of this as you write to the pack file).
-//             offset += object_size;
+            // Calculate the offset in the pack file (you need to keep track of this as you write to the pack file).
+            // offset += object_size;
 
-//             index_entries.extend_from_slice(&offset.to_be_bytes());  // Offset in the pack file
+            // index_entries.extend_from_slice(&offset.to_be_bytes());  // Offset in the pack file
 
-//             // Append object content to the uncompressed pack file
-//             let header_byte = ((object_type.get_object_for_pack_file() & 0x07) << 4) | ((object_size & 0x0F) as u8);
-//             pack_file_content.extend_from_slice(&[header_byte]);
-//             pack_file_content.extend_from_slice(&helpers::compress_content(&object_content)?);
-//         }
+            // Append object content to the uncompressed pack file
+            let object_size_usize: usize = object_size.parse()?;
+            let compressed_content = &helpers::compress_content(&object_content)?;
+            // let header_byte = ((object_type.get_object_for_pack_file() & 0x07) << 4) | ((object_size_u64 & 0x0F) as u8);
+            // let header_byte = ((object_type.get_object_for_pack_file() & 0x07) << 4) | ((compressed_content.len() & 0x0F) as u8);
+            let header = self.calculate_object_header(object_size_usize, object_type);
+            println!("header: {:?}", header);
+            pack_file_content.extend_from_slice(&header);
+            pack_file_content.extend_from_slice(&compressed_content);
+        }
 
-//         let mut pack_file_final = Vec::new();
-//         // Generate pack header
-//         let version = [0u8, 0u8, 0u8, 2u8];
-//         pack_file_final.extend_from_slice(b"PACK");
-//         pack_file_final.extend_from_slice(&version);
-//         pack_file_final.extend_from_slice(&object_count.to_be_bytes());
-//         //pack_file.write_all(helpers::generate_sha1_string_from_bytes(&pack_header).as_bytes())?;
+        let mut pack_file_final = Vec::new();
+        // Generate pack header
+        let version = [0u8, 0u8, 0u8, 2u8];
+        pack_file_final.extend_from_slice(b"PACK");
+        pack_file_final.extend_from_slice(&version);
+        pack_file_final.extend_from_slice(&object_count.to_be_bytes());
+        //pack_file.write_all(helpers::generate_sha1_string_from_bytes(&pack_header).as_bytes())?;
 
-//         pack_file_final.extend_from_slice(&pack_file_content);
-//         // Write the uncompressed pack file content to the pack file
-//         pack_file.write_all(&pack_file_final)?;
+        pack_file_final.extend_from_slice(&pack_file_content);
+        // Write the uncompressed pack file content to the pack file
+        pack_file.write_all(&pack_file_final)?;
 
-//         // Calculate the SHA-1 hash of the entire pack file content
-//         let pack_checksum = helpers::generate_sha1_string_from_bytes(&pack_file_final);
-//         println!("pack checksum: {}", pack_checksum);
-//         pack_file.write_all(pack_checksum.as_bytes())?;
+        // Calculate the SHA-1 hash of the entire pack file content
+        let pack_checksum = helpers::generate_sha1_string_from_bytes(&pack_file_final);
+        println!("pack checksum: {}", pack_checksum);
+        pack_file.write_all(pack_checksum.as_bytes())?;
 
-//         let mut index_file = fs::File::create(".git/pack/pack_file.idx")?;
-//         let mut index_content = Vec::new();
-//         index_content.extend_from_slice(b"DIRC");
-//         index_content.extend_from_slice(&object_count.to_be_bytes());
-//         // let fanout_table = create_fanout_table(&index_entries);
-//         // index_content.extend_from_slice(&fanout_table);
-//         index_content.extend_from_slice(&index_entries);
-//         index_content.extend_from_slice(pack_checksum.as_bytes());
-//         let index_checksum = helpers::generate_sha1_string_from_bytes(&index_content);
-//         index_content.extend_from_slice(index_checksum.as_bytes());
-//         index_file.write_all(&index_content)?;
+        // let mut index_file = fs::File::create(".git/pack/pack_file.idx")?;
+        // let mut index_content = Vec::new();
+        // index_content.extend_from_slice(b"DIRC");
+        // index_content.extend_from_slice(&object_count.to_be_bytes());
+        // let fanout_table = create_fanout_table(&index_entries);
+        // index_content.extend_from_slice(&fanout_table);
+        // index_content.extend_from_slice(&index_entries);
+        // index_content.extend_from_slice(pack_checksum.as_bytes());
+        // let index_checksum = helpers::generate_sha1_string_from_bytes(&index_content);
+        // index_content.extend_from_slice(index_checksum.as_bytes());
+        // index_file.write_all(&index_content)?;
 
-//         Ok(String::new())
-//     }
-// }
+        Ok(String::new())
+    }
+}
 
 // fn create_fanout_table(entries: &[IndexEntry]) -> Vec<u8> {
 //     let mut fanout_table = Vec::new();
@@ -1020,6 +1080,7 @@ impl UnpackObjects {
                 // The object contents are zlib-compressed
                 let mut contents = Vec::with_capacity(size);
                 Decoder::new(pack_file)?.read_to_end(&mut contents)?;
+                println!("{} != {}", contents.len(), size);
                 if contents.len() != size {
                     return Err(Box::new(io::Error::new(
                         io::ErrorKind::Other,
@@ -1055,10 +1116,12 @@ impl UnpackObjects {
 }
 
 impl Command for UnpackObjects {
-    fn execute(&self, _head: &mut Head, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
-        // let arg_slice = args.unwrap_or(Vec::new());
-        let mut pack_file = fs::File::open(".git/pack/received_pack_file.pack")?;
-        let pack_file_size = helpers::get_file_length(".git/pack/received_pack_file.pack")?;
+    fn execute(&self, _head: &mut Head, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        let arg_slice = args.unwrap_or(Vec::new());
+        println!("unpacking...");
+        let mut pack_file = fs::File::open(".git/pack/pack_file.pack")?;
+        println!("opened pack file");
+        let pack_file_size = helpers::get_file_length(".git/pack/pack_file.pack")?;
         let mut header = vec![0; 12]; //Size of header is fixed
         pack_file.read_exact(&mut header)?;
         let object_amount = u32::from_be_bytes(header[8..12].try_into()?);

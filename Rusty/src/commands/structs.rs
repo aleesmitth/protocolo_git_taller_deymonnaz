@@ -195,16 +195,12 @@ impl StagingArea {
     /// Adds a file to the staging area. Creating a git object and saving the object's path, hash and state in the
     /// index file, following the format: file_path;hash;state.
     pub fn add_file(&self, _head: &mut Head, path: &str) -> Result<(), Box<dyn Error>> {
-        // let hash_object = HashObject::new();
-        // let object_hash = hash_object.execute(head, Some(&["-w", path]))?;
         let file_content = helpers::read_file_content(path)?;
         let object_hash = HashObjectCreator::write_object_file(
             file_content,
             ObjectType::Blob,
             get_file_length(path)?,
         )?;
-        //no se si aca esta bien escribir directamente el objeto o seria mejor usar hash-object
-
         helpers::update_file_with_hash(&object_hash.as_str(), IndexFileEntryState::Staged.to_string().as_str(), path)?;
 
         Ok(())
@@ -574,7 +570,7 @@ impl WorkingDirectory {
                     let (_, object_content, _) = helpers::read_object(object_hash)?;
                     let mut object_file = fs::File::create(relative_file_path)?;
                     object_file.write_all(&object_content.as_bytes())?;
-                } // crear archivo en dir actual
+                }
                 TREE_SUBTREE_MODE => {
                     if let Ok(metadata) = fs::metadata(relative_file_path.clone()) {
                         if !metadata.is_dir() {
@@ -582,7 +578,7 @@ impl WorkingDirectory {
                         }
                     }
                     return Self::create_files_for_directory(&object_hash, &relative_file_path);
-                } // crear directorio y moverse recursivamente dentro para seguir creando
+                }
                 _ => {}
             }
         }
