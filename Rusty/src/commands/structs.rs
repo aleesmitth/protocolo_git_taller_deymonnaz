@@ -6,7 +6,7 @@ const TREE_FILE_MODE: &str = "100644";
 //const DEFAULT_REMOTE: &str = "origin";
 
 use crate::commands::helpers;
-use crate::commands::commands::Log;
+
 
 use super::{commands::PathHandler, helpers::get_file_length};
 
@@ -84,22 +84,22 @@ impl HashObjectCreator {
             }
 
             while let Some(parent) = current_dir {
+                current_dir = parent.parent();
                 let mut subdirectory_entry = String::new();
                 if let Some(directory) = current_dir {
                     subdirectory_entry = directory.to_string_lossy().to_string();
                 }
                 subdirectories
-                        .entry(parent.to_string_lossy().to_string())
+                        .entry(subdirectory_entry)
                         .or_insert_with(Vec::new)
-                        .push(subdirectory_entry);
-                current_dir = parent.parent();
+                        .push(parent.to_string_lossy().to_string());
             }
         }
         let mut super_tree_hash = String::new();
         for (parent_directory, entries) in &subdirectories {
             let sub_tree_content = Self::process_files_and_subdirectories(&mut subdirectories.clone(), &entries)?;
             let tree_hash = Self::write_object_file(sub_tree_content.clone(), ObjectType::Tree, sub_tree_content.len() as u64)?;
-            if parent_directory.is_empty() {
+            if parent_directory == "/" {
                 super_tree_hash = tree_hash;
             }
         }
@@ -507,7 +507,7 @@ impl WorkingDirectory {
     
     pub fn clean_working_directory() -> Result<(), Box<dyn Error>> {
         println!("cleaning working directory");
-        let index_file_content = helpers::read_file_content(INDEX_FILE)?;
+        let index_file_content = helpers::read_file_content(&PathHandler::get_relative_path(INDEX_FILE))?;
         let lines: Vec<String> = index_file_content.lines().map(|s| s.to_string()).collect();
     
         for line in lines.iter() {
@@ -524,7 +524,7 @@ impl WorkingDirectory {
     pub fn update_working_directory_to(new_tree: &str) -> Result<(), Box<dyn Error>> {
         println!("new_tree: {}", new_tree);
     
-        Self::create_files_for_directory(new_tree, &String::new());
+        let _ = Self::create_files_for_directory(new_tree, &String::new());
     
         Ok(())
     }
@@ -536,18 +536,22 @@ impl WorkingDirectory {
         for line in tree_content_lines {
             let split_line: Vec<String> = line.split_whitespace().map(String::from).collect();
             let file_mode = split_line[0].as_str();
-            let object_hash = split_line[1].clone();
-            let file_path = &split_line[2];
+            let object_hash = split_line[2].clone();
+            let file_path = &split_line[3];
             let relative_file_path = format!("{}/{}", current_directory, file_path);
     
             match file_mode {
                 TREE_FILE_MODE => {
                     let (_, object_content) = helpers::read_object(object_hash)?;
                     let mut object_file = fs::File::create(relative_file_path)?;
-                    object_file.write_all(&helpers::compress_content(&object_content)?)?;
+                    object_file.write_all(&object_content.as_bytes())?;
                 } // crear archivo en dir actual
                 TREE_SUBTREE_MODE => {
-                    fs::create_dir(relative_file_path.clone())?;
+                    if let Ok(metadata) = fs::metadata(relative_file_path.clone()) {
+                        if !metadata.is_dir() {
+                            fs::create_dir(relative_file_path.clone())?;
+                        }
+                    }
                     return Self::create_files_for_directory(&object_hash, &relative_file_path);
                 } // crear directorio y moverse recursivamente dentro para seguir creando
                 _ => {}
@@ -561,14 +565,14 @@ impl WorkingDirectory {
 pub const RELATIVE_PATH: &str = "RELATIVE_PATH";
 #[cfg(test)]
 mod tests {
-    use std::env;
+    use std::{env, fs::File};
 
-    use crate::commands::commands::{Init, Command};
+    use crate::commands::commands::{Init, Command, Add};
 
     use super::*;
 
     const TEST_FILE_CONTENT: &str = "Test file content";
-    use tempfile::tempdir;
+    use tempfile::{tempdir, TempDir};
 
     fn common_setup() -> (tempfile::TempDir, String) {
         // Create a temporary directory
@@ -638,5 +642,89 @@ mod tests {
 
         // Assert that the added file is in the list of staged files
         assert!(staged_files.contains(&file_path));
+    }
+
+    #[test]
+    fn test_clean_working_directory() {
+        let (temp_dir, _temp_path) = common_setup();
+        // Create a temporary directory and some files
+        let mut head = Head::new() ; 
+        let file_paths = create_temp_files(&temp_dir, &["file1.txt", "file2.txt"]);
+
+        // Modify the index file to include these files
+        let add = Add::new();
+        let args1: Option<Vec<&str>> = Some(vec![&file_paths[0]]);
+        let args: Option<Vec<&str>> = Some(vec![&file_paths[1]]);
+        let _ = add.execute(&mut head, args1);
+        let _ = add.execute(&mut head, args);
+
+        // Perform clean_working_directory
+        WorkingDirectory::clean_working_directory().expect("Failed to clean working directory");
+
+        // Check if the files are deleted
+        assert!(!file_exists(&file_paths[0]));
+        assert!(!file_exists(&file_paths[1]));
+
+        // Check if the parent directory is deleted
+        assert!(!dir_exists(temp_dir.path()));
+    }
+
+    #[test]
+    fn test_update_working_directory_to() {
+        // Create a temporary directory
+        let (temp_dir, _temp_path) = common_setup();
+
+        let mut head = Head::new() ; 
+        let file_paths = create_temp_files(&temp_dir, &["file1.txt", "file2.txt"]);
+
+        // Modify the index file to include these files
+        let add = Add::new();
+        let args1: Option<Vec<&str>> = Some(vec![&file_paths[0]]);
+        let args: Option<Vec<&str>> = Some(vec![&file_paths[1]]);
+        let _ = add.execute(&mut head, args1);
+        let _ = add.execute(&mut head, args);
+
+
+        let tree_hash = HashObjectCreator::create_tree_object().unwrap();
+
+        let _ = fs::remove_file(file_paths[0].clone());
+        let _ = fs::remove_file(file_paths[1].clone());
+
+        // Perform update_working_directory_to
+        WorkingDirectory::update_working_directory_to(&tree_hash).expect("Failed to update working directory");
+
+        // Check if the files are created
+        let expected_file_path = temp_dir.path().join("file1.txt");
+        assert!(file_exists(&expected_file_path.to_str().unwrap()));
+
+        // Check if the parent directory is created
+        assert!(dir_exists(temp_dir.path()));
+    }
+
+    // Helper function to create temporary files and return their paths
+    fn create_temp_files(temp_dir: &TempDir, file_names: &[&str]) -> Vec<String> {
+        let mut file_paths = Vec::new();
+        for file_name in file_names {
+            let file_path = temp_dir.path().join(file_name);
+            write_to_file(&file_path, "Sample file content");
+            file_paths.push(file_path.to_str().unwrap().to_string());
+        }
+        file_paths
+    }
+
+    // Helper function to write content to a file
+    fn write_to_file(file_path: &std::path::Path, content: &str) {
+        let mut file = File::create(file_path).expect("Failed to create file");
+        file.write_all(content.as_bytes()).expect("Failed to write to file");
+    }
+
+    // Helper function to check if a file exists
+    fn file_exists(file_path: &str) -> bool {
+        Path::new(file_path).exists()
+    }
+
+    // Helper function to check if a directory exists
+    fn dir_exists(dir_path: &Path) -> bool {
+        dir_path.exists() && dir_path.is_dir()
     }
 }

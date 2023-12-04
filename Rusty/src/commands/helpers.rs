@@ -289,9 +289,8 @@ pub fn generate_sha1_string_from_bytes(data: &Vec<u8>) -> String {
 }
 
 pub fn read_object(hash: String) -> Result<(ObjectType, String), Box<dyn Error>> {
-    let (directory, file) = hash.split_at(2);
-    let object_path = format!("{}/{}/{}", OBJECT, directory, file);
-    let file = fs::File::open(object_path)?;
+    
+    let file = fs::File::open(PathHandler::get_relative_path(&get_object_path(&hash)))?;
     let mut buffer = String::new();
     Decoder::new(file)?.read_to_string(&mut buffer)?;
 
