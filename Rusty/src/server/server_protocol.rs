@@ -1,7 +1,7 @@
 use crate::commands::helpers;
 use crate::commands::protocol_utils;
 use std::{
-    error::Error, io, io::Read, io::Write, net::TcpListener, net::TcpStream,
+    error::Error, io, io::Write, net::TcpListener, net::TcpStream,
 };
 const RECEIVE_PACK: &str = "git-receive-pack";
 const UPLOAD_PACK: &str = "git-upload-pack";

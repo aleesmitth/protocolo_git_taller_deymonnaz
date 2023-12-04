@@ -384,12 +384,12 @@ impl ObjectType {
             _ => None,
         }
     }
-    pub fn get_object_for_pack_file(&self) -> u8 {
+    pub fn get_object_for_pack_file(&self) -> Vec<u8> {
         let object_type = match self {
-            ObjectType::Commit => 1,
-            ObjectType::Tree => 2,
-            ObjectType::Blob => 3,
-            ObjectType::Tag => 4,
+            ObjectType::Commit => vec![0,0,1],
+            ObjectType::Tree => vec![0,1,0],
+            ObjectType::Blob => vec![0,1,1],
+            ObjectType::Tag => vec![1,0,0],
         };
         object_type
     }

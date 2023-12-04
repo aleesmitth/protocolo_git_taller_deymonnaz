@@ -741,20 +741,68 @@ impl PackObjects {
     pub fn calculate_object_header(&self, object_size: usize, object_type: ObjectType) -> Vec<u8> {
         let mut header = Vec::new();
     
-        // Encode type and size using variable-length encoding
-        let mut type_size_byte = (object_type.get_object_for_pack_file() << 4) as u8;
-    
-        let mut size = object_size;
-        while size >= 0x80 {
-            header.push((size & 0x7F) as u8 | 0x80);
-            size >>= 7;
+        header.push(0);
+        header.extend_from_slice(&object_type.get_object_for_pack_file());
+
+        let binary_size = format!("{:b}", object_size);
+
+        let size = binary_size
+            .chars()
+            .map(|c| c.to_digit(2).unwrap() as u8)
+            .collect();
+
+        if size.len() > 4 {
+            
+        } else {
+            header.extend_from_slice(size);
         }
-    
-        type_size_byte |= size as u8;
-        header.push(type_size_byte);
-    
+
         header
     }
+
+    // pub fn calculate_object_header(&self, object_size: usize, object_type: ObjectType) -> Vec<u8> {
+    //     let mut header = Vec::new();
+    
+    //     header.push(0);
+    //     head.extend_from_slice(object_type.get_object_for_pack_file());
+    //     // Encode type using lower 4 bits
+    //     let mut type_size_byte = (object_type.get_object_for_pack_file() & 0x0F) << 4;
+    
+    //     // Encode size using variable-length encoding
+    //     let mut size_byte = object_size as u8;
+    //     let mut size_extension = Vec::new();
+    
+    //     while size_byte > 0 {
+    //         size_extension.push((size_byte & 0x7F) | 0x80);
+    //         size_byte >>= 7;
+    //     }
+    
+    //     //let last_byte = size_extension.pop().unwrap_or(0) & 0x7F;
+
+    //     // Combine type and size bytes
+    //     //type_size_byte |= last_byte;
+
+    //     if !size_extension.is_empty() {
+    //         type_size_byte |= 0x80;
+    //     }
+ 
+    //     // Encodethe first byte (type and partial size) in binary
+    //     for i in (0..8).rev() {
+    //         header.push(((type_size_byte >> i) & 1) as u8);
+    //     }
+
+    //     // Encode the extended size bytes in binary
+    //     for byte in size_extension.into_iter().rev() {
+    //         println!("byte: {}", byte);
+    //         for i in (0..7).rev() {
+    //             header.push(((byte >> i) & 1) as u8);
+    //         }
+    //     }
+
+    //     header
+    // }
+    
+    
 }
 
 impl Command for PackObjects {
@@ -783,7 +831,7 @@ impl Command for PackObjects {
         // List all objects in the .git/objects directory
         // helpers::list_files_recursively(".git/objects", &mut objects_list)?;
         let mut object_count: u32 = 0;
-        let mut offset: u64 = 12;
+        // let mut offset: u64 = 12;
         // Iterate through objects
         for object_hash in object_set { // going through hashes in objects_list
             object_count += 1;

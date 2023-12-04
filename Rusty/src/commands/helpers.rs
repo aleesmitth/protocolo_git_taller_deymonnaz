@@ -450,7 +450,7 @@ pub fn is_fast_forward_merge_possible(_current_branch: &str, merging_branch: &st
 /// tree object.
 pub fn get_commit_tree(commit_hash: &str) -> Result<String, Box<dyn Error>> {
     //println!("commit hash: {}", commit_hash);
-    let decompressed_data = decompress_file_content(read_file_content_to_bytes(&get_object_path(commit_hash))?)?;
+    let decompressed_data = decompress_file_content(read_file_content_to_bytes(&PathHandler::get_relative_path(&get_object_path(commit_hash)))?)?;
 
     let commit_file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
     //println!("commit_file_content: {:?}", commit_file_content);

@@ -60,13 +60,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //         _ => return Err(Box::new(io::Error::new(io::ErrorKind::Other,"Error: Invalid command."))),
     //     };
     // };
-    // Init::new().execute(&mut head, None)?;
+    //let _init = Init::new().execute(&mut head, None)?;
     // Branch::new().execute(&mut head, Some(vec!["new"]))?;
     // Checkout::new().execute(&mut head, Some(vec!["main"]))?;
-    // Add::new().execute(&mut head, Some(vec!["file.txt"]))?;
+    //Add::new().execute(&mut head, Some(vec!["file.txt"]))?;
     // Add::new().execute(&mut head, Some(vec!["b/c/2.txt"]))?;
     // Add::new().execute(&mut head, Some(vec!["d/c/3.txt"]))?;
-    // Commit::new().execute(&mut head, Some(vec!["-m", "test"]))?;
+    //Commit::new().execute(&mut head, Some(vec!["-m", "test"]))?;
     // if let Err(error) = Clone::new().execute(&mut head, None) {
     //     println!("{}", error);
     //     return Ok(())
