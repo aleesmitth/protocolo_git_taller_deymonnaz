@@ -288,7 +288,7 @@ pub fn generate_sha1_string_from_bytes(data: &Vec<u8>) -> String {
     hasher.result_str()
 }
 
-pub fn read_object(hash: String) -> Result<(ObjectType, String), Box<dyn Error>> {
+pub fn read_object(hash: String) -> Result<(ObjectType, String, String), Box<dyn Error>> {
     
     let file = fs::File::open(PathHandler::get_relative_path(&get_object_path(&hash)))?;
     let mut buffer = String::new();
@@ -300,8 +300,8 @@ pub fn read_object(hash: String) -> Result<(ObjectType, String), Box<dyn Error>>
         io::ErrorKind::InvalidData,
         "Failed to determine object type",
     ))?;
-
-    Ok((object_type, file_content[1].clone()))
+    let object_size = if object_header.len() >= 2 { object_header[1].clone() } else { String::new() };
+    Ok((object_type, file_content[1].clone(), object_size))
 }
 
 pub fn get_remote_tracking_branches() -> Result<HashMap<String, (String, String)>, Box<dyn Error>> {
@@ -449,13 +449,16 @@ pub fn is_fast_forward_merge_possible(_current_branch: &str, merging_branch: &st
 /// Given a commit's hash it accesses its file and returns the hash of its associated
 /// tree object.
 pub fn get_commit_tree(commit_hash: &str) -> Result<String, Box<dyn Error>> {
-    println!("commit hash: {}", commit_hash);
+    //println!("commit hash: {}", commit_hash);
     let decompressed_data = decompress_file_content(read_file_content_to_bytes(&get_object_path(commit_hash))?)?;
 
     let commit_file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
+    //println!("commit_file_content: {:?}", commit_file_content);
 
     let commit_file_lines: Vec<String> = commit_file_content[1].lines().map(|s| s.to_string()).collect();
+    //println!("commit_file_lines: {:?}", commit_file_lines);
     let tree_split_line: Vec<String> = commit_file_lines[0].split_whitespace().map(String::from).collect();
+    //println!("tree_split_line: {:?}", tree_split_line);
     
     let tree_hash_trimmed = &tree_split_line[1];
 

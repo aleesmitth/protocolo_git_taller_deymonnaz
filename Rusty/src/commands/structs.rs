@@ -56,6 +56,7 @@ impl HashObjectCreator {
         let mut subdirectories: HashMap<String, Vec<String>> = HashMap::new();
     
         let index_file_lines: Vec<&str> = index_file_content.split("\n").collect();
+        //println!("index_file_lines: {:?}", index_file_lines);
     
         for line in index_file_lines {
             let split_line: Vec<&str> = line.split(";").collect();
@@ -65,17 +66,22 @@ impl HashObjectCreator {
             
             let mut current_dir = path.parent();
             let mut file_directory = String::new();
+            //println!("current_dir: {:?}", current_dir);
             if let Some(directory) = current_dir {
                 file_directory = directory.to_string_lossy().to_string();
             }
 
             let _split_path: Vec<&str> = index_file_content.split("/").collect();
             let mut file_name = String::new();
+
+            //println!("_split_path: {:?}", _split_path);
             if let Some(name) = path.file_name().and_then(|name| name.to_str()) {
-                println!("File name: {}", name);
+                //println!("File name: {}", name);
                 file_name = name.to_string();
             }
             let file_entry = format!("{} {} {} {}\n", TREE_FILE_MODE, ObjectType::Blob, hash, file_name);
+
+            //println!("file_entry: {:?}", file_entry);
             if let Some(_parent) = current_dir {
                 subdirectories
                             .entry(file_directory)
@@ -85,21 +91,25 @@ impl HashObjectCreator {
 
             while let Some(parent) = current_dir {
                 current_dir = parent.parent();
+                //println!("current_dir adentro del while: {:?}", current_dir);
                 let mut subdirectory_entry = String::new();
                 if let Some(directory) = current_dir {
+                	//println!("current_dir adentro del while , adentro del iflet: {:?}", directory);
                     subdirectory_entry = directory.to_string_lossy().to_string();
+	                subdirectories
+	                        .entry(subdirectory_entry)
+	                        .or_insert_with(Vec::new)
+	                        .push(parent.to_string_lossy().to_string());
                 }
-                subdirectories
-                        .entry(subdirectory_entry)
-                        .or_insert_with(Vec::new)
-                        .push(parent.to_string_lossy().to_string());
             }
         }
         let mut super_tree_hash = String::new();
         for (parent_directory, entries) in &subdirectories {
+        	//println!("[create_tree_object]parent_directory: {:?}", parent_directory);
             let sub_tree_content = Self::process_files_and_subdirectories(&mut subdirectories.clone(), &entries)?;
             let tree_hash = Self::write_object_file(sub_tree_content.clone(), ObjectType::Tree, sub_tree_content.len() as u64)?;
-            if parent_directory == "/" {
+            if parent_directory == "/" || parent_directory.is_empty() {
+            	//println!("[create_tree_object]inside if: {:?}", parent_directory);
                 super_tree_hash = tree_hash;
             }
         }
@@ -360,7 +370,7 @@ impl Head {
 }
 
 /// Represents the type of a Git object.
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum ObjectType {
     Blob,
     Commit,
@@ -549,7 +559,7 @@ impl WorkingDirectory {
     }
     
     fn create_files_for_directory(tree: &str, current_directory: &str) -> Result<(), Box<dyn Error>> {
-        let (_, tree_content) = helpers::read_object(tree.to_string())?;
+        let (_, tree_content, _) = helpers::read_object(tree.to_string())?;
         let tree_content_lines: Vec<String> = tree_content.lines().map(|s| s.to_string()).collect();
         println!("tree_content: {}", tree_content);
         for line in tree_content_lines {
@@ -561,7 +571,7 @@ impl WorkingDirectory {
     
             match file_mode {
                 TREE_FILE_MODE => {
-                    let (_, object_content) = helpers::read_object(object_hash)?;
+                    let (_, object_content, _) = helpers::read_object(object_hash)?;
                     let mut object_file = fs::File::create(relative_file_path)?;
                     object_file.write_all(&object_content.as_bytes())?;
                 } // crear archivo en dir actual

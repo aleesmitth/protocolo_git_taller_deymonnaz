@@ -8,8 +8,8 @@ use libflate::zlib::Decoder;
 const OBJECT: &str = ".git/objects";
 const PACK: &str = ".git/pack";
 
-//const TREE_FILE_MODE: &str = "100644";
-//const TREE_SUBTREE_MODE: &str = "040000";
+const TREE_FILE_MODE: &str = "100644";
+const TREE_SUBTREE_MODE: &str = "040000";
 const DELETE_FLAG: &str = "-d";
 const RENAME_FLAG: &str = "-m";
 const TYPE_FLAG: &str = "-t";
@@ -421,10 +421,11 @@ impl Command for Commit {
             }
         }
         let tree_hash = HashObjectCreator::create_tree_object()?;
+        //println!("tree_hash: {:?}", tree_hash);
         let branch_path = helpers::get_current_branch_path()?;
         message = if message_flag { message } else { None };
         let commit_content = self.generate_commit_content(tree_hash, message, &branch_path)?;
-        println!("commit content: {}", commit_content);
+        //println!("commit content: {}", commit_content);
         let commit_object_hash = HashObjectCreator::write_object_file(
             commit_content.clone(),
             ObjectType::Commit,
@@ -1045,7 +1046,7 @@ impl UnpackObjects {
             PackObjectType::HashDelta => {
                 println!("HashDelta");
                 let hash = Self::read_hash(pack_file)?; // esto lo tengo que ver como implementar yo. seria la lectura del hash del delta object
-                let (object_type, base_object_content) = helpers::read_object(hash)?; // aca como hace referencia a un objecto base, ya va a tener que estar descomprimido
+                let (object_type, base_object_content, _) = helpers::read_object(hash)?; // aca como hace referencia a un objecto base, ya va a tener que estar descomprimido
                 return Self::apply_delta(pack_file, base_object_content.as_bytes(), object_type);
             }
         }
@@ -1336,7 +1337,7 @@ impl Command for Log {
                     _ => {
                         // Generate log entries for inclusion and store them in the included entries vector
                         self.generate_log_entries(&mut log_entries, arg.to_string())?;
-                        println!("include {:?}", log_entries);
+                        //println!("include {:?}", log_entries);
 
                     }
                 }
@@ -1373,38 +1374,53 @@ impl LsTree {
     }
 
     pub fn generate_tree_entries(&self, entries: &mut Vec<String>, tree_hash: String, direct_flag: bool, recurse_flag: bool, long_flag: bool) -> Result<(), Box<dyn Error>> {
-        //let (_, tree_content) = helpers::read_object(tree_hash.to_string())?;
+        let current_hash = if tree_hash == HEAD { helpers::get_commit_tree(helpers::get_head_commit()?.as_str())? } else { tree_hash };
 
-        
-        // TODO terminar esto
+        let (tree_type, tree_content, tree_size) = helpers::read_object(current_hash)?;
+        if tree_content.is_empty() || tree_type != ObjectType::Tree {
+            // no proceso tree vacio
+            return Ok(())
+        }
 
+        let mut tree_content_lines: Vec<String> = tree_content.lines().map(|s| s.to_string()).collect();
+        //println!("[LSTREE]tree_content_lines {:?}, tree size: {:?}", tree_content_lines.clone(), tree_size);
 
-        /*let (_, tree_content) = helpers::read_object(helpers::get_commit_tree(helpers::get_head_commit()?.as_str())?)?;
-        let tree_content_lines: Vec<String> = tree_content.lines().map(|s| s.to_string()).collect();
-        println!("[LSTREE]tree_content: {}", tree_content);
-        for line in tree_content_lines {
+        for line in &mut tree_content_lines {
+            //println!("[LSTREE]line: {:?}", line.clone());
             let split_line: Vec<String> = line.split_whitespace().map(String::from).collect();
             let file_mode = split_line[0].as_str();
-            let object_hash = split_line[1].clone();
-            let file_path = &split_line[2];
-            //let relative_file_path = format!("{}/{}", current_directory, file_path);
-    
-            match file_mode {
-                TREE_FILE_MODE => {
-                    println!("[LSTREE]tree file mode");
-                    let (_, object_content) = helpers::read_object(object_hash)?;
-                    println!("[LSTREE]file content: {}", object_content);
-                    //let mut object_file = fs::File::create(relative_file_path)?;
-                    //object_file.write_all(&helpers::compress_content(&object_content)?)?;
-                } // crear archivo en dir actual
-                TREE_SUBTREE_MODE => {
-                    println!("[LSTREE]should go into recursive");
-                    //fs::create_dir(relative_file_path.clone())?;
-                    //return Self::create_files_for_directory(&object_hash, &relative_file_path);
-                } // crear directorio y moverse recursivamente dentro para seguir creando
-                _ => {}
+            let object_hash = split_line[2].clone();
+
+            if file_mode == TREE_FILE_MODE && direct_flag {
+                // don't add files to the entries if direct flag is on
+                //println!("skip file because direct flag is on");                
+                continue;
             }
-        }*/
+
+            if long_flag {
+                // add size to the line
+                let (_, object_content, object_size) = helpers::read_object(object_hash.clone())?;
+                line.push_str(" ");
+                line.push_str(object_size.as_str());
+            }
+
+            if file_mode == TREE_FILE_MODE {
+                // add
+                entries.push(line.clone());
+                continue;
+            }
+
+            if file_mode == TREE_SUBTREE_MODE {
+                // if direct or not recursive add
+                if direct_flag || !recurse_flag {
+                    entries.push(line.clone());
+                }
+                // if recursive loop
+                if recurse_flag {
+                    return self.generate_tree_entries(entries, object_hash.clone(), direct_flag, recurse_flag, long_flag);
+                }
+            }
+        }
         Ok(())
     }
 }
@@ -1443,6 +1459,10 @@ impl Command for LsTree {
                 io::ErrorKind::Other,
                 "Error: ls-tree wrong arguments received. supported flags are -d -r -l followed by a tree hash",
             )));
+        }
+
+        for entry in tree_entries {
+            println!("{:?}", entry);
         }
 
         // Return a successful result (an empty string in this case)
