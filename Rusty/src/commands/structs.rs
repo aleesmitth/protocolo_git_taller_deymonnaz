@@ -595,7 +595,7 @@ mod tests {
         fs::write(&file_path, TEST_FILE_CONTENT).expect("Failed to create test file");
 
         let mut head = Head::new();
-        let result = staging_area.add_file(&mut head, &file_path);
+        let result = staging_area.add_file(&file_path);
 
         // Assert that the command executed successfully
         assert!(result.is_ok(), "Add file to staging area failed: {:?}", result);

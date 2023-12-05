@@ -54,6 +54,10 @@ const COPY_ZERO_SIZE: usize = 0x10000;
 // const TYPE_BITS: usize = 3;
 // const TYPE_MASK: usize = (1 << TYPE_BITS) - 1;
 
+//CODES FOR COLORS IN TEXT
+const COLOR_GREEN_CODE: &str = "\x1b[32m";
+const COLOR_RESET_CODE: &str = "\x1b[0m";
+
 use crate::client;
 use crate::client::client_protocol::ClientProtocol;
 use crate::commands::helpers::get_file_length;
@@ -110,7 +114,7 @@ impl Command for Init {
         head_file.write_all(b"ref: refs/heads/main")?;
 
         let _main = fs::File::create(PathHandler::get_relative_path(".git/refs/heads/main"))?; //esto no esta ideal hacerlo aca
-        helpers::create_new_branch(DEFAULT_BRANCH_NAME)?;
+        Branch::new().create_new_branch(DEFAULT_BRANCH_NAME)?;
         let _index_file = fs::File::create(PathHandler::get_relative_path(INDEX_FILE))?;
 
         Ok(String::new())
@@ -123,6 +127,111 @@ impl Branch {
     pub fn new() -> Self {
         Branch {}
     }
+
+    /// Creates a new branch with the specified name. Creates branch file.
+    pub fn create_new_branch(&self, branch_name: &str) -> Result<(), Box<dyn Error>> {
+        let branch_path = helpers::get_branch_path(branch_name);
+        
+        if helpers::check_if_file_exists(&branch_path) {
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "A branch with the specified name already exists",
+            )))
+        }
+
+        let last_commit_hash = helpers::get_head_commit()?;
+        let mut branch_file = fs::File::create(&PathHandler::get_relative_path(&branch_path))?;
+
+        if branch_name == DEFAULT_BRANCH_NAME {
+            write!(branch_file, "")?;
+        } else {
+            write!(branch_file, "{}", last_commit_hash)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn delete_branch(&self, branch_name: &str) -> Result<(), Box<dyn Error>> {
+        let branch_path = helpers::get_branch_path(branch_name);
+
+        if !helpers::check_if_file_exists(&branch_path) {
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "No branch with the specified name was found",
+            )))
+        }
+
+        if helpers::get_current_branch_path()? == branch_path {
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "Cannot delete current branch",
+            )))
+        }
+
+        fs::remove_file(branch_path)?;
+
+        Ok(())
+    }
+
+    pub fn list_all_branches(&self) -> Result<String, Box<dyn Error>> {
+        let mut branches: Vec<String> = Vec::new();
+        
+        match fs::read_dir(R_HEADS) {
+            Ok(entries) => {
+                // Iterate over the entries in the directory
+                for entry in entries {
+                    branches.push(entry?.file_name().to_string_lossy().to_string())
+                }
+            }
+            Err(_) => return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "Error reading branches",
+            )))
+        }
+            
+        let current_branch = "main";
+
+        for branch in branches.clone() {
+            if branch == current_branch {
+                print!("{}* {}\n{}", COLOR_GREEN_CODE, branch, COLOR_RESET_CODE);
+            } else {
+                println!("{}", branch)
+            }
+        }
+
+        let branches_in_string: String = branches
+            .into_iter()
+            .map(|branch| format!("{}\n", branch))
+            .collect();
+
+        Ok(branches_in_string)
+    }
+
+    pub fn rename_branch(&self, previous_name: &str, new_name: &str) -> Result<(), Box<dyn Error>> {
+        let previous_branch_path = helpers::get_branch_path(previous_name);
+
+        if !helpers::check_if_file_exists(&previous_branch_path) {
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "No branch with the specified name was found",
+            )))
+        }
+
+        let new_branch_path = helpers::get_branch_path(new_name);
+
+        fs::rename(&previous_branch_path, &new_branch_path)?;
+
+        println!("{} == {}", helpers::get_current_branch_path()?, previous_branch_path);
+        if helpers::get_current_branch_path()? == previous_branch_path {
+            println!("overwritting head file");
+            let mut head_file: fs::File = fs::File::create(HEAD_FILE)?;
+            let new_content = format!("ref: refs/heads/{}", new_name);
+            head_file.write_all(new_content.as_bytes())?;
+        }
+
+        Ok(())
+    }
+
 }
 
 /// Implementation of the `Command` trait for the `Branch` type.
@@ -192,22 +301,23 @@ impl Command for Branch {
             - if there is "-m" flag, and there isn't "-d" flag, and 2 branch names, rename the "first branch name" to the "second branch name"
             - if there is no flags and a branch name, create a branch with that name
         */
-        // match (
-        //     list_branches_flag,
-        //     delete_flag,
-        //     rename_flag,
-        //     first_branch_name,
-        //     second_branch_name,
-        // ) {
-        //     (true, _, _, _, _) => head.print_all(),
-        //     (_, true, _, Some(name), _) => head.delete_branch(&name)?,
-        //     (_, false, true, Some(old_name), Some(new_name)) => {
-        //         head.rename_branch(&old_name, &new_name)?
-        //     }
-        //     (false, false, false, Some(name), _) => helpers::create_new_branch(&name, head)?,
-        //     _ => {}
-        // }
-        Ok(String::new())
+
+        let mut result = String::new();
+
+        match (
+            list_branches_flag,
+            delete_flag,
+            rename_flag,
+            first_branch_name,
+            second_branch_name,
+        ) {
+            (true, _, _, _, _) => result = self.list_all_branches()?,
+            (_, true, _, Some(name), _) => self.delete_branch(&name)?,
+            (_, false, true, Some(old_name), Some(new_name)) => self.rename_branch(&old_name, &new_name)?,
+            (false, false, false, Some(name), _) => self.create_new_branch(&name)?,
+            _ => {}
+        }
+        Ok(result)
     }
 }
 

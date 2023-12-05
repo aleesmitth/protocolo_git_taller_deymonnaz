@@ -101,24 +101,6 @@ pub fn generate_sha1_string(str: &str) -> String {
     hasher.result_str()
 }
 
-/// Creates a new branch with the specified name. Creates branch file.
-pub fn create_new_branch(branch_name: &str) -> Result<(), Box<dyn Error>> {
-    let branch_path = format!("{}/{}", R_HEADS, branch_name);
-
-    let previous_branch_path = get_current_branch_path()?;
-    let last_commit_hash =
-        read_file_content(&PathHandler::get_relative_path(&previous_branch_path))?;
-    let mut branch_file = fs::File::create(&PathHandler::get_relative_path(&branch_path))?;
-
-    if branch_name == DEFAULT_BRANCH_NAME {
-        write!(branch_file, "")?;
-    } else {
-        write!(branch_file, "{}", last_commit_hash)?;
-    }
-
-    Ok(())
-}
-
 /// Updates the index file with a new file path, object hash and status for a specific file.
 /// If the file was already contained in the index file, it replaces it.
 pub fn update_file_with_hash(
@@ -473,6 +455,16 @@ pub fn get_current_branch_ref() -> Result<String, Box<dyn Error>> {
         io::ErrorKind::Other,
         "Eror reading branch ref",
     )))
+}
+
+/// Checks if the file in the given path exists and returns true or false
+pub fn check_if_file_exists(file_path: &str) -> bool {
+    if let Ok(metadata) = fs::metadata(file_path) {
+        if metadata.is_file() {
+            return true
+        }
+    }
+    false
 }
 
 pub const RELATIVE_PATH: &str = "RELATIVE_PATH";
