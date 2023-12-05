@@ -2,7 +2,7 @@ use crate::commands::commands::UnpackObjects;
 use crate::commands::commands::Command;
 use crate::commands::helpers;
 use crate::commands::protocol_utils;
-use crate::commands::structs::Head;
+
 use std::{
     error::Error, io, io::Write, net::TcpListener, net::TcpStream, io::Read, fs::File
 };
@@ -155,14 +155,13 @@ impl ServerProtocol {
                 refs_to_update.push((prev_remote_hash.to_string(), new_remote_hash.to_string(), branch_name.to_string()));
             }
         }
-
+        
         let mut buffer = Vec::new();
         stream.read_to_end(&mut buffer)?;
         let mut file = File::create(".git/pack/received_pack_file.pack")?;
         file.write_all(&buffer)?;
 
-        let mut _head = Head::new();
-        match UnpackObjects::new().execute(&mut _head, None) {
+        match UnpackObjects::new().execute(None) {
             Ok(_) => {
                 let unpack_confirmation = protocol_utils::format_line_to_send(protocol_utils::UNPACK_CONFIRMATION.to_string());
                 stream.write_all(unpack_confirmation.as_bytes())?;

@@ -7,7 +7,6 @@ const TREE_FILE_MODE: &str = "100644";
 
 use crate::commands::helpers;
 
-
 use super::{commands::PathHandler, helpers::get_file_length};
 
 /// Abstract struct for creating new objects in git repository
@@ -194,7 +193,7 @@ impl StagingArea {
 
     /// Adds a file to the staging area. Creating a git object and saving the object's path, hash and state in the
     /// index file, following the format: file_path;hash;state.
-    pub fn add_file(&self, _head: &mut Head, path: &str) -> Result<(), Box<dyn Error>> {
+    pub fn add_file(&self, path: &str) -> Result<(), Box<dyn Error>> {
         let file_content = helpers::read_file_content(path)?;
         let object_hash = HashObjectCreator::write_object_file(
             file_content,
@@ -303,66 +302,6 @@ impl StagingArea {
     //         .map(|(path, _)| path.as_str())
     //         .collect()
     // }
-}
-
-pub struct Head {
-    branches: Vec<String>,
-    current_branch: Option<String>,
-}
-
-impl Head {
-    pub fn new() -> Self {
-        Head {
-            branches: Vec::new(),
-            current_branch: None,
-        }
-    }
-
-    pub fn add_branch(&mut self, name: &str) {
-        // Check if the branch name is not already in the vector
-        if !self.branches.iter().any(|branch| branch == name) {
-            self.branches.push(name.to_string());
-
-            // Set current_branch to the newly added branch
-            self.current_branch = Some(name.to_string());
-        }
-    }
-
-    pub fn delete_branch(&mut self, name: &str) -> Result<(), Box<dyn Error>> {
-        // Use the retain method to remove branches with the specified name
-        self.branches.retain(|branch| branch != name);
-
-        // If the deleted branch was the current branch, set current_branch to None
-        if self.current_branch == Some(name.to_string()) {
-            self.current_branch = None;
-        }
-
-        Ok(())
-    }
-
-    pub fn rename_branch(&mut self, old_name: &str, new_name: &str) -> Result<(), Box<dyn Error>> {
-        // Find the branch with the old name and rename it to the new name
-        if let Some(branch) = self.branches.iter_mut().find(|branch| *branch == old_name) {
-            *branch = new_name.to_string();
-
-            // If the renamed branch was the current branch, update current_branch
-            if self.current_branch == Some(old_name.to_string()) {
-                self.current_branch = Some(new_name.to_string());
-            }
-        }
-
-        Ok(())
-    }
-
-    pub fn get_current_branch(&self) -> Option<&str> {
-        self.current_branch.as_deref()
-    }
-
-    pub fn print_all(&self) {
-        for s in self.branches.iter() {
-            println!("branch: {}", s);
-        }
-    }
 }
 
 /// Represents the type of a Git object.
@@ -609,7 +548,7 @@ mod tests {
 
         // Create and execute the Init command
         let init_command = Init::new();
-        let result = init_command.execute(&mut Head::new(), None);
+        let result = init_command.execute(None);
 
         // Check if the Init command was successful
         assert!(result.is_ok(), "Init command failed: {:?}", result);
@@ -680,8 +619,8 @@ mod tests {
         let add = Add::new();
         let args1: Option<Vec<&str>> = Some(vec![&file_paths[0]]);
         let args: Option<Vec<&str>> = Some(vec![&file_paths[1]]);
-        let _ = add.execute(&mut head, args1);
-        let _ = add.execute(&mut head, args);
+        let _ = add.execute(args1);
+        let _ = add.execute( args);
 
         // Perform clean_working_directory
         WorkingDirectory::clean_working_directory().expect("Failed to clean working directory");
@@ -706,8 +645,8 @@ mod tests {
         let add = Add::new();
         let args1: Option<Vec<&str>> = Some(vec![&file_paths[0]]);
         let args: Option<Vec<&str>> = Some(vec![&file_paths[1]]);
-        let _ = add.execute(&mut head, args1);
-        let _ = add.execute(&mut head, args);
+        let _ = add.execute(args1);
+        let _ = add.execute(args);
 
         let tree_hash = HashObjectCreator::create_tree_object().unwrap();
 

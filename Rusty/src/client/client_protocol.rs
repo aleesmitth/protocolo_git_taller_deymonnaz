@@ -1,5 +1,4 @@
 use crate::commands::helpers;
-use crate::commands::structs::Head;
 use crate::commands::protocol_utils;
 use crate::commands::commands::PackObjects;
 use crate::commands::commands::Command;
@@ -61,9 +60,8 @@ impl ClientProtocol {
 
         let _ = stream.write_all(protocol_utils::REQUEST_LENGTH_CERO.as_bytes());
         println!("sent 0000");
-
-        let mut _head = Head::new();
-        PackObjects::new().execute(&mut _head, Some(vec![&last_commit_hash]))?;
+        
+        PackObjects::new().execute(Some(vec![&last_commit_hash]))?;
         let mut pack_file = fs::File::open(".git/pack/pack_file.pack")?;
         std::io::copy(&mut pack_file, &mut stream)?;
         

@@ -1,7 +1,6 @@
 use rusty::commands::commands::Command;
 use rusty::commands::commands::Init;
 use rusty::commands::commands::RELATIVE_PATH;
-use rusty::commands::structs::Head;
 use rusty::server::server_protocol::ServerProtocol;
 use std::env;
 use std::io::prelude::*;
@@ -13,8 +12,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = ServerProtocol::bind("127.0.0.1:9418")?; // Default Git port
     println!("bind complete");
 
-    // let mut head = Head::new();
-    // Init::new().execute(&mut head, None)?;
+    // Init::new().execute(None)?;
 
     for stream in listener.incoming() {
         match stream {

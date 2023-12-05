@@ -1,5 +1,4 @@
 use rusty::commands::commands::*;
-use rusty::commands::structs::Head;
 use std::collections::HashMap;
 use gtk::prelude::*;
 use gtk::*;
@@ -187,7 +186,6 @@ fn main() {
             let output_label_ref = Rc::clone(&output_label_ref);
             let text_input_ref = Rc::clone(&text_input_ref);
             move |_| {
-            let mut head = Head::new();
             
             let actual_command_mut = actual_command_ref.borrow_mut();
             let text = entry_buffer.text();
@@ -198,18 +196,18 @@ fn main() {
             eprintln!("text: {}", text);
 
             let result = match *actual_command_mut {
-                CHECKOUT_COMMAND_NAME => Checkout::new().execute(&mut head, args),
-                ADD_COMMAND_NAME => Add::new().execute(&mut head, args), //simple
-                REMOVE_COMMAND_NAME => Rm::new().execute(&mut head, args),//simple
+                CHECKOUT_COMMAND_NAME => Checkout::new().execute(args),
+                ADD_COMMAND_NAME => Add::new().execute(args), //simple
+                REMOVE_COMMAND_NAME => Rm::new().execute(args),//simple
                 COMMIT_COMMAND_NAME =>{
                     let commit_vec: Vec<&str> = vec!["-m", &text];
                     let commit_args: Option<Vec<&str>> = Option::from(commit_vec);
-                    Commit::new().execute(&mut head, commit_args)
+                    Commit::new().execute(commit_args)
                 }
-                LOG_COMMAND_NAME => Log::new().execute(&mut head, args), //simple
-                // BRANCH_COMMAND_NAME => Log::new().execute(&mut head, None), //simple
-                PULL_COMMAND_NAME => Pull::new().execute(&mut head, None),
-                PUSH_COMMAND_NAME => Push::new().execute(&mut head, None),
+                LOG_COMMAND_NAME => Log::new().execute(args), //simple
+                // BRANCH_COMMAND_NAME => Log::new().execute(None), //simple
+                PULL_COMMAND_NAME => Pull::new().execute(None),
+                PUSH_COMMAND_NAME => Push::new().execute(None),
                 _ => return
             };
             // Handle the result if needed

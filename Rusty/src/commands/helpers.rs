@@ -4,7 +4,6 @@ use std::{
 extern crate crypto;
 extern crate libflate;
 
-use crate::commands::structs::Head;
 use crate::commands::commands::Log;
 use crypto::digest::Digest;
 use crypto::sha1::Sha1;
@@ -103,7 +102,7 @@ pub fn generate_sha1_string(str: &str) -> String {
 }
 
 /// Creates a new branch with the specified name. Creates branch file.
-pub fn create_new_branch(branch_name: &str, head: &mut Head) -> Result<(), Box<dyn Error>> {
+pub fn create_new_branch(branch_name: &str) -> Result<(), Box<dyn Error>> {
     let branch_path = format!("{}/{}", R_HEADS, branch_name);
 
     let previous_branch_path = get_current_branch_path()?;
@@ -116,7 +115,6 @@ pub fn create_new_branch(branch_name: &str, head: &mut Head) -> Result<(), Box<d
     } else {
         write!(branch_file, "{}", last_commit_hash)?;
     }
-    head.add_branch(branch_name);
 
     Ok(())
 }
@@ -496,7 +494,7 @@ mod tests {
 
         // Create and execute the Init command
         let init_command = Init::new();
-        let result = init_command.execute(&mut Head::new(), None);
+        let result = init_command.execute(None);
 
         // Check if the Init command was successful
         assert!(result.is_ok(), "Init command failed: {:?}", result);
@@ -514,7 +512,7 @@ mod tests {
 
         // Create and execute the Branch command to set the initial branch
         let branch_command = Branch::new();
-        let result = branch_command.execute(&mut Head::new(), Some((&[branch_name]).to_vec()));
+        let result = branch_command.execute(Some((&[branch_name]).to_vec()));
         assert!(result.is_ok(), "Branch command failed: {:?}", result);
 
         // Call the function to get the current branch path
