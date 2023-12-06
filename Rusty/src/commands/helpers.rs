@@ -425,6 +425,16 @@ pub fn check_if_file_exists(file_path: &str) -> bool {
     false
 }
 
+/// Checks if the directory in the given path exists and returns true or false
+pub fn check_if_directory_exists(dir_path: &str) -> bool {
+    if let Ok(metadata) = fs::metadata(dir_path) {
+        if metadata.is_dir() {
+            return true
+        }
+    }
+    false
+}
+
 pub const RELATIVE_PATH: &str = "RELATIVE_PATH";
 #[cfg(test)]
 mod tests {

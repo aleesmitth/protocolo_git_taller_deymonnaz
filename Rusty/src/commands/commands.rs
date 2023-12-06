@@ -5,6 +5,7 @@ use std::{fs, error::Error, io, io::Write, io::Read, str, env, io::BufRead, io::
 extern crate libflate;
 use libflate::zlib::Decoder;
 
+const GIT: &str = ".git";
 const OBJECT: &str = ".git/objects";
 const PACK: &str = ".git/pack";
 
@@ -103,6 +104,13 @@ impl Command for Init {
     /// for branches, tags, and objects. It also sets the default branch to 'main' and creates an empty
     ///  index file. If successful, it returns an empty string; otherwise, it returns an error message.
     fn execute(&self, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        if helpers::check_if_directory_exists(GIT) {
+            println!("existe");
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "A git repository already exists in this directory",
+            )))
+        }
         let _refs_heads = fs::create_dir_all(PathHandler::get_relative_path(R_HEADS));
         let _refs_tags = fs::create_dir_all(PathHandler::get_relative_path(R_TAGS))?;
         let _obj = fs::create_dir(PathHandler::get_relative_path(OBJECT))?;
