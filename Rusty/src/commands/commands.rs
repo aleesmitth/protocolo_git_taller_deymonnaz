@@ -1803,7 +1803,6 @@ impl Command for LsFiles {
 pub struct CheckIgnore;
 
 impl CheckIgnore {
-    /// Creates a new `Push` instance.
     pub fn new() -> Self {
         CheckIgnore {}
     }
@@ -1829,7 +1828,7 @@ impl Command for CheckIgnore {
 
         let line_exists = reader
             .lines()
-            .any(|line| line.map_or(false, |l| l == file_path));
+            .any(|line| line.map_or(false, |l| file_path.starts_with(&l)));
         if line_exists {
             println!("{}", file_path);
             return Ok(file_path.to_string());
@@ -1842,7 +1841,6 @@ impl Command for CheckIgnore {
 pub struct Tag;
 
 impl Tag {
-    /// Creates a new `Push` instance.
     pub fn new() -> Self {
         Tag {}
     }
@@ -1926,7 +1924,6 @@ impl Command for Tag {
 pub struct ShowRef;
 
 impl ShowRef {
-    /// Creates a new `Push` instance.
     pub fn new() -> Self {
         ShowRef {}
     }
@@ -1969,7 +1966,6 @@ impl Command for ShowRef {
 pub struct Merge;
 
 impl Merge {
-    /// Creates a new `Push` instance.
     pub fn new() -> Self {
         Merge {}
     }
