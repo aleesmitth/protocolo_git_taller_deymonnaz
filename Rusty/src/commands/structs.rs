@@ -305,7 +305,7 @@ impl StagingArea {
     }
 
 	pub fn get_entries_index_file(&self, state: IndexFileEntryState) -> Result<Vec<String>, Box<dyn Error>> {
-	    let index_file_content = helpers::read_file_content(&PathHandler::get_relative_path(INDEX_FILE))?;
+	    let index_file_content = helpers::read_file_content(INDEX_FILE)?;
 	    let lines: Vec<String> = index_file_content.lines().map(|s| s.to_string()).collect();
 
 	    let mut result: Vec<String> = Vec::new();
@@ -335,22 +335,49 @@ impl StagingArea {
 
 	    Ok(result)
 	}
+    
+    pub fn change_index_file(&self, mut commit_tree: String) -> Result<(), Box<dyn Error>> {
+        println!("change index file for tree: {}", commit_tree);
+        let mut index_file = fs::File::create(PathHandler::get_relative_path(INDEX_FILE))?;
+        let mut new_index_content = String::new();
 
+        println!("antes del tree content");
 
+        let (_, tree_content,  _) = helpers::read_object(commit_tree)?;
+        println!("tree content");
+        
+        let tree_lines: Vec<String> = tree_content.lines().map(|s| s.to_string()).collect();
+        println!("tree lines: {:?}", tree_lines);
+        // let tree_split_line: Vec<String> = commit_file_lines[0].split_whitespace().map(String::from).collect();
+        
+        // let tree_hash_trimmed = &tree_split_line[1];
+        self.create_index_content(&mut new_index_content, &tree_lines, &String::new())?;
+        println!("new content: {}", new_index_content);
+        index_file.write_all(&new_index_content.as_bytes());
+        Ok(())
+    }
 
-    // fn unstage_file(&mut self, path: &str) {
-    //     if let Some(status) = self.files.get_mut(path) {
-    //         *status = FileStatus::Modified;
-    //     }
-    // }
-
-    // fn list_stagedfiles(&self) -> Vec<&str> {
-    //     self.files
-    //         .iter()
-    //         .filter(|&(, status)|status == FileStatus::Staged)
-    //         .map(|(path, _)| path.as_str())
-    //         .collect()
-    // }
+    fn create_index_content(&self, index_content: &mut String, tree_lines: &Vec<String>, partial_path: &str)  -> Result<(), Box<dyn Error>> {
+        for line in tree_lines {
+            println!("line: {}", line);
+            let split_line: Vec<String> = line.split_whitespace().map(String::from).collect();
+            let file_mode = split_line[0].as_str();
+            let file_hash = split_line[2].as_str();
+            let file_name = split_line[3].as_str();
+            if file_mode == TREE_SUBTREE_MODE {
+                let directory_path = format!("{}{}/", partial_path, file_name);
+                println!("dir path: {}", directory_path);
+                let (_, sub_tree_content, _) = helpers::read_object(file_hash.to_string())?;
+                let sub_tree_lines: Vec<String> = sub_tree_content.lines().map(|s| s.to_string()).collect();
+                self.create_index_content(index_content, &sub_tree_lines, &directory_path)?
+            } else {
+                let index_line = format!("{}{};{};{}\n", partial_path, file_name, file_hash, IndexFileEntryState::Cached);
+                println!("index line: {}", index_line);
+                index_content.push_str(index_line.as_str());
+            }
+        }  
+        Ok(())
+    }
 }
 
 /// Represents the type of a Git object.
@@ -400,100 +427,6 @@ pub enum PackObjectType {
     OffsetDelta,
     HashDelta,
 }
-
-pub struct ServerConnection;
-
-impl ServerConnection {
-    pub fn new() -> Self {
-        ServerConnection {}
-    }
-
-    pub fn receive_pack(&mut self) -> Result<(), Box<dyn Error>> {
-        println!("1");
-        //let remote_server_address = helpers::get_remote_url(DEFAULT_REMOTE)?;
-        let mut stream = TcpStream::connect("127.0.0.1:9418")?;
-
-        let service = "git-receive-pack /.git\0host=127.0.0.1\0";
-        let request = format!("{:04x}{}", service.len() + 4, service);
-        // Send the Git service request
-        stream.write_all(request.as_bytes())?;
-
-        // Read the response from the server
-        let mut response = String::new();
-        {
-            let reader = std::io::BufReader::new(&stream);
-            for line in reader.lines() {
-                let line = line?;
-                println!("line: {}", line);
-                break;
-            }
-        }
-        println!("response: {:?}", response);
-
-        let branch_path = Head::get_current_branch_path()?;
-        let last_commit_hash: String = helpers::read_file_content(&branch_path)?;
-        println!("last_commit: {}", last_commit_hash);
-        let line = format!(
-            "0000000000000000000000000000000000000000 {} refs/heads/new",
-            last_commit_hash
-        );
-        let actual_line = format!("{:04x}{}\n", line.len() + 5, line);
-        println!("line: {}", actual_line);
-        stream.write_all(actual_line.as_bytes())?;
-        stream.write_all(b"0000")?;
-
-        let mut pack_file = fs::File::open(".git/pack/pack_file.pack")?;
-        std::io::copy(&mut pack_file, &mut stream)?;
-        //stream.flush()?;
-
-        response.clear();
-        let reader = std::io::BufReader::new(&stream);
-        for line in reader.lines() {
-            let line = line?;
-            println!("line: {}", line);
-            break;
-        }
-
-        Ok(())
-    }
-
-    pub fn clone_from_remote(&self) -> Result<(), Box<dyn Error>> {
-        let mut stream = TcpStream::connect("127.0.0.1:9418")?;
-
-        let request = format!(
-            "{:04x}git-upload-pack /.git\0host=127.0.0.1\0",
-            "git-upload-pack /.git\0host=127.0.0.1\0".len() + 4
-        );
-        stream.write_all(request.as_bytes())?;
-        stream.flush()?;
-
-        let reader = std::io::BufReader::new(&stream);
-        for line in reader.lines() {
-            let line = line?;
-            println!("{}", line);
-            break;
-        }
-
-        let branch_path = Head::get_current_branch_path()?;
-        let last_commit_hash: String = helpers::read_file_content(&branch_path)?;
-
-        let line = format!(
-            "want {} multi_ack side-band-64k ofs-delta",
-            last_commit_hash
-        );
-        let actual_line = format!("{:04x}{}\n", line.len() + 5, line);
-        println!("{}", actual_line);
-        stream.write_all(actual_line.as_bytes())?;
-        stream.write_all("0000".as_bytes())?;
-        let done = format!("{:04x}done\n", "done\n".len() + 4);
-        println!("{}", done);
-        stream.write_all(done.as_bytes())?;
-        stream.flush()?;
-
-        Ok(())
-    }
-}
-
 
 pub struct WorkingDirectory;
 
@@ -547,25 +480,27 @@ impl WorkingDirectory {
         let tree_content_lines: Vec<String> = tree_content.lines().map(|s| s.to_string()).collect();
         println!("tree_content: {}", tree_content);
         for line in tree_content_lines {
+            println!("line to create: {}", line);
             let split_line: Vec<String> = line.split_whitespace().map(String::from).collect();
             let file_mode = split_line[0].as_str();
             let object_hash = split_line[2].clone();
             let file_path = &split_line[3];
-            let relative_file_path = format!("{}/{}", current_directory, file_path);
+            let relative_file_path = format!("{}{}", current_directory, file_path);
     
             match file_mode {
                 TREE_FILE_MODE => {
                     let (_, object_content, _) = helpers::read_object(object_hash)?;
+                    println!("object to write content: {} in path: {}", object_content, relative_file_path);
                     let mut object_file = fs::File::create(relative_file_path)?;
                     object_file.write_all(&object_content.as_bytes())?;
                 }
                 TREE_SUBTREE_MODE => {
-                    if let Ok(metadata) = fs::metadata(relative_file_path.clone()) {
-                        if !metadata.is_dir() {
-                            fs::create_dir(relative_file_path.clone())?;
-                        }
+                    if let Err(error) = fs::metadata(relative_file_path.clone()) {
+                        println!("creating dir: {}", relative_file_path);
+                        fs::create_dir(relative_file_path.clone())?;
                     }
-                    return Self::create_files_for_directory(&object_hash, &relative_file_path);
+                    let dir_path = format!("{}/", relative_file_path);
+                    return Self::create_files_for_directory(&object_hash, &dir_path);
                 }
                 _ => {}
             }

@@ -347,6 +347,7 @@ pub fn get_branch_path(branch_name: &str) -> String {
 }
 
 pub fn get_object_path(object_hash: &str) -> String {
+    println!("{}", object_hash);
     format!("{}/{}/{}", OBJECT, object_hash[..2].to_string(), object_hash[2..].to_string())
 }
 

@@ -1,6 +1,6 @@
 use rusty::commands::commands::Command;
 use rusty::commands::commands;
-use std::{io, env};
+use std::{io, env, fs};
 
 /// This function takes a slice of strings and converts it into a vector of string slices.
 /// Returns an `Option` containing a `Vec` of string slices if `args` is not empty. Returns `None` if `args` is empty.
@@ -22,6 +22,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
      } else {
          println!("MY_VARIABLE is not set.");
      }*/
+    // fs::File::create("file.txt");
+    // fs::create_dir("dir");
+    // fs::File::create("dir/1.txt");
+    // fs::remove_dir_all(".git/");
+    // commands::Init::new().execute(None)?;
+    // commands::Add::new().execute(Some(vec!["file.txt"]))?;
+    // commands::Commit::new().execute(None)?;
+    // commands::Branch::new().execute(Some(vec!["new"]))?;
+    // commands::Checkout::new().execute(Some(vec!["new"]))?;
+    // commands::Add::new().execute(Some(vec!["dir/1.txt"]))?;
+    // commands::Commit::new().execute(None)?;
+    // commands::Checkout::new().execute(Some(vec!["main"]))?;
+    // commands::Checkout::new().execute(Some(vec!["new"]))?;
+
     let args: Vec<String> = env::args().collect();
     if args.len() >= 2 {
         let command = &args[1];

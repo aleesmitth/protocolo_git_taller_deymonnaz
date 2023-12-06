@@ -105,7 +105,6 @@ impl Command for Init {
     ///  index file. If successful, it returns an empty string; otherwise, it returns an error message.
     fn execute(&self, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         if helpers::check_if_directory_exists(GIT) {
-            println!("existe");
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
                 "A git repository already exists in this directory",
@@ -118,10 +117,9 @@ impl Command for Init {
         let _remotes_dir = fs::create_dir(PathHandler::get_relative_path(R_REMOTES))?;
 
         let mut _config_file = fs::File::create(PathHandler::get_relative_path(CONFIG_FILE))?;
+        Branch::new().create_new_branch(DEFAULT_BRANCH_NAME)?;
         Head::change_head_branch(DEFAULT_BRANCH_NAME)?;
 
-        let _main = fs::File::create(PathHandler::get_relative_path(".git/refs/heads/main"))?; //esto no esta ideal hacerlo aca
-        Branch::new().create_new_branch(DEFAULT_BRANCH_NAME)?;
         let _index_file = fs::File::create(PathHandler::get_relative_path(INDEX_FILE))?;
 
         Ok(String::new())
@@ -145,13 +143,13 @@ impl Branch {
                 "A branch with the specified name already exists",
             )))
         }
-
-        let last_commit_hash = Head::get_head_commit()?;
+        
         let mut branch_file = fs::File::create(&PathHandler::get_relative_path(&branch_path))?;
 
         if branch_name == DEFAULT_BRANCH_NAME {
             write!(branch_file, "")?;
         } else {
+            let last_commit_hash = Head::get_head_commit()?;
             write!(branch_file, "{}", last_commit_hash)?;
         }
 
@@ -338,26 +336,30 @@ impl Command for Checkout {
     fn execute(&self,  args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         match args {
             Some(args) => {
-                let branch_path = format!("{}/{}", R_HEADS, args[0]);
-                if !fs::metadata(PathHandler::get_relative_path(&branch_path)).is_ok() {
+                let branch_name = args[0];
+                if !helpers::check_if_file_exists(&helpers::get_branch_path(branch_name)) {
                     return Err(Box::new(io::Error::new(
-                        io::ErrorKind::Other,
-                        "Error: Branch name did not match any file known.",
-                    )));
+                                io::ErrorKind::Other,
+                                "Name did not match any known branch",
+                        )))
                 }
-                let new_head_content = format!("ref: refs/heads/{}", args[0]);
-
-                let head_file_content = helpers::read_file_content(&PathHandler::get_relative_path(HEAD_FILE))?;
-
-                if head_file_content == new_head_content {
+                if Head::get_current_branch_name()? == branch_name {
                     return Err(Box::new(io::Error::new(
                         io::ErrorKind::Other,
                         "Already on specified branch",
-                    )));
+                    )))
                 }
-
-                let mut head_file = fs::File::create(PathHandler::get_relative_path(HEAD_FILE))?;
-                head_file.write_all(new_head_content.as_bytes())?;
+                // falla aca que no chequeo que haya algun commit, si no hay commit previo rompe
+                Head::change_head_branch(branch_name)?;
+                let head_commit = Head::get_head_commit()?;
+                WorkingDirectory::clean_working_directory()?;
+                fs::File::create(INDEX_FILE)?;
+                if !head_commit.is_empty() {
+                    let head_tree = helpers::get_commit_tree(&head_commit)?;
+                    WorkingDirectory::update_working_directory_to(&head_tree)?;
+                    StagingArea::new().change_index_file(head_tree)?; //esto rompe en caso aca, pero quiero testear abtes
+                }
+                
             }
             None => {
                 return Err(Box::new(io::Error::new(
@@ -366,7 +368,6 @@ impl Command for Checkout {
                 )))
             }
         }
-
         Ok(String::new())
     }
 }
