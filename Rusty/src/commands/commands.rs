@@ -60,6 +60,7 @@ const COLOR_RESET_CODE: &str = "\x1b[0m";
 
 use crate::client;
 use crate::client::client_protocol::ClientProtocol;
+use crate::commands::structs::Head;
 use crate::commands::helpers::get_file_length;
 use crate::commands::structs::HashObjectCreator;
 use crate::commands::structs::ObjectType;
@@ -70,7 +71,6 @@ use crate::commands::structs::WorkingDirectory;
 use crate::commands::structs::IndexFileEntryState;
 use crate::commands::helpers;
 use crate::server::server_protocol::ServerProtocol;
-
 
 // TODO MOVER A OTRA CARPETA. NO TIENE SENTIDO commands::commands::PathHandler
 pub struct PathHandler;
@@ -110,8 +110,7 @@ impl Command for Init {
         let _remotes_dir = fs::create_dir(PathHandler::get_relative_path(R_REMOTES))?;
 
         let mut _config_file = fs::File::create(PathHandler::get_relative_path(CONFIG_FILE))?;
-        let mut head_file = fs::File::create(PathHandler::get_relative_path(HEAD_FILE))?;
-        head_file.write_all(b"ref: refs/heads/main")?;
+        Head::change_head_branch(DEFAULT_BRANCH_NAME)?;
 
         let _main = fs::File::create(PathHandler::get_relative_path(".git/refs/heads/main"))?; //esto no esta ideal hacerlo aca
         Branch::new().create_new_branch(DEFAULT_BRANCH_NAME)?;
@@ -139,7 +138,7 @@ impl Branch {
             )))
         }
 
-        let last_commit_hash = helpers::get_head_commit()?;
+        let last_commit_hash = Head::get_head_commit()?;
         let mut branch_file = fs::File::create(&PathHandler::get_relative_path(&branch_path))?;
 
         if branch_name == DEFAULT_BRANCH_NAME {
@@ -161,7 +160,7 @@ impl Branch {
             )))
         }
 
-        if helpers::get_current_branch_path()? == branch_path {
+        if Head::get_current_branch_name()? == branch_name {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
                 "Cannot delete current branch",
@@ -178,7 +177,6 @@ impl Branch {
         
         match fs::read_dir(R_HEADS) {
             Ok(entries) => {
-                // Iterate over the entries in the directory
                 for entry in entries {
                     branches.push(entry?.file_name().to_string_lossy().to_string())
                 }
@@ -189,7 +187,7 @@ impl Branch {
             )))
         }
             
-        let current_branch = "main";
+        let current_branch = Head::get_current_branch_name()?;
 
         for branch in branches.clone() {
             if branch == current_branch {
@@ -221,12 +219,8 @@ impl Branch {
 
         fs::rename(&previous_branch_path, &new_branch_path)?;
 
-        println!("{} == {}", helpers::get_current_branch_path()?, previous_branch_path);
-        if helpers::get_current_branch_path()? == previous_branch_path {
-            println!("overwritting head file");
-            let mut head_file: fs::File = fs::File::create(HEAD_FILE)?;
-            let new_content = format!("ref: refs/heads/{}", new_name);
-            head_file.write_all(new_content.as_bytes())?;
+        if Head::get_current_branch_name()? == previous_name {
+            Head::change_head_branch(new_name)?
         }
 
         Ok(())
@@ -529,7 +523,7 @@ impl Command for Commit {
         }
         let tree_hash = HashObjectCreator::create_tree_object()?;
         //println!("tree_hash: {:?}", tree_hash);
-        let branch_path = helpers::get_current_branch_path()?;
+        let branch_path = Head::get_current_branch_path()?;
         message = if message_flag { message } else { None };
         let commit_content = self.generate_commit_content(tree_hash, message, &branch_path)?;
         //println!("commit content: {}", commit_content);
@@ -631,7 +625,7 @@ impl Command for Status {
         &self,
         _args: Option<Vec<&str>>,
     ) -> Result<String, Box<dyn Error>> {
-        let branch_path = helpers::get_current_branch_path()?;
+        let branch_path = Head::get_current_branch_path()?;
         let last_commit_hash: String = helpers::read_file_content(&PathHandler::get_relative_path(&branch_path))?;
         let mut no_changes = true;
         let mut tree_objects: Vec<String> = Vec::new();
@@ -1399,8 +1393,8 @@ impl Command for Push {
         _args: Option<Vec<&str>>,
     ) -> Result<String, Box<dyn Error>> {
 
-        ClientProtocol::new().receive_pack(helpers::get_remote_url(DEFAULT_REMOTE_REPOSITORY)?)?;
-        // volver esto abstracto como decia y no isntanciarlo
+        // ClientProtocol::new().receive_pack(helpers::get_remote_url(DEFAULT_REMOTE_REPOSITORY)?)?;
+        // // volver esto abstracto como decia y no isntanciarlo
         Ok(String::new())
     }
 }
@@ -1417,7 +1411,7 @@ impl Pull {
 
 impl Command for Pull {
     fn execute(&self,  _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
-        Fetch::new().execute(None)?;
+        // Fetch::new().execute(None)?;
 
         // Merge::new().execute(_head, Some(vec!["origin"]))?;
         Ok(String::new())
@@ -1485,14 +1479,14 @@ impl Log {
                     )))
         }
 
-        let current_commit = if base_commit == HEAD { helpers::get_branch_last_commit(&helpers::get_current_branch_path()?)? } else { base_commit };
+        let current_commit = if base_commit == HEAD { Head::get_head_commit()? } else { base_commit };
 
         if entries.iter().any(|(key, _)| key == &current_commit) {
             // don't process it again
             return Ok(String::new());
         }
 
-        let commit_path = format!("{}/{}/{}", OBJECT, &current_commit[..2], &current_commit[2..]);
+        let commit_path = helpers::get_object_path(&current_commit);
         let decompressed_data = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&commit_path)?)?;
         let object_type = decompressed_data.splitn(2, ' ').next().ok_or("")?;
 
@@ -1613,7 +1607,7 @@ impl LsTree {
     }
 
     pub fn generate_tree_entries(&self, entries: &mut Vec<String>, tree_hash: String, direct_flag: bool, recurse_flag: bool, long_flag: bool) -> Result<(), Box<dyn Error>> {
-        let current_hash = if tree_hash == HEAD { helpers::get_commit_tree(helpers::get_head_commit()?.as_str())? } else { tree_hash };
+        let current_hash = if tree_hash == HEAD { helpers::get_commit_tree(Head::get_head_commit()?.as_str())? } else { tree_hash };
 
         let (tree_type, tree_content, tree_size) = helpers::read_object(current_hash)?;
         if tree_content.is_empty() || tree_type != ObjectType::Tree {
@@ -1860,8 +1854,7 @@ impl Tag {
     }
 
     fn add_new_lightweight_tag(&self, name: &str) -> Result<(), Box<dyn Error>> {
-        let current_branch_path = helpers::get_current_branch_path()?;
-        let last_commit = helpers::read_file_content(&PathHandler::get_relative_path(&current_branch_path))?;
+        let last_commit = Head::get_head_commit()?;
 
         let tag_path = format!("{}/{}", R_TAGS, name);
         let mut tag_file = fs::File::create(PathHandler::get_relative_path(&tag_path))?;

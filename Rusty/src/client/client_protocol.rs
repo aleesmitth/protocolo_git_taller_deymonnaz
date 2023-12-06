@@ -2,6 +2,7 @@ use crate::commands::helpers;
 use crate::commands::protocol_utils;
 use crate::commands::commands::PackObjects;
 use crate::commands::commands::Command;
+use crate::commands::structs::Head;
 
 use std::{
     error::Error, fs, io::BufRead, io::Read, io::Write, net::Shutdown, net::TcpStream,
@@ -44,17 +45,17 @@ impl ClientProtocol {
             }
         }
 
-        let current_branch_ref = helpers::get_current_branch_ref()?;
-        let last_commit_hash: String = helpers::get_head_commit()?;
+        // let current_branch_ref = helpers::get_current_branch_ref()?;
+        let last_commit_hash: String = Head::get_head_commit()?;
         println!("last_commit: {}", last_commit_hash);
 
         for (ref_hash, ref_name) in &refs_in_remote {
             let want_request = protocol_utils::format_line_to_send(format!("{} {}\n", protocol_utils::WANT_REQUEST, ref_hash));
             println!("want_request sent: {}", want_request.clone());
-            if ref_name.to_string() == current_branch_ref {
-                let push_line = protocol_utils::format_line_to_send(format!("{} {} {}", ref_hash, last_commit_hash, ref_name));
-                stream.write_all(push_line.as_bytes())?; 
-            }
+            // if ref_name.to_string() == current_branch_ref {
+            //     let push_line = protocol_utils::format_line_to_send(format!("{} {} {}", ref_hash, last_commit_hash, ref_name));
+            //     stream.write_all(push_line.as_bytes())?; 
+            // }
             break; //ver este break que onda
         }
 

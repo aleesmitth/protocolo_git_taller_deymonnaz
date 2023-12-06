@@ -2,6 +2,7 @@ use crate::commands::commands::UnpackObjects;
 use crate::commands::commands::Command;
 use crate::commands::helpers;
 use crate::commands::protocol_utils;
+use crate::commands::structs::Head;
 
 use std::{
     error::Error, io, io::Write, net::TcpListener, net::TcpStream, io::Read, fs::File

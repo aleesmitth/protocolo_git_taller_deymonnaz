@@ -3,11 +3,60 @@ const OBJECT: &str = ".git/objects";
 const INDEX_FILE: &str = ".git/index";
 const TREE_SUBTREE_MODE: &str = "040000";
 const TREE_FILE_MODE: &str = "100644";
+const DEFAULT_HEAD_LINE: &str = "ref: refs/heads/";
+const HEAD_FILE: &str = ".git/HEAD";
 //const DEFAULT_REMOTE: &str = "origin";
 
 use crate::commands::helpers;
 
 use super::{commands::PathHandler, helpers::get_file_length};
+
+/// Struct to interact with the HEAD file in the .git directory.
+/// Allows access to information about current branch and last commit in current branch.
+pub struct Head;
+
+impl Head {
+    /// Changes the branch the HEAD file points to
+    pub fn change_head_branch(branch_name: &str) -> Result<(), Box<dyn Error>>{
+        let mut head_file = fs::File::create(&PathHandler::get_relative_path(HEAD_FILE))?;
+        let new_line = format!("{}{}", DEFAULT_HEAD_LINE, branch_name);
+        head_file.write_all(new_line.as_bytes())?;
+        Ok(())
+    }
+
+    /// Returns the ref the HEAD points to
+    pub fn get_current_branch_ref() -> Result<String, Box<dyn Error>> {
+        let head_file_content = helpers::read_file_content(&PathHandler::get_relative_path(HEAD_FILE))?;
+        let split_head_content: Vec<String> = head_file_content.split_whitespace().map(String::from).collect();
+
+        let current_ref = split_head_content[1].clone();
+
+        Ok(current_ref)
+    }
+
+    /// Returns the name of the current branch
+    pub fn get_current_branch_name() -> Result<String, Box<dyn Error>> {
+        let current_branch_ref = Self::get_current_branch_ref()?;
+        let split_ref_content: Vec<String> = current_branch_ref.split('/').map(String::from).collect();
+
+        let branch_name = split_ref_content[2].clone();
+
+        Ok(branch_name)
+    }
+
+    /// Returns the path of the current branch
+    pub fn get_current_branch_path() -> Result<String, Box<dyn Error>> {
+        let current_branch_name = Self::get_current_branch_name()?;
+        Ok(helpers::get_branch_path(&current_branch_name))
+    }
+
+    /// Returns the last commit of the current branch
+    pub fn get_head_commit() -> Result<String, Box<dyn Error>> {
+        let current_branch_path = Self::get_current_branch_path()?;
+        let commit_hash = helpers::read_file_content(&PathHandler::get_relative_path(&current_branch_path))?;
+        Ok(commit_hash)
+    }
+}
 
 /// Abstract struct for creating new objects in git repository
 pub struct HashObjectCreator;
@@ -381,7 +430,7 @@ impl ServerConnection {
         }
         println!("response: {:?}", response);
 
-        let branch_path = helpers::get_current_branch_path()?;
+        let branch_path = Head::get_current_branch_path()?;
         let last_commit_hash: String = helpers::read_file_content(&branch_path)?;
         println!("last_commit: {}", last_commit_hash);
         let line = format!(
@@ -425,7 +474,7 @@ impl ServerConnection {
             break;
         }
 
-        let branch_path = helpers::get_current_branch_path()?;
+        let branch_path = Head::get_current_branch_path()?;
         let last_commit_hash: String = helpers::read_file_content(&branch_path)?;
 
         let line = format!(

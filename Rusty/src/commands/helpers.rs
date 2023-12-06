@@ -4,7 +4,7 @@ use std::{
 extern crate crypto;
 extern crate libflate;
 
-use crate::commands::commands::Log;
+use crate::commands::{commands::Log, structs::Head};
 use crypto::digest::Digest;
 use crypto::sha1::Sha1;
 use libflate::zlib::{Decoder, Encoder};
@@ -18,28 +18,6 @@ const DEFAULT_BRANCH_NAME: &str = "main";
 const INDEX_FILE: &str = ".git/index";
 const CONFIG_FILE: &str = ".git/config";
 //const R_REMOTES: &str = ".git/refs/remotes";
-
-/// Retrieves the path to the current branch from the Git HEAD file.
-pub fn get_current_branch_path() -> Result<String, Box<dyn Error>> {
-    let head_file_content = read_file_content(&PathHandler::get_relative_path(HEAD_FILE))?;
-    let split_head_content: Vec<&str> = head_file_content.split(" ").collect();
-    if let Some(branch_path) = split_head_content.get(1) {
-        let full_branch_path: String = format!(".git/{}", branch_path);
-        return Ok(full_branch_path);
-    }
-    Err(Box::new(io::Error::new(
-        io::ErrorKind::Other,
-        "Eror reading branch path",
-    )))
-}
-
-/// Returns head commit
-pub fn get_head_commit() -> Result<String, Box<dyn Error>> {
-    let mut file = fs::File::open(get_current_branch_path()?)?;
-    let mut content = String::new();
-    file.read_to_string(&mut content)?;
-    Ok(content)
-}
 
 /// Returns length of a file's content
 pub fn get_file_length(path: &str) -> Result<u64, Box<dyn Error>> {
@@ -63,13 +41,6 @@ pub fn read_file_content_to_bytes(path: &str) -> Result<Vec<u8>, io::Error> {
     Ok(file_content)
 }
 
-/// Given a file's content it compresses it using an encoder from the libflate external crate and
-/// returns a Vec<u8> containing the encoded content
-// pub fn compress_content(content: &str) -> Result<Vec<u8>, io::Error> {
-//     let mut encoder = Encoder::new(Vec::new())?;
-//     encoder.write_all(content.as_bytes())?;
-//     encoder.finish().into_result()
-// }
 pub fn compress_content(content: &str) -> Result<Vec<u8>, io::Error> {
     // Crea un nuevo `Encoder` y un vector para almacenar los datos comprimidos.
     let mut encoder = Encoder::new(Vec::new())?;
@@ -177,7 +148,7 @@ pub fn remove_object_from_file(file_path: &str) -> io::Result<()> {
 }
 
 pub fn get_all_branches() -> Result<Vec<String>, Box<dyn Error>> {
-    let current_branch_path = get_current_branch_path()?;
+    let current_branch_path = Head::get_current_branch_path()?;
     println!("test: {:?}", current_branch_path);
 
     // Extract the directory path from the file path
@@ -359,8 +330,7 @@ pub fn update_local_branch_with_commit(
 }
 
 fn update_branch_hash(branch_name: &str, new_commit_hash: &str) -> Result<(), Box<dyn Error>> {
-    let path = format!("{}/{}", R_HEADS, branch_name);
-    let mut file = fs::File::create(path)?;
+    let mut file = fs::File::create(get_branch_path(branch_name))?;
     file.write_all(new_commit_hash.as_bytes())?;
     Ok(())
 }
@@ -382,7 +352,7 @@ pub fn get_object_path(object_hash: &str) -> String {
 
 pub fn find_common_ancestor_commit(_current_branch: &str, merging_branch: &str) -> Result<String, Box<dyn Error>> {
     let mut current_branch_log = Vec::new();
-    let current_branch_commit = get_branch_last_commit(&get_current_branch_path()?)?;
+    let current_branch_commit = Head::get_head_commit()?;
     let _ = Log::new().generate_log_entries(&mut current_branch_log, current_branch_commit);
     println!("current branch log: {:?}", current_branch_log);
 
@@ -403,7 +373,7 @@ pub fn find_common_ancestor_commit(_current_branch: &str, merging_branch: &str) 
 }
 
 pub fn is_fast_forward_merge_possible(_current_branch: &str, merging_branch: &str) -> Result<String, Box<dyn Error>> {
-    let current_branch_commit = get_branch_last_commit(&get_current_branch_path()?)?;
+    let current_branch_commit = Head::get_head_commit()?;
     println!("current commit: {}", current_branch_commit);
     let mut merging_branch_log = Vec::new();
     let merging_branch_commit = get_branch_last_commit(&get_branch_path(merging_branch))?;
@@ -443,18 +413,6 @@ pub fn get_commit_tree(commit_hash: &str) -> Result<String, Box<dyn Error>> {
     let tree_hash_trimmed = &tree_split_line[1];
 
     Ok(tree_hash_trimmed.to_string())
-}
-
-pub fn get_current_branch_ref() -> Result<String, Box<dyn Error>> {
-    let head_file_content = read_file_content(&PathHandler::get_relative_path(HEAD_FILE))?;
-    let split_head_content: Vec<String> = head_file_content.split(" ").map(String::from).collect();
-    if let Some(branch_ref) = split_head_content.get(1) {
-        return Ok(branch_ref.clone());
-    }
-    Err(Box::new(io::Error::new(
-        io::ErrorKind::Other,
-        "Eror reading branch ref",
-    )))
 }
 
 /// Checks if the file in the given path exists and returns true or false
