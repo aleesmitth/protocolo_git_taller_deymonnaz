@@ -44,6 +44,7 @@ const INDEX_FILE: &str = ".git/index";
 const CONFIG_FILE: &str = ".git/config";
 pub const RELATIVE_PATH: &str = "RELATIVE_PATH";
 const DEFAULT_REMOTE_REPOSITORY: &str = "origin";
+const RECEIVED_PACK_FILE: &str = ".git/pack/received_pack_file.pack";
 const VARINT_ENCODING_BITS: u8 = 7;
 const VARINT_CONTINUE_FLAG: u8 = 1 << VARINT_ENCODING_BITS;
 const TYPE_BITS: u8 = 3;
@@ -634,17 +635,11 @@ impl Command for Status {
         &self,
         _args: Option<Vec<&str>>,
     ) -> Result<String, Box<dyn Error>> {
-        let branch_path = Head::get_current_branch_path()?;
-        let last_commit_hash: String = helpers::read_file_content(&PathHandler::get_relative_path(&branch_path))?;
+        let last_commit_hash: String = Head::get_head_commit()?;
         let mut no_changes = true;
         let mut tree_objects: Vec<String> = Vec::new();
         if !last_commit_hash.is_empty() {
-            let last_commit_path: String = format!(
-                "{}/{}/{}",
-                OBJECT,
-                &last_commit_hash[..2],
-                &last_commit_hash[2..]
-            );
+            let last_commit_path: String = helpers::get_object_path(&last_commit_hash);
             let decompressed_data = helpers::decompress_file_content(
                 helpers::read_file_content_to_bytes(&PathHandler::get_relative_path(&last_commit_path))?,
             )?;
@@ -758,6 +753,9 @@ impl Remote {
 
         let mut config_file = fs::File::create(PathHandler::get_relative_path(CONFIG_FILE))?;
         config_file.write_all(new_config_content.as_bytes())?;
+
+        let remote_dir = format!("{}/{}", R_REMOTES, remote_name);
+        fs::create_dir(remote_dir)?;
 
         Ok(())
     }
@@ -1282,9 +1280,9 @@ impl Command for UnpackObjects {
     fn execute(&self,  args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let arg_slice = args.unwrap_or(Vec::new());
         println!("unpacking...");
-        let mut pack_file = fs::File::open(".git/pack/received_pack_file.pack")?;
+        let mut pack_file = fs::File::open(arg_slice[0])?;
         println!("opened pack file");
-        let pack_file_size = helpers::get_file_length(".git/pack/received_pack_file.pack")?;
+        let pack_file_size = helpers::get_file_length(arg_slice[0])?;
         let mut header = vec![0; 12]; //Size of header is fixed
         pack_file.read_exact(&mut header)?;
         let object_amount = u32::from_be_bytes(header[8..12].try_into()?);
@@ -1332,7 +1330,11 @@ impl Fetch {
         let mut ref_path = String::new();
         match split_ref_name[1] {
             "heads" => {
-                ref_path = format!("{}/{}/{}", R_REMOTES, remote_name, remote_ref_name);
+                let dir_path = format!("{}/{}", R_REMOTES, remote_name);
+                if !helpers::check_if_directory_exists(&dir_path.clone()) {
+                    fs::create_dir(dir_path.clone())?;
+                }
+                ref_path = format!("{}/{}", dir_path, remote_ref_name);
                 // helpers::update_local_branch_with_commit(remote_name, remote_ref_name, ref_hash); //no hace falta hacer esto aca
             } 
   
@@ -1375,6 +1377,7 @@ impl Command for Fetch {
         }
 
         let refs = client::client_protocol::ClientProtocol::new().fetch_from_remote_with_our_server(remote_url)?;
+        UnpackObjects::new().execute(Some(vec![RECEIVED_PACK_FILE]))?;
         for (ref_hash, ref_name) in refs {
             println!("ref: {} {}", ref_hash, ref_name);
             self.add_remote_ref(&ref_hash, &ref_name, remote_name)?;
@@ -1420,9 +1423,9 @@ impl Pull {
 
 impl Command for Pull {
     fn execute(&self,  _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
-        // Fetch::new().execute(None)?;
+        Fetch::new().execute(None)?;
 
-        // Merge::new().execute(_head, Some(vec!["origin"]))?;
+        Merge::new().execute(Some(vec!["origin"]))?;
         Ok(String::new())
     }
 }
@@ -1976,22 +1979,22 @@ impl Command for Merge { //ver que pasa cuando uno commit ancestro es commit roo
         let arg_slice = args.unwrap_or(Vec::new()); //aca tendria que chequear que sea valido el branch que recibo por parametro
 
         let branch_to_merge = arg_slice[0];
-        let current_branch = "main";
+        let current_branch = Head::get_current_branch_name()?;
 
         println!("merging {} -> {}", branch_to_merge, current_branch);
         // habria que buscar ancestor en comun
         // ver si en el branch actual se hicieron mas commits despues de ese ancestro
         // si no hubo mas commits puedo hacer fastforward merge y listo
-        let common_ancestor_commit = helpers::find_common_ancestor_commit(current_branch, branch_to_merge)?;
-        println!("ancestor: {}", common_ancestor_commit);
-        if let Ok(last_commit) = helpers::is_fast_forward_merge_possible(current_branch, branch_to_merge) {
+        // let common_ancestor_commit = helpers::find_common_ancestor_commit(current_branch, branch_to_merge)?;
+        // println!("ancestor: {}", common_ancestor_commit);
+        if let Ok(last_commit) = helpers::is_fast_forward_merge_possible(&current_branch, branch_to_merge) {
             // helpers::update_branch_hash(current_branch, last_commit)?;
             println!("updating branch last commit in current branch... to commit: {}", last_commit);
             WorkingDirectory::clean_working_directory()?;
             println!("cleaning working directory...");
             let commit_tree = helpers::get_commit_tree(&last_commit)?;
             WorkingDirectory::update_working_directory_to(&commit_tree)?;
-            // StagingArea::change_index_file(&commit_tree)?;
+            StagingArea::new().change_index_file(commit_tree)?;
         }
 
         Ok(String::new())

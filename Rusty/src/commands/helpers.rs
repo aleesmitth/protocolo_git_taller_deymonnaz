@@ -377,6 +377,8 @@ pub fn is_fast_forward_merge_possible(_current_branch: &str, merging_branch: &st
     let current_branch_commit = Head::get_head_commit()?;
     println!("current commit: {}", current_branch_commit);
     let mut merging_branch_log = Vec::new();
+    // aca rompe al hacer con fetch porque estamos queriendo unir una branch que esta en remotes, tal vez ya habria que pasar los hash de commits como parametro
+    // de cambiar eso el nombre pasaria a ser tipo ancestor_commit_exists()
     let merging_branch_commit = get_branch_last_commit(&get_branch_path(merging_branch))?;
     println!("mergin commit: {}", merging_branch_commit);
     if current_branch_commit.is_empty() {

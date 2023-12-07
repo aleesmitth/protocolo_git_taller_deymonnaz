@@ -105,12 +105,17 @@ impl ClientProtocol {
             }
         }
         println!("branches received");
-        //return Ok(Vec::new());
-        for (ref_hash, _ref_name) in &refs_in_remote {
+        let mut head_reference = String::new();
+        let (first_ref_hash, first_ref_name) = &refs_in_remote[0];
+        if first_ref_name.starts_with("HEAD") {
+            head_reference = first_ref_hash.clone();
+            refs_in_remote.remove(0);
+        }
+
+        for (ref_hash, ref_name) in &refs_in_remote {
             let want_request = protocol_utils::format_line_to_send(format!("{} {}\n", protocol_utils::WANT_REQUEST, ref_hash));
-            println!("want_request sent: {}", want_request.clone());
+            println!("want_request sent: {}\nfor ref: {}", want_request.clone(), ref_name);
             stream.write_all(want_request.as_bytes())?;
-            break;
         }
         let _ = stream.write_all(protocol_utils::REQUEST_LENGTH_CERO.as_bytes());
         println!("sent 0000");
@@ -121,12 +126,10 @@ impl ClientProtocol {
         let _: Vec<String> =
             protocol_utils::read_until(&mut reader, protocol_utils::NAK_RESPONSE, false)?;
         println!("received NAK");
-        let _ = stream.write_all(protocol_utils::format_line_to_send(protocol_utils::REQUEST_DELIMITER_DONE.to_string()).as_bytes());
-        println!("sent done");
-        // TODO RECEIVE PACKFILE
 
         let mut buffer = Vec::new();
         stream.read_to_end(&mut buffer)?;
+        // ACA PODRIA HACER EL CHECKSUM: asi ya verifica apenas me llega que esta bien y sino lanzo error
         let mut file = fs::File::create(".git/pack/received_pack_file.pack")?;
         file.write_all(&buffer)?;
 
@@ -225,38 +228,4 @@ impl ClientProtocol {
 
 //         Ok(refs_in_remote)
 //     }
-
-// //TODO MATAR ESTA FUNCION
-//     fn read_response_from_server(
-//         stream: TcpStream,
-//         tx: mpsc::Sender<String>,
-//     ) -> Result<(), Box<dyn Error>> {
-//         let reader = std::io::BufReader::new(&stream);
-
-//         for line in reader.lines() {
-//             if let Ok(value) = line {
-//                 // Send the received line to the main thread
-//                 println!("line thread: {}", value);
-//                 tx.send(value.clone())?;
-//                 if value == "00000008NAK" {
-//                     break;
-//                 }
-//             }
-//         }
-
-//         // Send a signal to the main thread that reading is done
-//         tx.send("ReadingDone".to_string())?;
-//         Ok(())
-//     }
-
-//     /* fn write_lines_to_stream(
-//         stream: &mut TcpStream,
-//         lines: Vec<String>,
-//     ) -> Result<(), Box<dyn Error + '_>> {
-//         for line in lines {
-//             stream.write_all(line.as_bytes())?;
-//         }
-//         stream.flush()?;
-//         Ok(())
-//     } */
 }

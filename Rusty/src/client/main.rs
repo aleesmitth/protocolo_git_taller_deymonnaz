@@ -35,7 +35,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // commands::Commit::new().execute(None)?;
     // commands::Checkout::new().execute(Some(vec!["main"]))?;
     // commands::Checkout::new().execute(Some(vec!["new"]))?;
-
+    // commands::PackObjects::new().execute(Some(vec!["466fdf0f96d9264eddcc17a9b9a3d688ab45e73f"]))?;
+    // commands::UnpackObjects::new().execute(Some(vec![".git/pack/pack_file.pack"]))?;
     let args: Vec<String> = env::args().collect();
     if args.len() >= 2 {
         let command = &args[1];
@@ -62,6 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "tag" => commands::Tag::new().execute(parse_arguments(&args[2..]))?,
             "check-ignore" => commands::CheckIgnore::new().execute(parse_arguments(&args[2..]))?,
             "show-ref" => commands::ShowRef::new().execute(parse_arguments(&args[2..]))?,
+            "unpack-objects" => commands::UnpackObjects::new().execute(parse_arguments(&args[2..]))?,
 
             _ => return Err(Box::new(io::Error::new(io::ErrorKind::Other,"Error: Invalid command."))),
         };
