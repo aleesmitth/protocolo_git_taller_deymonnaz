@@ -419,7 +419,7 @@ pub fn get_commit_tree(commit_hash: &str) -> Result<String, Box<dyn Error>> {
 
 /// Checks if the file in the given path exists and returns true or false
 pub fn check_if_file_exists(file_path: &str) -> bool {
-    if let Ok(metadata) = fs::metadata(file_path) {
+    if let Ok(metadata) = fs::metadata(PathHandler::get_relative_path(file_path)) {
         if metadata.is_file() {
             return true
         }
@@ -437,7 +437,7 @@ pub fn check_if_directory_exists(dir_path: &str) -> bool {
     false
 }
 
-pub const RELATIVE_PATH: &str = "RELATIVE_PATH";
+/* pub const RELATIVE_PATH: &str = "RELATIVE_PATH";
 #[cfg(test)]
 mod tests {
     use crate::commands::commands::{Init, Command, Branch};
@@ -563,3 +563,4 @@ mod tests {
     }
     
 }
+ */

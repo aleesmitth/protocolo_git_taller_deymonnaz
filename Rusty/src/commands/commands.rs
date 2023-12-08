@@ -174,7 +174,7 @@ impl Branch {
             )))
         }
 
-        fs::remove_file(branch_path)?;
+        fs::remove_file(PathHandler::get_relative_path(&branch_path))?;
 
         Ok(())
     }
@@ -182,7 +182,7 @@ impl Branch {
     pub fn list_all_branches(&self) -> Result<String, Box<dyn Error>> {
         let mut branches: Vec<String> = Vec::new();
         
-        match fs::read_dir(R_HEADS) {
+        match fs::read_dir(PathHandler::get_relative_path(R_HEADS)) {
             Ok(entries) => {
                 for entry in entries {
                     branches.push(entry?.file_name().to_string_lossy().to_string())
@@ -222,9 +222,9 @@ impl Branch {
             )))
         }
 
-        let new_branch_path = helpers::get_branch_path(new_name);
+        let new_branch_path = PathHandler::get_relative_path(&helpers::get_branch_path(new_name));
 
-        fs::rename(&previous_branch_path, &new_branch_path)?;
+        fs::rename(PathHandler::get_relative_path(&previous_branch_path), &new_branch_path)?;
 
         if Head::get_current_branch_name()? == previous_name {
             Head::change_head_branch(new_name)?
@@ -354,7 +354,7 @@ impl Command for Checkout {
                 Head::change_head_branch(branch_name)?;
                 let head_commit = Head::get_head_commit()?;
                 WorkingDirectory::clean_working_directory()?;
-                fs::File::create(INDEX_FILE)?;
+                fs::File::create(PathHandler::get_relative_path(INDEX_FILE))?;
                 if !head_commit.is_empty() {
                     let head_tree = helpers::get_commit_tree(&head_commit)?;
                     WorkingDirectory::update_working_directory_to(&head_tree)?;
@@ -755,7 +755,7 @@ impl Remote {
         config_file.write_all(new_config_content.as_bytes())?;
 
         let remote_dir = format!("{}/{}", R_REMOTES, remote_name);
-        fs::create_dir(remote_dir)?;
+        fs::remove_dir_all(PathHandler::get_relative_path(&remote_dir))?;
 
         Ok(())
     }
@@ -2089,17 +2089,21 @@ mod tests {
         assert!(result1.is_ok());
 
         // Example 2: Delete a branch
+        let branch_to_delete = Some(vec!["branch_to_delete"]);;
+        let _ = Branch.execute(branch_to_delete);
         let args2 = Some(vec!["-d", "branch_to_delete"]);
         let result2 = Branch.execute(args2);
         assert!(result2.is_ok());
 
         // Example 3: Rename a branch
+        let new_branch = Some(vec!["old_branch"]);
+        let _ = Branch.execute(new_branch);
         let args3 = Some(vec!["-m", "old_branch", "new_branch"]);
         let result3 = Branch.execute(args3);
         assert!(result3.is_ok());
 
         // Example 4: Create a new branch
-        let args4 = Some(vec!["new_branch"]);
+        let args4 = Some(vec!["new_branch2"]);
         let result4 = Branch.execute(args4);
         assert!(result4.is_ok());
     }
@@ -2107,8 +2111,6 @@ mod tests {
     #[test]
     fn test_checkout_command() {
         let (_temp_dir,_temp_pathh) = common_setup();
-        // Create a Head instance
-        let mut head = Head::new();
 
         // Execute the Checkout command with various scenarios
         // Example 1: Successful checkout
@@ -2131,13 +2133,11 @@ mod tests {
         let args4 = None;
         let result4 = Checkout.execute(args4);
         assert!(result4.is_err());
-    }
+    }    
 
     #[test]
     fn test_hashobject_command() {
         let (_temp_dir,_temp_pathh) = common_setup();
-        // Create a Head instance
-        let mut head = Head::new();
 
         // Execute the HashObject command with various scenarios
         // Example 1: Calculate hash and print (no write flag)
@@ -2167,8 +2167,6 @@ mod tests {
     #[test]
     fn test_catfile_command() {
         let (_temp_dir,_temp_pathh) = common_setup();
-        // Create a Head instance
-        let mut head = Head::new();
 
         let _file = fs::File::create("file.txt");
         let args1 = Some(vec![WRITE_FLAG, "file.txt"]);
@@ -2204,11 +2202,8 @@ mod tests {
         // Create a sample file to be added
         let file_path = temp_path.clone() + "/sample.txt";
         fs::write(&file_path, "Sample file content").expect("Failed to create a sample file");
-    
-        // Execute the Add command
-        let mut head = Head::new();
-        let add_command = Add::new();
-        
+
+        let add_command = Add::new();        
     
         // Convert &str to String before creating the args vector
         let args: Option<Vec<&str>> = Some(vec![&file_path]);
@@ -2230,9 +2225,6 @@ mod tests {
         let file_path = temp_path.clone() + "/sample.txt";
         fs::write(&file_path, "Sample file content").expect("Failed to create a sample file");
     
-        // Execute the Init command
-        let mut head = Head::new();
-    
         // Execute the Add command
         let add_command = Add::new();
         let args_add: Option<Vec<&str>> = Some(vec![&file_path]);
@@ -2248,7 +2240,7 @@ mod tests {
     
         // Cleanup: The temporary directory will be automatically deleted when temp_dir goes out of scope
     }
-    
+
     #[test]
     fn test_remove_file_from_staging_area() {
 
@@ -2261,7 +2253,6 @@ mod tests {
 
         // Execute the Add command
         let add_command = Add::new();
-        let mut head = Head::new();
         let args_add: Option<Vec<&str>>  = Some(vec![&file_path]);
         add_command.execute(args_add).expect("Add command failed");
 
@@ -2289,7 +2280,7 @@ mod tests {
 
         // Execute the Status command
         let status_command = Status::new();
-        let mut head = Head::new();
+
         let args = None; // You might adjust this based on how your Status command is designed
         let result = status_command.execute(args);
 
@@ -2314,6 +2305,7 @@ mod tests {
          assert!(result.is_ok(), "Status command (With previous commit) failed: {:?}", result);
         // Clean up: The temporary directory will be automatically deleted when temp_dir goes out of scope
     }
+
     const REMOTE_NAME: &str = "origin";
     const REMOTE_URL: &str = "127.0.0.1:9418";
     
@@ -2353,7 +2345,7 @@ mod tests {
 
         // Clean up: The temporary directory will be automatically deleted when temp_dir goes out of scope
     } 
-    
+
     #[test]
     fn test_add_new_lightweight_tag() {
         // Create a temporary directory
@@ -2362,9 +2354,6 @@ mod tests {
         // Create a sample file to be added
         let file_path = temp_path.clone() + "/sample.txt";
         fs::write(&file_path, "Sample file content").expect("Failed to create a sample file");
-    
-        // Execute the Init command
-        let mut head = Head::new();
     
         // Execute the Add command
         let add_command = Add::new();
@@ -2399,9 +2388,6 @@ mod tests {
         // Create a sample file to be added
         let file_path = temp_path.clone() + "/sample.txt";
         fs::write(&file_path, "Sample file content").expect("Failed to create a sample file");
-    
-        // Execute the Init command
-        let mut head = Head::new();
     
         // Execute the Add command
         let add_command = Add::new();
@@ -2477,5 +2463,5 @@ mod tests {
         // Assert that the result is an empty string
         assert_eq!(result.unwrap(), "");
     }
- 
 }
+    
