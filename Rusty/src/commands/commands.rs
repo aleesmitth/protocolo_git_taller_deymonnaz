@@ -862,16 +862,18 @@ impl PackObjects {
             while size.len() <= 11 {
                 size.insert(0, 0);
             }
-            size.insert(4, 0);
+            header.extend_from_slice(&size[8..]);
+            header.extend_from_slice(&size[..8]);
+            header.insert(8, 0);
         } else {
             while size.len() <= 4 {
                 size.insert(0, 0);
             }
+            header.extend_from_slice(&size);
         }
-        header.extend_from_slice(&size);
 
         header
-    }
+    } //esta mal este header
 
     // pub fn calculate_object_header(&self, object_size: usize, object_type: ObjectType) -> Vec<u8> {
     //     let mut header = Vec::new();
@@ -1299,11 +1301,14 @@ impl Command for UnpackObjects {
             );
             let content_to_string = String::from_utf8_lossy(&content).to_string();
             println!("content as str: {}", content_to_string);
+
+            // TAL VEZ ACA ES EL PROBLEMA Y TENGO QUE HACER EL OBJETO EN BYTES
+
             HashObjectCreator::write_object_file(
-                content_to_string,
+                content_to_string.clone(),
                 object_type,
                 content.len() as u64,
-            )?; //tal vez antes tenga que descomprimir object content, que aca viene comprimido con zlib
+            )?;
             offset += size as u64;
             objects_unpacked += 1;
         }
@@ -1405,7 +1410,7 @@ impl Command for Push {
         _args: Option<Vec<&str>>,
     ) -> Result<String, Box<dyn Error>> {
 
-        // ClientProtocol::new().receive_pack(helpers::get_remote_url(DEFAULT_REMOTE_REPOSITORY)?)?;
+        ClientProtocol::new().receive_pack(helpers::get_remote_url(DEFAULT_REMOTE_REPOSITORY)?)?;
         // // volver esto abstracto como decia y no isntanciarlo
         Ok(String::new())
     }
@@ -1425,12 +1430,10 @@ impl Command for Pull {
     fn execute(&self,  _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         Fetch::new().execute(None)?;
 
-        Merge::new().execute(Some(vec!["origin"]))?;
+        Merge::new().execute(Some(vec!["origin/master"]))?;
         Ok(String::new())
     }
 }
-
-
 
 pub struct Clone;
 
@@ -1979,20 +1982,28 @@ impl Command for Merge { //ver que pasa cuando uno commit ancestro es commit roo
         let arg_slice = args.unwrap_or(Vec::new()); //aca tendria que chequear que sea valido el branch que recibo por parametro
 
         let branch_to_merge = arg_slice[0];
-        let current_branch = Head::get_current_branch_name()?;
+        let mut branch_to_merge_path = helpers::get_branch_path(branch_to_merge);
+        if !helpers::check_if_file_exists(&branch_to_merge_path) {
+            // This means the branch is a remote branch
+            branch_to_merge_path = format!("{}/{}", R_REMOTES, branch_to_merge); 
+        }
+        
+        let merging_commit_hash = helpers::get_branch_last_commit(&branch_to_merge_path)?;
 
-        println!("merging {} -> {}", branch_to_merge, current_branch);
+        let current_commit_hash = Head::get_head_commit()?;
+
+        println!("merging {} -> {}", branch_to_merge, Head::get_current_branch_name()?);
         // habria que buscar ancestor en comun
         // ver si en el branch actual se hicieron mas commits despues de ese ancestro
         // si no hubo mas commits puedo hacer fastforward merge y listo
         // let common_ancestor_commit = helpers::find_common_ancestor_commit(current_branch, branch_to_merge)?;
         // println!("ancestor: {}", common_ancestor_commit);
-        if let Ok(last_commit) = helpers::is_fast_forward_merge_possible(&current_branch, branch_to_merge) {
-            // helpers::update_branch_hash(current_branch, last_commit)?;
-            println!("updating branch last commit in current branch... to commit: {}", last_commit);
+        if helpers::ancestor_commit_exists(&current_commit_hash, &merging_commit_hash)? {
+            helpers::update_branch_hash(&Head::get_current_branch_name()?, &merging_commit_hash)?;
+            println!("updating branch last commit in current branch... to commit: {}", merging_commit_hash);
             WorkingDirectory::clean_working_directory()?;
             println!("cleaning working directory...");
-            let commit_tree = helpers::get_commit_tree(&last_commit)?;
+            let commit_tree = helpers::get_commit_tree(&merging_commit_hash)?;
             WorkingDirectory::update_working_directory_to(&commit_tree)?;
             StagingArea::new().change_index_file(commit_tree)?;
         }

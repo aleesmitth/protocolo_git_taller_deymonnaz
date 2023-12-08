@@ -4,6 +4,8 @@ use crate::commands::commands::PackObjects;
 use crate::commands::commands::Command;
 use crate::commands::structs::Head;
 
+const ZERO_HASH: &str = "0000000000000000000000000000000000000000";
+
 use std::{
     error::Error, fs, io::BufRead, io::Read, io::Write, net::Shutdown, net::TcpStream,
     str, thread, time::Duration,
@@ -45,19 +47,32 @@ impl ClientProtocol {
             }
         }
 
-        // let current_branch_ref = helpers::get_current_branch_ref()?;
+        let current_branch_ref = Head::get_current_branch_ref()?;
         let last_commit_hash: String = Head::get_head_commit()?;
         println!("last_commit: {}", last_commit_hash);
-
+        println!("refs in remote: {:?}", refs_in_remote);
+        let mut push_line = String::new();
         for (ref_hash, ref_name) in &refs_in_remote {
-            let want_request = protocol_utils::format_line_to_send(format!("{} {}\n", protocol_utils::WANT_REQUEST, ref_hash));
-            println!("want_request sent: {}", want_request.clone());
-            // if ref_name.to_string() == current_branch_ref {
-            //     let push_line = protocol_utils::format_line_to_send(format!("{} {} {}", ref_hash, last_commit_hash, ref_name));
-            //     stream.write_all(push_line.as_bytes())?; 
-            // }
+            // let want_request = protocol_utils::format_line_to_send(format!("{} {}\n", protocol_utils::WANT_REQUEST, ref_hash));
+            // println!("want_request sent: {}", want_request.clone());
+            if ref_name.to_string() == current_branch_ref {
+                push_line = protocol_utils::format_line_to_send(format!("{} {} {}", ref_hash, last_commit_hash, ref_name));
+                println!("push line: {}", push_line);
+            }
+
+            // si esta la ref en el remote la actualizo
+            
+            // si no esta, la pusheo con hash de 0's para crearla 
+
             break; //ver este break que onda
         }
+
+        if push_line.is_empty() {
+            push_line = protocol_utils::format_line_to_send(format!("{} {} {}", ZERO_HASH, last_commit_hash, current_branch_ref));
+            println!("push line: {}", push_line);
+        }
+
+        stream.write_all(push_line.as_bytes())?; 
 
         let _ = stream.write_all(protocol_utils::REQUEST_LENGTH_CERO.as_bytes());
         println!("sent 0000");
@@ -65,14 +80,21 @@ impl ClientProtocol {
         PackObjects::new().execute(Some(vec![&last_commit_hash]))?;
         let mut pack_file = fs::File::open(".git/pack/pack_file.pack")?;
         std::io::copy(&mut pack_file, &mut stream)?;
-        
-        stream.flush()?;
+        println!("sending pack file");
+        // stream.flush()?;
 
-        response_received = protocol_utils::read_until(&mut reader, protocol_utils::UNPACK_CONFIRMATION, true)?;
+        // response_received = protocol_utils::read_until(&mut reader, protocol_utils::UNPACK_CONFIRMATION, true)?;
 
-        println!("response received {:?}", response_received);
-        for line in response_received {
-            println!("push succesful");
+        // println!("response received {:?}", response_received);
+        // for line in response_received {
+        //     println!("push succesful");
+        // }
+        println!("awaiting response from server...");
+        let reader = std::io::BufReader::new(&stream);
+        for line in reader.lines() {
+            let line = line?;
+            println!("response line: {}", line);
+            // break;
         }
 
         Ok(())

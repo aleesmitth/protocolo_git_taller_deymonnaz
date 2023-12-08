@@ -61,6 +61,24 @@ impl Head {
 /// Abstract struct for creating new objects in git repository
 pub struct HashObjectCreator;
 
+fn hex_string_to_bytes(hex_string: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+    let mut bytes = Vec::new();
+    let mut chars = hex_string.chars();
+
+    while let Some(a) = chars.next() {
+        if let Some(b) = chars.next() {
+            let byte = u8::from_str_radix(&format!("{}{}", a, b), 16)?;
+            bytes.push(byte);
+        } else {
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "Error: Invalid Commit ID. It's too short",
+            )));
+        }
+    }
+
+    Ok(bytes)
+}
 impl HashObjectCreator {
     /// Writes an object file to the Git repository.
     ///
@@ -74,7 +92,17 @@ impl HashObjectCreator {
         file_len: u64,
     ) -> Result<String, Box<dyn Error>> {
         let data = format!("{} {}\0{}", obj_type, file_len, content);
-        let hashed_data = Self::generate_object_hash(obj_type, file_len, &content);
+        println!("data: {:?}", data);
+        // if obj_type == ObjectType::Tree {
+        //     println!("last part of data: {}", &data[29..]);
+        //     let bytes = hex_string_to_bytes(&data[29..])?;
+
+        //     // Convert bytes to a string
+        //     let readable_hash = String::from_utf8_lossy(&bytes);
+        //     println!("readable hash: {}", readable_hash.to_string());
+        // }
+        let hashed_data = Self::generate_object_hash(obj_type.clone(), file_len, &content);
+        println!("hash for: {} ; {}", obj_type, hashed_data);
         let compressed_content = helpers::compress_content(data.as_str())?;
         let obj_directory_path = format!("{}/{}", OBJECT, &hashed_data[0..2]);
         let _ = fs::create_dir(PathHandler::get_relative_path(&obj_directory_path));
@@ -90,6 +118,37 @@ impl HashObjectCreator {
 
         let mut object_file = fs::File::create(&object_file_path.clone())?;
         object_file.write_all(&compressed_content)?;
+
+        Ok(hashed_data)
+    }
+
+    pub fn write_object_file_bytes(
+        content: Vec<u8>,
+        obj_type: ObjectType,
+        file_len: u64,
+    ) -> Result<String, Box<dyn Error>> {
+        let header = format!("{} {}\0", obj_type, file_len);
+        println!("header: {}", header);
+        let mut final_content: Vec<u8> = Vec::new();
+        final_content.extend_from_slice(header.as_bytes());
+        final_content.extend_from_slice(&content);
+        let hashed_data = helpers::generate_sha1_string_from_bytes(&content);
+        println!("hash for: {} ; {}", obj_type, hashed_data);
+        // let compressed_content = helpers::compress_content(data.as_str())?;
+        // let obj_directory_path = format!("{}/{}", OBJECT, &hashed_data[0..2]);
+        // let _ = fs::create_dir(PathHandler::get_relative_path(&obj_directory_path));
+
+        // let object_file_path = format!(
+        //     "{}/{}",
+        //     PathHandler::get_relative_path(&obj_directory_path),
+        //     &hashed_data[2..]
+        // );
+        // if fs::metadata(object_file_path.clone()).is_ok() {
+        //     return Ok(hashed_data);
+        // }
+
+        // let mut object_file = fs::File::create(&object_file_path.clone())?;
+        // object_file.write_all(&compressed_content)?;
 
         Ok(hashed_data)
     }
@@ -343,6 +402,7 @@ impl StagingArea {
 
         println!("antes del tree content");
 
+        // el pull no lee bien el objeto. el tree se esta guardando con un hash distinto
         let (_, tree_content,  _) = helpers::read_object(commit_tree)?;
         println!("tree content");
         

@@ -329,7 +329,7 @@ pub fn update_local_branch_with_commit(
     Ok(())
 }
 
-fn update_branch_hash(branch_name: &str, new_commit_hash: &str) -> Result<(), Box<dyn Error>> {
+pub fn update_branch_hash(branch_name: &str, new_commit_hash: &str) -> Result<(), Box<dyn Error>> {
     let mut file = fs::File::create(get_branch_path(branch_name))?;
     file.write_all(new_commit_hash.as_bytes())?;
     Ok(())
@@ -373,30 +373,29 @@ pub fn find_common_ancestor_commit(_current_branch: &str, merging_branch: &str) 
     Ok(String::new())
 }
 
-pub fn is_fast_forward_merge_possible(_current_branch: &str, merging_branch: &str) -> Result<String, Box<dyn Error>> {
-    let current_branch_commit = Head::get_head_commit()?;
-    println!("current commit: {}", current_branch_commit);
+pub fn ancestor_commit_exists(current_commit_hash: &str, merging_commit_hash: &str) -> Result<bool, Box<dyn Error>> {
+    // let current_branch_commit = Head::get_head_commit()?;
+    // println!("current commit: {}", current_branch_commit);
     let mut merging_branch_log = Vec::new();
     // aca rompe al hacer con fetch porque estamos queriendo unir una branch que esta en remotes, tal vez ya habria que pasar los hash de commits como parametro
     // de cambiar eso el nombre pasaria a ser tipo ancestor_commit_exists()
-    let merging_branch_commit = get_branch_last_commit(&get_branch_path(merging_branch))?;
-    println!("mergin commit: {}", merging_branch_commit);
-    if current_branch_commit.is_empty() {
-        println!("trtue");
-        return Ok(merging_branch_commit);
+    // let merging_branch_commit = get_branch_last_commit(&get_branch_path(merging_branch))?;
+    println!("mergin commit: {}", merging_commit_hash);
+    if current_commit_hash.is_empty() {
+        println!("true");
+        return Ok(true);
     }
     
-    let _ = Log::new().generate_log_entries(&mut merging_branch_log, merging_branch_commit.clone());
-
+    println!("generating log...");
+    let _ = Log::new().generate_log_entries(&mut merging_branch_log, merging_commit_hash.to_string());
+    println!("log: {:?}", merging_branch_log);
     for (commit, _message) in merging_branch_log {
-        if commit == current_branch_commit{
-            return Ok(merging_branch_commit);
+        println!("commit: {} == current commit: {} ", commit, current_commit_hash);
+        if commit == current_commit_hash {
+            return Ok(true);
         }
     }
-    Err(Box::new(io::Error::new(
-        io::ErrorKind::Other,
-        "No fast forward is possible",
-    )))
+    Ok(false)
 }
 
 /// Given a commit's hash it accesses its file and returns the hash of its associated
