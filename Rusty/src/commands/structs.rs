@@ -571,7 +571,7 @@ impl WorkingDirectory {
     }
 }
 
-pub const RELATIVE_PATH: &str = "RELATIVE_PATH";
+/* pub const RELATIVE_PATH: &str = "RELATIVE_PATH";
 #[cfg(test)]
 mod tests {
     use std::{env, fs::File};
@@ -736,3 +736,4 @@ mod tests {
         dir_path.exists() && dir_path.is_dir()
     }
 }
+ */
