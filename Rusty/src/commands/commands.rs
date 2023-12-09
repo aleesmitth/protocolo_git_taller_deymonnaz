@@ -638,45 +638,29 @@ impl Command for Status {
     ) -> Result<String, Box<dyn Error>> {
         let last_commit_hash: String = Head::get_head_commit()?;
         let mut no_changes = true;
-        let mut tree_objects: Vec<String> = Vec::new();
+        let mut tree_content: Vec<(String, String, String)> = Vec::new();
         if !last_commit_hash.is_empty() {
-            let last_commit_path: String = helpers::get_object_path(&last_commit_hash);
-            let decompressed_data = helpers::decompress_file_content(
-                helpers::read_file_content_to_bytes(&PathHandler::get_relative_path(&last_commit_path))?,
-            )?;
-            let commit_file_content: Vec<String> =
-                decompressed_data.split('\0').map(String::from).collect();
-            let commit_file_lines: Vec<String> = commit_file_content[1]
-                .lines()
-                .map(|s| s.to_string())
-                .collect();
-
-            let tree_line = &commit_file_lines[0];
-            let tree_line_split: Vec<String> = tree_line.split_whitespace().map(String::from).collect();
-            let tree_hash = &tree_line_split[1];
-            let tree_object_path = format!("{}/{}/{}", OBJECT, &tree_hash[..2], &tree_hash[2..]);
-            let tree_content = helpers::decompress_file_content(
-                helpers::read_file_content_to_bytes(&PathHandler::get_relative_path(&tree_object_path))?,
-            )?;
-            let tree_contents_split: Vec<String> =
-                tree_content.split('\0').map(String::from).collect();
-            tree_objects = tree_contents_split[1]
-                .lines()
-                .map(|s| s.to_string())
-                .collect();
+            let last_commit = Head::get_head_commit()?;
+            let tree_hash = helpers::get_commit_tree(&last_commit)?;
+            let tree_content: Vec<(String, String, String)> = helpers::read_tree_content(&tree_hash)?;
         }
 
         let index_file_content = helpers::read_file_content(&PathHandler::get_relative_path(INDEX_FILE))?;
         let index_objects: Vec<String> =
             index_file_content.lines().map(|s| s.to_string()).collect();
 
+        let mut line_result = String::new();
+        let mut line = String::new();
+
         for pos in 0..(index_objects.len()) {
             let index_file_line: Vec<&str> = index_objects[pos].split(';').collect();
-            if pos < tree_objects.len() {
-                let tree_file_line: Vec<&str> = tree_objects[pos].split_whitespace().collect();
-                if tree_file_line[2] != index_file_line[1] && index_file_line[2] == "2" {
+            if pos < tree_content.len() {
+                let (_, _, hash_string) = tree_content[pos].clone();
+                if hash_string != index_file_line[1] && index_file_line[2] == "2" {
                     no_changes = false;
-                    println!("modified: {} (Staged)", index_file_line[0]);
+                    line = format!("modified: {} (Staged)", index_file_line[0]);
+                    line_result.push_str(&line);
+                    println!("{}", line);
                     continue;
                 }
                 let current_object_content = helpers::read_file_content(index_file_line[0])?;
@@ -685,19 +669,23 @@ impl Command for Status {
                     get_file_length(index_file_line[0])?,
                     &current_object_content,
                 );
-                if current_object_hash != tree_file_line[2] && index_file_line[2] == "0" {
+                if current_object_hash != hash_string && index_file_line[2] == "0" {
                     no_changes = false;
-                    println!("modified: {} (Unstaged)", index_file_line[0]);
+                    line = format!("modified: {} (Unstaged)", index_file_line[0]);
                 }
             } else {
                 no_changes = false;
-                println!("new file: {} (Staged)", index_file_line[0]);
+                line = format!("new file: {} (Staged)", index_file_line[0]);
             }
+            println!("{}", line);
+            line_result.push_str(&line);
         }
         if no_changes {
-            println!("nothing to commit, working tree clean");
+            line = format!("nothing to commit, working tree clean");
+            line_result.push_str(&line);
+            println!("{}", line);
         }
-        Ok(String::new())
+        Ok(line_result)
     }
 }
 

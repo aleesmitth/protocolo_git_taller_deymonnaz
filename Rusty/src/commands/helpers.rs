@@ -483,7 +483,7 @@ pub fn read_tree_content(tree_hash: &str) -> Result<Vec<(String, String, String)
         let substring_bytes = substring.bytes();
         println!("substring bytes: {:?}", substring_bytes);
         // let processed_bytes = &substring_bytes[..20];
-        let processed_bytes: Vec<u8> = substring_bytes.take(20).collect();
+        let processed_bytes: Vec<u8> = substring_bytes.take(16).collect();
         println!("bytes: {:?}", processed_bytes);
         let hash_string = hex_string_to_bytes(&processed_bytes)?;
         // Perform your processing here, for example, print the processed bytes
