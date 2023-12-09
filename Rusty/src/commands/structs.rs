@@ -1,4 +1,4 @@
-use std::{error::Error, fmt, fs, io::BufRead, io::Write, net::TcpStream, io, path::PathBuf, path::Path, collections::HashMap};
+use std::{error::Error, fmt, fs, io::BufRead, io::{Write, Read}, net::TcpStream, io, path::PathBuf, path::Path, collections::HashMap};
 const OBJECT: &str = ".git/objects";
 const INDEX_FILE: &str = ".git/index";
 const TREE_SUBTREE_MODE: &str = "040000";
@@ -6,6 +6,8 @@ const TREE_FILE_MODE: &str = "100644";
 const DEFAULT_HEAD_LINE: &str = "ref: refs/heads/";
 const HEAD_FILE: &str = ".git/HEAD";
 //const DEFAULT_REMOTE: &str = "origin";
+
+use gtk::gdk::keys::constants::L;
 
 use crate::commands::helpers;
 
@@ -61,24 +63,7 @@ impl Head {
 /// Abstract struct for creating new objects in git repository
 pub struct HashObjectCreator;
 
-fn hex_string_to_bytes(hex_string: &str) -> Result<Vec<u8>, Box<dyn Error>> {
-    let mut bytes = Vec::new();
-    let mut chars = hex_string.chars();
 
-    while let Some(a) = chars.next() {
-        if let Some(b) = chars.next() {
-            let byte = u8::from_str_radix(&format!("{}{}", a, b), 16)?;
-            bytes.push(byte);
-        } else {
-            return Err(Box::new(io::Error::new(
-                io::ErrorKind::Other,
-                "Error: Invalid Commit ID. It's too short",
-            )));
-        }
-    }
-
-    Ok(bytes)
-}
 impl HashObjectCreator {
     /// Writes an object file to the Git repository.
     ///
@@ -93,15 +78,18 @@ impl HashObjectCreator {
     ) -> Result<String, Box<dyn Error>> {
         let data = format!("{} {}\0{}", obj_type, file_len, content);
         println!("data: {:?}", data);
-        // if obj_type == ObjectType::Tree {
-        //     println!("last part of data: {}", &data[29..]);
-        //     let bytes = hex_string_to_bytes(&data[29..])?;
-
-        //     // Convert bytes to a string
-        //     let readable_hash = String::from_utf8_lossy(&bytes);
-        //     println!("readable hash: {}", readable_hash.to_string());
+    //     if obj_type == ObjectType::Tree {
+    //         let substrings: Vec<&str> = content.split("\0").collect();
+    //         println!("substrings: {:?}", substrings);
+    //         // Process each substring of 20 bytes
+    //         substrings.iter().for_each(|&substring| {
+    //         let processed_bytes: Vec<u8> = substring.bytes().take(20).collect();
+    //         // let hash_string = hex_string_to_bytes(&processed_bytes);
+    //         // // Perform your processing here, for example, print the processed bytes
+    //         // println!("Processed bytes: {:?}", hash_string);
+    // });
         // }
-        let hashed_data = Self::generate_object_hash(obj_type.clone(), file_len, &content);
+        let hashed_data = Self::generate_object_hash(obj_type.clone(), content.as_bytes().len() as u64, &content);
         println!("hash for: {} ; {}", obj_type, hashed_data);
         let compressed_content = helpers::compress_content(data.as_str())?;
         let obj_directory_path = format!("{}/{}", OBJECT, &hashed_data[0..2]);
@@ -119,42 +107,53 @@ impl HashObjectCreator {
         let mut object_file = fs::File::create(&object_file_path.clone())?;
         object_file.write_all(&compressed_content)?;
 
+
+        let mut file = fs::File::open(&object_file_path.clone())?;
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf);
+        let decompressed = helpers::decompress_file_content(buf)?;
+        println!("after creating object: {}", decompressed);
         Ok(hashed_data)
     }
 
     pub fn write_object_file_bytes(
-        content: Vec<u8>,
-        obj_type: ObjectType,
-        file_len: u64,
+        content: &[u8],
+        object_type: ObjectType,
+        size: usize,
     ) -> Result<String, Box<dyn Error>> {
-        let header = format!("{} {}\0", obj_type, file_len);
-        println!("header: {}", header);
-        let mut final_content: Vec<u8> = Vec::new();
-        final_content.extend_from_slice(header.as_bytes());
-        final_content.extend_from_slice(&content);
-        let hashed_data = helpers::generate_sha1_string_from_bytes(&content);
-        println!("hash for: {} ; {}", obj_type, hashed_data);
-        // let compressed_content = helpers::compress_content(data.as_str())?;
-        // let obj_directory_path = format!("{}/{}", OBJECT, &hashed_data[0..2]);
-        // let _ = fs::create_dir(PathHandler::get_relative_path(&obj_directory_path));
 
-        // let object_file_path = format!(
-        //     "{}/{}",
-        //     PathHandler::get_relative_path(&obj_directory_path),
-        //     &hashed_data[2..]
-        // );
-        // if fs::metadata(object_file_path.clone()).is_ok() {
-        //     return Ok(hashed_data);
-        // }
+        let mut object_content = Vec::new();
+        let header = format!("{} {}\0", object_type, size);
 
-        // let mut object_file = fs::File::create(&object_file_path.clone())?;
-        // object_file.write_all(&compressed_content)?;
+        object_content.extend_from_slice(header.as_bytes());
+        object_content.extend_from_slice(&content);
+
+        let hashed_data = helpers::generate_sha1_string_from_bytes(&object_content);
+
+        println!("hash: {}", hashed_data);
+
+        let obj_directory_path = format!("{}/{}", OBJECT, &hashed_data[0..2]);
+        let _ = fs::create_dir(PathHandler::get_relative_path(&obj_directory_path));    
+
+        let object_file_path = format!("{}/{}", PathHandler::get_relative_path(&obj_directory_path), &hashed_data[2..]);
+
+        println!("obj content: {}", String::from_utf8(object_content.clone())?);
+
+        let compressed_data =  helpers::compress_bytes(&object_content)?;
+
+        let decompressed = helpers::decompress_file_content(compressed_data.clone())?;
+
+        println!("test decompress: {}", decompressed);
+
+        let mut object_file = fs::File::create(&object_file_path)?;
+        object_file.write_all(&compressed_data)?;
 
         Ok(hashed_data)
     }
 
     pub fn generate_object_hash(obj_type: ObjectType, file_len: u64, content: &str) -> String {
         let data = format!("{} {}\0{}", obj_type, file_len, content);
+        println!("data when generating object hash: {}", data);
         helpers::generate_sha1_string(data.as_str())
     }
 
@@ -186,7 +185,9 @@ impl HashObjectCreator {
                 //println!("File name: {}", name);
                 file_name = name.to_string();
             }
-            let file_entry = format!("{} {} {} {}\n", TREE_FILE_MODE, ObjectType::Blob, hash, file_name);
+            let hash_decimal = helpers::convert_hash_to_decimal_bytes(hash)?;
+            // let hash_string = String::from_utf8_lossy(&helpers::convert_hash_to_decimal_bytes(hash)?);
+            let file_entry = format!("{} {}\0{}", TREE_FILE_MODE, file_name, String::from_utf8_lossy(&hash_decimal).to_string());
 
             //println!("file_entry: {:?}", file_entry);
             if let Some(_parent) = current_dir {
@@ -214,7 +215,7 @@ impl HashObjectCreator {
         for (parent_directory, entries) in &subdirectories {
         	//println!("[create_tree_object]parent_directory: {:?}", parent_directory);
             let sub_tree_content = Self::process_files_and_subdirectories(&mut subdirectories.clone(), &entries)?;
-            let tree_hash = Self::write_object_file(sub_tree_content.clone(), ObjectType::Tree, sub_tree_content.len() as u64)?;
+            let tree_hash = Self::write_object_file_bytes(sub_tree_content.as_bytes(), ObjectType::Tree, sub_tree_content.len())?;
             if parent_directory == "/" || parent_directory.is_empty() {
             	//println!("[create_tree_object]inside if: {:?}", parent_directory);
                 super_tree_hash = tree_hash;
@@ -235,8 +236,9 @@ impl HashObjectCreator {
                             directory_name = file_name.to_string();
                         }
                         let tree_content = Self::process_files_and_subdirectories(subdirectories, &value)?;
-                        let tree_hash = Self::write_object_file(tree_content.clone(), ObjectType::Tree, tree_content.len() as u64)?;
-                        let tree_entry = format!("{} {} {} {}\n", TREE_SUBTREE_MODE, ObjectType::Tree, tree_hash, directory_name);
+                        let tree_hash = Self::write_object_file_bytes(tree_content.as_bytes(), ObjectType::Tree, tree_content.len())?;
+                        let hash_decimal = helpers::convert_hash_to_decimal_bytes(&tree_hash)?;
+                        let tree_entry = format!("{} {}\0{}", TREE_SUBTREE_MODE, directory_name, String::from_utf8_lossy(&hash_decimal).to_string());
                         sub_tree_content.push_str(&tree_entry);
                     }
                     None => {}
@@ -403,33 +405,33 @@ impl StagingArea {
         println!("antes del tree content");
 
         // el pull no lee bien el objeto. el tree se esta guardando con un hash distinto
-        let (_, tree_content,  _) = helpers::read_object(commit_tree)?;
+        let tree_content: Vec<(String, String, String)> = helpers::read_tree_content(&commit_tree)?;
         println!("tree content");
         
-        let tree_lines: Vec<String> = tree_content.lines().map(|s| s.to_string()).collect();
-        println!("tree lines: {:?}", tree_lines);
+        // let tree_lines: Vec<String> = tree_content.lines().map(|s| s.to_string()).collect();
+        // println!("tree lines: {:?}", tree_lines);
         // let tree_split_line: Vec<String> = commit_file_lines[0].split_whitespace().map(String::from).collect();
         
         // let tree_hash_trimmed = &tree_split_line[1];
-        self.create_index_content(&mut new_index_content, &tree_lines, &String::new())?;
+        self.create_index_content(&mut new_index_content, &tree_content, &String::new())?;
         println!("new content: {}", new_index_content);
         index_file.write_all(&new_index_content.as_bytes());
         Ok(())
     }
 
-    fn create_index_content(&self, index_content: &mut String, tree_lines: &Vec<String>, partial_path: &str)  -> Result<(), Box<dyn Error>> {
-        for line in tree_lines {
-            println!("line: {}", line);
-            let split_line: Vec<String> = line.split_whitespace().map(String::from).collect();
-            let file_mode = split_line[0].as_str();
-            let file_hash = split_line[2].as_str();
-            let file_name = split_line[3].as_str();
+    fn create_index_content(&self, index_content: &mut String, tree_data: &Vec<(String, String, String)>, partial_path: &str)  -> Result<(), Box<dyn Error>> {
+        for (file_mode, file_name, file_hash) in tree_data {
+            // println!("line: {}", line);
+            // let split_line: Vec<String> = line.split_whitespace().map(String::from).collect();
+            // let file_mode = split_line[0].as_str();
+            // let file_hash = split_line[2].as_str();
+            // let file_name = split_line[3].as_str();
             if file_mode == TREE_SUBTREE_MODE {
                 let directory_path = format!("{}{}/", partial_path, file_name);
                 println!("dir path: {}", directory_path);
-                let (_, sub_tree_content, _) = helpers::read_object(file_hash.to_string())?;
-                let sub_tree_lines: Vec<String> = sub_tree_content.lines().map(|s| s.to_string()).collect();
-                self.create_index_content(index_content, &sub_tree_lines, &directory_path)?
+                let sub_tree_content = helpers::read_tree_content(file_hash)?;
+                // let sub_tree_lines: Vec<String> = sub_tree_content.lines().map(|s| s.to_string()).collect();
+                self.create_index_content(index_content, &sub_tree_content, &directory_path)?
             } else {
                 let index_line = format!("{}{};{};{}\n", partial_path, file_name, file_hash, IndexFileEntryState::Cached);
                 println!("index line: {}", index_line);
@@ -536,20 +538,19 @@ impl WorkingDirectory {
     }
     
     fn create_files_for_directory(tree: &str, current_directory: &str) -> Result<(), Box<dyn Error>> {
-        let (_, tree_content, _) = helpers::read_object(tree.to_string())?;
-        let tree_content_lines: Vec<String> = tree_content.lines().map(|s| s.to_string()).collect();
-        println!("tree_content: {}", tree_content);
-        for line in tree_content_lines {
-            println!("line to create: {}", line);
-            let split_line: Vec<String> = line.split_whitespace().map(String::from).collect();
-            let file_mode = split_line[0].as_str();
-            let object_hash = split_line[2].clone();
-            let file_path = &split_line[3];
-            let relative_file_path = format!("{}{}", current_directory, file_path);
+        let tree_content= helpers::read_tree_content(tree)?;
+        println!("tree_content: {:?}", tree_content);
+        for (file_mode, file_name, file_hash) in tree_content {
+            println!("line to create: {} {} {}", file_mode, file_name, file_hash);
+            // let split_line: Vec<String> = line.split_whitespace().map(String::from).collect();
+            // let file_mode = split_line[0].as_str();
+            // let object_hash = split_line[2].clone();
+            // let file_path = &split_line[3];
+            let relative_file_path = format!("{}{}", current_directory, file_name);
     
-            match file_mode {
+            match file_mode.as_str() {
                 TREE_FILE_MODE => {
-                    let (_, object_content, _) = helpers::read_object(object_hash)?;
+                    let (_, object_content, _) = helpers::read_object(file_hash)?;
                     println!("object to write content: {} in path: {}", object_content, relative_file_path);
                     let mut object_file = fs::File::create(relative_file_path)?;
                     object_file.write_all(&object_content.as_bytes())?;
@@ -560,7 +561,7 @@ impl WorkingDirectory {
                         fs::create_dir(relative_file_path.clone())?;
                     }
                     let dir_path = format!("{}/", relative_file_path);
-                    return Self::create_files_for_directory(&object_hash, &dir_path);
+                    return Self::create_files_for_directory(&file_hash, &dir_path);
                 }
                 _ => {}
             }

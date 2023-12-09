@@ -42,16 +42,20 @@ pub fn read_file_content_to_bytes(path: &str) -> Result<Vec<u8>, io::Error> {
 }
 
 pub fn compress_content(content: &str) -> Result<Vec<u8>, io::Error> {
-    // Crea un nuevo `Encoder` y un vector para almacenar los datos comprimidos.
     let mut encoder = Encoder::new(Vec::new())?;
 
-    // Escribe el contenido (en bytes) en el `Encoder`.
     encoder.write_all(content.as_bytes())?;
-
-    // Finaliza la compresión y obtiene el resultado comprimido.
     let compressed_data = encoder.finish().into_result()?;
 
-    // Devuelve el resultado comprimido.
+    Ok(compressed_data)
+}
+
+pub fn compress_bytes(bytes: &[u8]) -> Result<Vec<u8>, io::Error> {
+    let mut encoder = Encoder::new(Vec::new())?;
+
+    encoder.write_all(bytes)?;
+    let compressed_data = encoder.finish().into_result()?;
+
     Ok(compressed_data)
 }
 
@@ -240,12 +244,13 @@ pub fn generate_sha1_string_from_bytes(data: &Vec<u8>) -> String {
 }
 
 pub fn read_object(hash: String) -> Result<(ObjectType, String, String), Box<dyn Error>> {
-    
-    let file = fs::File::open(PathHandler::get_relative_path(&get_object_path(&hash)))?;
-    let mut buffer = String::new();
-    Decoder::new(file)?.read_to_string(&mut buffer)?;
 
-    let file_content: Vec<String> = buffer.split('\0').map(String::from).collect();
+    let mut file = fs::File::open(PathHandler::get_relative_path(&get_object_path(&hash)))?;
+    let mut buffer = Vec::new();
+    file.read_to_end(&mut buffer);
+    let file_data = decompress_file_content(buffer)?;
+
+    let file_content: Vec<String> = file_data.split('\0').map(String::from).collect();
     let object_header: Vec<String> = file_content[0].split(' ').map(String::from).collect();
     let object_type = ObjectType::new(&object_header[0]).ok_or(io::Error::new(
         io::ErrorKind::InvalidData,
@@ -380,7 +385,7 @@ pub fn ancestor_commit_exists(current_commit_hash: &str, merging_commit_hash: &s
     // aca rompe al hacer con fetch porque estamos queriendo unir una branch que esta en remotes, tal vez ya habria que pasar los hash de commits como parametro
     // de cambiar eso el nombre pasaria a ser tipo ancestor_commit_exists()
     // let merging_branch_commit = get_branch_last_commit(&get_branch_path(merging_branch))?;
-    println!("mergin commit: {}", merging_commit_hash);
+    println!("mergin commitg: {}", merging_commit_hash);
     if current_commit_hash.is_empty() {
         println!("true");
         return Ok(true);
@@ -436,6 +441,78 @@ pub fn check_if_directory_exists(dir_path: &str) -> bool {
     }
     false
 }
+
+fn hex_string_to_bytes(bytes: &[u8]) -> Result<String, Box<dyn Error>> {
+    let mut hash: String = String::new();
+    for byte in bytes {
+        println!("{:x}", byte);
+        hash.push_str(&format!("{:x}", byte));
+    }
+
+    Ok(hash)
+}
+
+pub fn read_tree_content(tree_hash: &str) -> Result<Vec<(String, String, String)>, Box<dyn Error>> {
+    //  [230, 157, 226, 155, 178, 209, 214, 67, 75, 139, 41, 174, 119, 90, 216, 194, 228, 140, 83, 145]
+    println!("reading tree content..");
+    // let tree_content = decompress_file_content(read_file_content_to_bytes(&get_object_path(tree_hash))?)?;
+    // println!("tree content: {}", tree_content);
+    // let split_content: Vec<String> = tree_content.splitn(2, '\0').map(String::from).collect();
+
+    let mut file = fs::File::open(get_object_path(tree_hash))?;
+    let mut buffer = Vec::new();
+    println!("before reading file");
+    file.read_to_end(&mut buffer);
+    // Decoder::new(file)?.read_to_end(&mut buffer)?;
+    println!("compressed data: {:?}", buffer);
+    let decompressed = decompress_file_content(buffer)?;
+    println!("tree content: {}", decompressed);
+    // let buffer_to_string = String::from_utf8_lossy(&decompressed).to_string();
+    let split_content: Vec<String> = decompressed.splitn(2, '\0').map(String::from).collect();
+
+    let mut divided_content = Vec::new();
+    println!("tree split_content: {}", split_content[1]);
+    let mut substrings: Vec<String> = split_content[1].split("\0").map(String::from).collect();
+    println!("substrings: {:?}", substrings);
+    // Process each substring of 20 bytes
+    let tree_data: Vec<String> = substrings[0].split_whitespace().map(String::from).collect();
+    let mut file_mode = tree_data[0].clone();
+    let mut file_name = tree_data[1].clone();
+    substrings.remove(0);
+    for substring in substrings {
+        let substring_bytes = substring.bytes();
+        println!("substring bytes: {:?}", substring_bytes);
+        // let processed_bytes = &substring_bytes[..20];
+        let processed_bytes: Vec<u8> = substring_bytes.take(20).collect();
+        println!("bytes: {:?}", processed_bytes);
+        let hash_string = hex_string_to_bytes(&processed_bytes)?;
+        // Perform your processing here, for example, print the processed bytes
+        println!("final content: {} {} {}", file_mode.clone(), file_name.clone(), hash_string);
+        divided_content.push((file_mode.clone(), file_name.clone(), hash_string));
+        if substring.len() > 20 {
+            let tree_entry_data = &substring[substring.len()..];
+            println!("entry data: {}", tree_entry_data);
+            let split_entry: Vec<String> = tree_entry_data.split_whitespace().map(String::from).collect();
+            file_mode = split_entry[0].clone();
+            file_name = split_entry[1].clone();
+        }
+    }
+    println!("{:?}", divided_content);
+    Ok(divided_content)
+}
+
+pub fn convert_hash_to_decimal_bytes(hash: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+    let mut decimal_hash = Vec::new();
+    for chunk in hash.chars().collect::<Vec<char>>().chunks(2) {
+        let chunk_str: String = chunk.iter().collect();
+        let result = u8::from_str_radix(&chunk_str, 16)?;
+        decimal_hash.push(result);
+    }
+
+    println!("hash: {:?}", decimal_hash);
+    Ok(decimal_hash)
+} 
+
 
 pub const RELATIVE_PATH: &str = "RELATIVE_PATH";
 #[cfg(test)]

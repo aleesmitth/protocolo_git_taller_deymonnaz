@@ -1,3 +1,4 @@
+use std::fmt::format;
 use std::fs::ReadDir;
 use std::{fs, error::Error, io, io::Write, io::Read, str, env, io::BufRead, io::Seek, io::SeekFrom, io::ErrorKind, collections::HashSet};
 
@@ -62,7 +63,7 @@ const COLOR_RESET_CODE: &str = "\x1b[0m";
 
 use crate::client;
 use crate::client::client_protocol::ClientProtocol;
-use crate::commands::structs::Head;
+use crate::commands::structs::{Head, self};
 use crate::commands::helpers::get_file_length;
 use crate::commands::structs::HashObjectCreator;
 use crate::commands::structs::ObjectType;
@@ -1098,6 +1099,7 @@ impl UnpackObjects {
     fn read_type_and_size<R: Read>(stream: &mut R) -> Result<(u8, usize), Box<dyn Error>> {
         let value = Self::read_size_encoding(stream)?;
         let object_type = Self::keep_bits(value >> TYPE_BYTE_SIZE_BITS, TYPE_BITS) as u8;
+        println!("object type: {}", object_type);
         let size = Self::keep_bits(value, TYPE_BYTE_SIZE_BITS)
             | (value >> VARINT_ENCODING_BITS << TYPE_BYTE_SIZE_BITS);
         Ok((object_type, size))
@@ -1302,12 +1304,10 @@ impl Command for UnpackObjects {
             let content_to_string = String::from_utf8_lossy(&content).to_string();
             println!("content as str: {}", content_to_string);
 
-            // TAL VEZ ACA ES EL PROBLEMA Y TENGO QUE HACER EL OBJETO EN BYTES
-
-            HashObjectCreator::write_object_file(
-                content_to_string.clone(),
+            HashObjectCreator::write_object_file_bytes(
+                &content,
                 object_type,
-                content.len() as u64,
+                size,
             )?;
             offset += size as u64;
             objects_unpacked += 1;
@@ -1624,20 +1624,26 @@ impl LsTree {
     pub fn generate_tree_entries(&self, entries: &mut Vec<String>, tree_hash: String, direct_flag: bool, recurse_flag: bool, long_flag: bool) -> Result<(), Box<dyn Error>> {
         let current_hash = if tree_hash == HEAD { helpers::get_commit_tree(Head::get_head_commit()?.as_str())? } else { tree_hash };
 
-        let (tree_type, tree_content, tree_size) = helpers::read_object(current_hash)?;
-        if tree_content.is_empty() || tree_type != ObjectType::Tree {
+        let mut tree_content = helpers::read_tree_content(&current_hash)?;
+        println!("content: {:?}", tree_content);
+
+        // let (tree_type, tree_content, tree_size) = helpers::read_object(current_hash)?;
+        if tree_content.is_empty() { // VER saque esta condicion: || tree_type != ObjectType::Tree
             // no proceso tree vacio
             return Ok(())
         }
 
-        let mut tree_content_lines: Vec<String> = tree_content.lines().map(|s| s.to_string()).collect();
+        // let mut tree_content_lines: Vec<String> = tree_content.lines().map(|s| s.to_string()).collect();
         //println!("[LSTREE]tree_content_lines {:?}, tree size: {:?}", tree_content_lines.clone(), tree_size);
 
-        for line in &mut tree_content_lines {
+        for (file_mode, file_name, object_hash) in &mut tree_content {
             //println!("[LSTREE]line: {:?}", line.clone());
-            let split_line: Vec<String> = line.split_whitespace().map(String::from).collect();
-            let file_mode = split_line[0].as_str();
-            let object_hash = split_line[2].clone();
+            // let split_line: Vec<String> = line.split_whitespace().map(String::from).collect();
+            // let file_mode = split_line[0].as_str();
+            // let object_hash = split_line[2].clone();
+
+            let mut line: String = format!("{} {} {}\n", file_mode, object_hash, file_name);
+            // volver a poner el file type, se puede sacar de file mode
 
             if file_mode == TREE_FILE_MODE && direct_flag {
                 // don't add files to the entries if direct flag is on
