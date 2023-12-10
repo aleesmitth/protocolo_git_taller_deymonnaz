@@ -40,7 +40,7 @@ pub const R_HEADS: &str = ".git/refs/heads";
 const HEAD_FILE: &str = ".git/HEAD";
 const R_TAGS: &str = ".git/refs/tags";
 const R_REMOTES: &str = ".git/refs/remotes";
-const DEFAULT_BRANCH_NAME: &str = "main";
+const DEFAULT_BRANCH_NAME: &str = "master";
 const INDEX_FILE: &str = ".git/index";
 const CONFIG_FILE: &str = ".git/config";
 pub const RELATIVE_PATH: &str = "RELATIVE_PATH";
@@ -500,8 +500,13 @@ impl Commit {
         message: Option<&str>,
         branch_path: &str,
     ) -> Result<String, Box<dyn Error>> {
-        let head_commit = helpers::read_file_content(&PathHandler::get_relative_path(branch_path))?;
-        let mut content = format!("tree {}\nparent {}\n", tree_hash, head_commit);
+        let head_commit = Head::get_head_commit()?;
+        let mut content = String::new();
+        if head_commit.is_empty() {
+            content = format!("tree {}", tree_hash);
+        } else {
+            content = format!("tree {}\nparent {}", tree_hash, head_commit);
+        }
         if let Some(message) = message {
             content = format!("{}\n{}", content, message);
         }
@@ -810,16 +815,10 @@ impl PackObjects {
 
     fn get_tree_objects(&self, object_set: &mut HashSet<String>, tree_hash: &str) -> Result<(), Box<dyn Error>> {
         object_set.insert(tree_hash.to_string());
-        let (tree_type, tree_content, tree_size) = helpers::read_object(tree_hash.to_string())?;
+        let tree_content = helpers::read_tree_content(tree_hash)?;
 
-        let mut tree_content_lines: Vec<String> = tree_content.lines().map(|s| s.to_string()).collect();
-
-        for line in &mut tree_content_lines {
-            println!("line: {}", line);
-            let split_line: Vec<String> = line.split_whitespace().map(String::from).collect();
-            let file_mode = split_line[0].as_str();
-            let object_hash = split_line[2].clone();
-            match file_mode {
+        for (file_mode, _file_name, object_hash) in tree_content {
+            match file_mode.as_str() {
                 TREE_FILE_MODE => {
                     object_set.insert(object_hash.clone());
                 }
@@ -1334,7 +1333,7 @@ impl Fetch {
             "tags" => ref_path = format!("{}/{}", R_TAGS, remote_ref_name),
             _ => {}
         }
-        println!("{}", ref_path);
+        println!("ref path: {}", ref_path);
         let mut ref_file = fs::File::create(ref_path)?;
         ref_file.write_all(ref_hash.as_bytes())?;
         Ok(())
@@ -1394,11 +1393,30 @@ impl Push {
 impl Command for Push {
     fn execute(
         &self,
-        
-        _args: Option<Vec<&str>>,
+        args: Option<Vec<&str>>,
     ) -> Result<String, Box<dyn Error>> {
+        let mut remote_url = helpers::get_remote_url(DEFAULT_REMOTE_REPOSITORY)?;
+        let mut remote_name = DEFAULT_REMOTE_REPOSITORY;
+        let branch = Head::get_current_branch_name()?;
+        match args {
+            Some(args) => match helpers::get_remote_url(args[0]) {
+                Ok(url) => {
+                    remote_url = url;
+                    remote_name = args[0];
+                    // branch = &args[1];
+                }
+                Err(_) => return Err(Box::new(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Error: Name is not a remote",
+                ))),
+            },
+            None => {}
+        }
 
-        ClientProtocol::new().receive_pack(helpers::get_remote_url(DEFAULT_REMOTE_REPOSITORY)?)?;
+        // me parece mejor asumir que siempre va a ser desde la rama actual, solo si esta bueno
+        // declarar a que repo remoto
+        
+        ClientProtocol::new().receive_pack(remote_url)?;
         // // volver esto abstracto como decia y no isntanciarlo
         Ok(String::new())
     }
@@ -1415,10 +1433,25 @@ impl Pull {
 
 
 impl Command for Pull {
-    fn execute(&self,  _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
-        Fetch::new().execute(None)?;
-
-        Merge::new().execute(Some(vec!["origin/master"]))?;
+    fn execute(&self,  args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        let remote_url ;
+        let mut remote_name = DEFAULT_REMOTE_REPOSITORY;
+        match args {
+            Some(args) => match helpers::get_remote_url(args[0]) {
+                Ok(url) => {
+                    remote_url = url;
+                    remote_name = args[0];
+                }
+                Err(_) => remote_url = args[0].to_string(),
+            },
+            None => {
+                remote_url = helpers::get_remote_url(DEFAULT_REMOTE_REPOSITORY)?;
+            }
+        }
+        Fetch::new().execute(Some(vec![&remote_url]))?;
+        let remote_branch = format!("{}/{}", remote_name, Head::get_current_branch_name()?);
+        println!("merging");
+        Merge::new().execute(Some(vec![&remote_branch]))?;
         Ok(String::new())
     }
 }
@@ -1445,7 +1478,7 @@ impl Command for Clone {
             }
             None => return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
-                "Error: Invalid Commit ID. It's too short",
+                "Error: No remote repository was received to clone",
             ))),
         }
         
@@ -1503,6 +1536,12 @@ impl Log {
         let commit_file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
 
         let commit_file_lines: Vec<String> = commit_file_content[1].lines().map(|s| s.to_string()).collect();
+        
+        if commit_file_lines.len() < 2 {
+            entries.push((current_commit, String::new()));
+            return Ok(String::new());
+        }
+
         let parent_commit_split_line: Vec<String> = commit_file_lines[1].split_whitespace().map(String::from).collect();
 
         if parent_commit_split_line.len() < 2 {
@@ -1976,6 +2015,7 @@ impl Command for Merge { //ver que pasa cuando uno commit ancestro es commit roo
         let arg_slice = args.unwrap_or(Vec::new()); //aca tendria que chequear que sea valido el branch que recibo por parametro
 
         let branch_to_merge = arg_slice[0];
+        println!("branch to merge: {}", branch_to_merge);
         let mut branch_to_merge_path = helpers::get_branch_path(branch_to_merge);
         if !helpers::check_if_file_exists(&branch_to_merge_path) {
             // This means the branch is a remote branch
@@ -1987,11 +2027,6 @@ impl Command for Merge { //ver que pasa cuando uno commit ancestro es commit roo
         let current_commit_hash = Head::get_head_commit()?;
 
         println!("merging {} -> {}", branch_to_merge, Head::get_current_branch_name()?);
-        // habria que buscar ancestor en comun
-        // ver si en el branch actual se hicieron mas commits despues de ese ancestro
-        // si no hubo mas commits puedo hacer fastforward merge y listo
-        // let common_ancestor_commit = helpers::find_common_ancestor_commit(current_branch, branch_to_merge)?;
-        // println!("ancestor: {}", common_ancestor_commit);
         if helpers::ancestor_commit_exists(&current_commit_hash, &merging_commit_hash)? {
             helpers::update_branch_hash(&Head::get_current_branch_name()?, &merging_commit_hash)?;
             println!("updating branch last commit in current branch... to commit: {}", merging_commit_hash);

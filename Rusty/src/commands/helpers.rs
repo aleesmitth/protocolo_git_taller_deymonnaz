@@ -14,7 +14,7 @@ use super::{commands::PathHandler, structs::ObjectType};
 const OBJECT: &str = ".git/objects";
 const R_HEADS: &str = ".git/refs/heads";
 const HEAD_FILE: &str = ".git/HEAD";
-const DEFAULT_BRANCH_NAME: &str = "main";
+const DEFAULT_BRANCH_NAME: &str = "master";
 const INDEX_FILE: &str = ".git/index";
 const CONFIG_FILE: &str = ".git/config";
 //const R_REMOTES: &str = ".git/refs/remotes";
@@ -63,18 +63,21 @@ pub fn compress_bytes(bytes: &[u8]) -> Result<Vec<u8>, io::Error> {
 /// the zlib decoder, and returns the decompressed content as a `String`.
 pub fn decompress_file_content(content: Vec<u8>) -> Result<String, io::Error> {
     let mut decompressed_data = String::new();
-
+    println!("decoding");
     let mut decoder = Decoder::new(&content[..])?;
+    println!("created decoder");
     decoder.read_to_string(&mut decompressed_data)?;
+    println!("read to string");
     Ok(decompressed_data)
 }
 
-pub fn decompress_file_content_byte(content: Vec<u8>) -> Result<Vec<u8>, io::Error> {
+pub fn decompress_file_content_to_bytes(content: Vec<u8>) -> Result<Vec<u8>, io::Error> {
     let mut decompressed_data = Vec::new();
-
+    println!("decoding");
     let mut decoder = Decoder::new(&content[..])?;
+    println!("created decoder");
     decoder.read_to_end(&mut decompressed_data)?;
-    
+    println!("read to string");
     Ok(decompressed_data)
 }
 
@@ -451,99 +454,50 @@ pub fn check_if_directory_exists(dir_path: &str) -> bool {
     false
 }
 
-fn hex_string_to_bytes(bytes: &[u8]) -> Result<String, Box<dyn Error>> {
+pub fn hex_string_to_bytes(bytes: &[u8]) -> String {
     let mut hash: String = String::new();
     for byte in bytes {
-        println!("{:x}", byte);
+        // println!("{:x}", byte);
         hash.push_str(&format!("{:x}", byte));
     }
 
-    Ok(hash)
+    hash
 }
 
 pub fn read_tree_content(tree_hash: &str) -> Result<Vec<(String, String, String)>, Box<dyn Error>> {
-    //  [230, 157, 226, 155, 178, 209, 214, 67, 75, 139, 41, 174, 119, 90, 216, 194, 228, 140, 83, 145]
     println!("reading tree content..");
-    // let tree_content = decompress_file_content(read_file_content_to_bytes(&get_object_path(tree_hash))?)?;
-    // println!("tree content: {}", tree_content);
-    // let split_content: Vec<String> = tree_content.splitn(2, '\0').map(String::from).collect();
 
-    let mut file = fs::File::open(get_object_path(tree_hash))?;
-    let mut buffer = Vec::new();
     println!("before reading file");
-    file.read_to_end(&mut buffer);
-    // Decoder::new(file)?.read_to_end(&mut buffer)?;
-    println!("compressed data: {:?}", buffer);
-    let decompressed = decompress_file_content(buffer.clone())?;
-    println!("-------------- decompressed: {}", decompressed);
+    let compressed_content = read_file_content_to_bytes(&get_object_path(tree_hash))?;
+    let tree_content = decompress_file_content_to_bytes(compressed_content)?;
+    println!("decompressed data: {:?}", tree_content);
+    // let decompressed = decompress_file_content(buffer)?;
+    // println!("tree content: {}", decompressed);
     // let buffer_to_string = String::from_utf8_lossy(&decompressed).to_string();
-    let split_content: Vec<String> = decompressed.splitn(3, '\0').map(String::from).collect();
+    // let split_content: Vec<String> = decompressed.splitn(2, '\0').map(String::from).collect();
+    let split_content: Vec<Vec<u8>> = tree_content.splitn(2, |&c| c == 0).map(|slice| slice.to_vec()).collect();
 
     let mut divided_content = Vec::new();
-    println!("-------------- tree split_content: {:?}", split_content);
+    println!("tree split_content: {:?}", split_content[1]);
+    // let mut substrings: Vec<String> = split_content[1].split("\0").map(String::from).collect();
+    let mut substrings: Vec<Vec<u8>> = split_content[1].split(|&c| c == 0).map(|slice| slice.to_vec()).collect();
+    
+    let tree_data: Vec<Vec<u8>> = substrings[0].split(|&c| c == 32).map(|slice| slice.to_vec()).collect();
 
-
-// Split the decompressed string by the null character and convert to byte slices
-let decompressed_byte: Vec<u8> = decompress_file_content_byte(buffer)?;
-let byte_subvectors: Vec<Vec<u8>> = decompressed_byte.split(|&c| c == b'\0').map(|s| s.to_vec()).collect();
-
-    // Do something with each byte subvector
-    for subvector in &byte_subvectors {
-        // Process subvector as needed
-        println!("{:?}", subvector);
-    }
-    println!("-------------- byte_subvectors 2: {:?}", byte_subvectors[2]);
-let bytes_subvectors_2_to_lossy = String::from_utf8_lossy(&byte_subvectors[2]);
-    println!("-------------- bytes_subvectors_2_to_lossy: {:?}", bytes_subvectors_2_to_lossy);
-        let hash_string = hex_string_to_bytes(&byte_subvectors[2])?;
-println!("-------------- hash_string len: {:?}", hash_string.len());
-println!("-------------- hash_string: {:?}", hash_string);
-println!("-------------- decompressed_len: {:?}", decompressed_byte.len());
-
-let result_string_lossy = String::from_utf8_lossy(&decompressed_byte);
-println!("-------------- result_string_lossy len: {:?}", result_string_lossy.len());
-println!("-------------- result_string_lossy: {:?}", result_string_lossy);
-// Append each byte as a character to the result string
-for byte in &decompressed_byte {
-    print!("{:x}", byte);
-}
-
-
-    /*let byte_substrings: Vec<&[u8]> = decompressed_byte.split('\0').map(|s| s.as_bytes()).collect();
-
-    println!("-------------- byte_substrings: {:?}", byte_substrings.clone());
-
-    let mut result_string = String::new();
-
-    // Concatenate byte substrings into a single string
-    for bytes in &byte_substrings {
-        // Process bytes as needed
-        result_string.push_str(&String::from_utf8_lossy(bytes));
-        println!("{:?}", bytes);
-    }
-
-    println!("------------- result_string: {:?}", result_string.clone());*/
-
-
-    let mut substrings: Vec<String> = split_content[1].split("\0").map(String::from).collect();
-    println!("substrings: {:?}", substrings.clone());
-    // Process each substring of 20 bytes
-    let tree_data: Vec<String> = substrings[0].split_whitespace().map(String::from).collect();
-    let mut file_mode = tree_data[0].clone();
-    let mut file_name = tree_data[1].clone();
+    let mut file_mode = String::from_utf8_lossy(&tree_data[0]).to_string();
+    let mut file_name = String::from_utf8_lossy(&tree_data[1]).to_string();
     substrings.remove(0);
-    for substring in substrings {
-        let substring_bytes = substring.bytes();
-        println!("substring bytes: {:?}", substring_bytes);
-        // let processed_bytes = &substring_bytes[..20];
-        let processed_bytes: Vec<u8> = substring_bytes.take(20).collect();
-        println!("bytes: {:?}", processed_bytes);
-        let hash_string = hex_string_to_bytes(&processed_bytes)?;
-        // Perform your processing here, for example, print the processed bytes
-        println!("final content: {} {} {}", file_mode.clone(), file_name.clone(), hash_string);
+    for substring in &substrings {
+        println!("substring: {:?}", &substring);
+        let processed_bytes = &substring[..20];
+
+        let hash_string = hex_string_to_bytes(&processed_bytes);
+        println!("hash_string: {}", hash_string);
+
         divided_content.push((file_mode.clone(), file_name.clone(), hash_string));
+        println!("substring len: {}", substring.len());
         if substring.len() > 20 {
-            let tree_entry_data = &substring[substring.len()..];
+            let tree_entry_data =  String::from_utf8_lossy(&substring[20..]).to_string();
             println!("entry data: {}", tree_entry_data);
             let split_entry: Vec<String> = tree_entry_data.split_whitespace().map(String::from).collect();
             file_mode = split_entry[0].clone();
@@ -566,6 +520,55 @@ pub fn convert_hash_to_decimal_bytes(hash: &str) -> Result<Vec<u8>, Box<dyn Erro
     Ok(decimal_hash)
 } 
 
+pub fn hex_to_ascii(hex_string: &str) -> String {
+    let mut ascii_string = String::new();
+    let mut chars = hex_string.chars();
+
+    while let Some(hex_char1) = chars.next() {
+        if let Some(hex_char2) = chars.next() {
+            // Combine two hexadecimal characters into a substring
+            let hex_pair = format!("{}{}", hex_char1, hex_char2);
+
+            // Parse the hexadecimal substring into a u8
+            if let Ok(byte) = u8::from_str_radix(&hex_pair, 16) {
+                // Append the byte to a Vec<u8>
+                let byte_vec = vec![byte];
+
+                ascii_string.push_str(&String::from_utf8_lossy(&byte_vec).to_string());
+            } else {
+                panic!("Failed to parse hexadecimal string");
+            }
+        } else {
+            panic!("Unexpected end of input");
+        }
+    }
+
+    ascii_string
+}
+
+pub fn hex_to_ascii_bytes(hex_string: &str) -> Vec<u8> {
+    let mut ascii_bytes = Vec::new();
+    let mut chars = hex_string.chars();
+
+    while let Some(hex_char1) = chars.next() {
+        if let Some(hex_char2) = chars.next() {
+            // Combine two hexadecimal characters into a substring
+            let hex_pair = format!("{}{}", hex_char1, hex_char2);
+
+            // Parse the hexadecimal substring into a u8
+            if let Ok(byte) = u8::from_str_radix(&hex_pair, 16) {
+                // Append the byte to the Vec<u8>
+                ascii_bytes.push(byte);
+            } else {
+                panic!("Failed to parse hexadecimal string");
+            }
+        } else {
+            panic!("Unexpected end of input");
+        }
+    }
+
+    ascii_bytes
+}
 
 pub const RELATIVE_PATH: &str = "RELATIVE_PATH";
 /* pub const RELATIVE_PATH: &str = "RELATIVE_PATH";

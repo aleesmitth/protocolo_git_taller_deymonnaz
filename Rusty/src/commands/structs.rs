@@ -1,4 +1,4 @@
-use std::{error::Error, fmt, fs, io::BufRead, io::{Write, Read}, net::TcpStream, io, path::PathBuf, path::Path, collections::HashMap};
+use std::{error::Error, fmt, fs, io::BufRead, io::{Write, Read}, net::TcpStream, io, path::PathBuf, path::Path, collections::HashMap, str::from_utf8};
 const OBJECT: &str = ".git/objects";
 const INDEX_FILE: &str = ".git/index";
 const TREE_SUBTREE_MODE: &str = "040000";
@@ -10,6 +10,7 @@ const HEAD_FILE: &str = ".git/HEAD";
 use gtk::gdk::keys::constants::L;
 
 use crate::commands::helpers;
+use libflate::zlib::{Decoder, Encoder};
 
 use super::{commands::PathHandler, helpers::get_file_length};
 
@@ -78,20 +79,9 @@ impl HashObjectCreator {
     ) -> Result<String, Box<dyn Error>> {
         let data = format!("{} {}\0{}", obj_type, file_len, content);
         println!("data: {:?}", data);
-    //     if obj_type == ObjectType::Tree {
-    //         let substrings: Vec<&str> = content.split("\0").collect();
-    //         println!("substrings: {:?}", substrings);
-    //         // Process each substring of 20 bytes
-    //         substrings.iter().for_each(|&substring| {
-    //         let processed_bytes: Vec<u8> = substring.bytes().take(20).collect();
-    //         // let hash_string = hex_string_to_bytes(&processed_bytes);
-    //         // // Perform your processing here, for example, print the processed bytes
-    //         // println!("Processed bytes: {:?}", hash_string);
-    // });
-        // }
         let hashed_data = Self::generate_object_hash(obj_type.clone(), content.as_bytes().len() as u64, &content);
         println!("hash for: {} ; {}", obj_type, hashed_data);
-        let compressed_content = helpers::compress_content(data.as_str())?;
+        let compressed_content = helpers::compress_content(&data)?;
         let obj_directory_path = format!("{}/{}", OBJECT, &hashed_data[0..2]);
         let _ = fs::create_dir(PathHandler::get_relative_path(&obj_directory_path));
 
@@ -107,17 +97,11 @@ impl HashObjectCreator {
         let mut object_file = fs::File::create(&object_file_path.clone())?;
         object_file.write_all(&compressed_content)?;
 
-
-        let mut file = fs::File::open(&object_file_path.clone())?;
-        let mut buf = Vec::new();
-        file.read_to_end(&mut buf);
-        let decompressed = helpers::decompress_file_content(buf)?;
-        println!("after creating object: {}", decompressed);
         Ok(hashed_data)
     }
 
     pub fn write_object_file_bytes(
-        content: &[u8],
+        content: &Vec<u8>,
         object_type: ObjectType,
         size: usize,
     ) -> Result<String, Box<dyn Error>> {
@@ -137,13 +121,14 @@ impl HashObjectCreator {
 
         let object_file_path = format!("{}/{}", PathHandler::get_relative_path(&obj_directory_path), &hashed_data[2..]);
 
-        println!("obj content: {}", String::from_utf8(object_content.clone())?);
+        // println!("obj content: {}", String::from_utf8(object_content.clone())?);
 
         let compressed_data =  helpers::compress_bytes(&object_content)?;
 
-        let decompressed = helpers::decompress_file_content(compressed_data.clone())?;
+        // let decompressed = helpers::decompress_file_content(compressed_data.clone())?;
 
-        println!("test decompress: {}", decompressed);
+        // println!("test decompress: {}", decompressed);
+        // let test_hash = helpers::hex_string_to_bytes(&decompressed[16..]);
 
         let mut object_file = fs::File::create(&object_file_path)?;
         object_file.write_all(&compressed_data)?;
@@ -159,14 +144,14 @@ impl HashObjectCreator {
 
     pub fn create_tree_object() -> Result<String, Box<dyn Error>> {
         let index_file_content = helpers::read_file_content(&PathHandler::get_relative_path(INDEX_FILE))?;
-        let mut subdirectories: HashMap<String, Vec<String>> = HashMap::new();
+        let mut subdirectories: HashMap<String, Vec<Vec<u8>>> = HashMap::new();
     
         let index_file_lines: Vec<&str> = index_file_content.split("\n").collect();
         //println!("index_file_lines: {:?}", index_file_lines);
     
         for line in index_file_lines {
             let split_line: Vec<&str> = line.split(";").collect();
-
+            println!("split line: {:?}", split_line);
             let path = Path::new(split_line[0]);
             let hash = split_line[1];
             
@@ -185,16 +170,19 @@ impl HashObjectCreator {
                 //println!("File name: {}", name);
                 file_name = name.to_string();
             }
-            let hash_decimal = helpers::convert_hash_to_decimal_bytes(hash)?;
+            let hash = helpers::convert_hash_to_decimal_bytes(hash)?;
             // let hash_string = String::from_utf8_lossy(&helpers::convert_hash_to_decimal_bytes(hash)?);
-            let file_entry = format!("{} {}\0{}", TREE_FILE_MODE, file_name, String::from_utf8_lossy(&hash_decimal).to_string());
-
+            let file_entry = format!("{} {}\0", TREE_FILE_MODE, file_name);
+            let mut final_entry = Vec::new();
+            final_entry.extend_from_slice(file_entry.as_bytes());
+            final_entry.extend_from_slice(&hash);
+            println!("tree entry: {}", file_entry);
             //println!("file_entry: {:?}", file_entry);
             if let Some(_parent) = current_dir {
                 subdirectories
                             .entry(file_directory)
                             .or_insert_with(Vec::new)
-                            .push(file_entry);
+                            .push(final_entry);
             }
 
             while let Some(parent) = current_dir {
@@ -207,44 +195,48 @@ impl HashObjectCreator {
 	                subdirectories
 	                        .entry(subdirectory_entry)
 	                        .or_insert_with(Vec::new)
-	                        .push(parent.to_string_lossy().to_string());
+	                        .push(parent.to_string_lossy().as_bytes().to_vec());
                 }
             }
         }
         let mut super_tree_hash = String::new();
         for (parent_directory, entries) in &subdirectories {
-        	//println!("[create_tree_object]parent_directory: {:?}", parent_directory);
+        	println!("[create_tree_object]parent_directory: {:?}", parent_directory);
             let sub_tree_content = Self::process_files_and_subdirectories(&mut subdirectories.clone(), &entries)?;
-            let tree_hash = Self::write_object_file_bytes(sub_tree_content.as_bytes(), ObjectType::Tree, sub_tree_content.len())?;
+            let tree_hash = Self::write_object_file_bytes(&sub_tree_content, ObjectType::Tree, sub_tree_content.len())?;
             if parent_directory == "/" || parent_directory.is_empty() {
-            	//println!("[create_tree_object]inside if: {:?}", parent_directory);
+            	println!("[create_tree_object]inside if: {:?}", parent_directory);
                 super_tree_hash = tree_hash;
             }
         }
         Ok(super_tree_hash)
     }
 
-    fn process_files_and_subdirectories(subdirectories: &mut HashMap<String, Vec<String>>, entries: &Vec<String>) -> Result<String, Box<dyn Error>> {
-        let mut sub_tree_content = String::new();
+    fn process_files_and_subdirectories(subdirectories: &mut HashMap<String, Vec<Vec<u8>>>, entries: &Vec<Vec<u8>>) -> Result<Vec<u8>, Box<dyn Error>> {
+        let mut sub_tree_content = Vec::new();
         for entry in entries {
-            if !entry.starts_with(TREE_FILE_MODE) {
-                match subdirectories.remove(&entry.clone()) {
+            if !entry.starts_with(TREE_FILE_MODE.as_bytes()) {
+                match subdirectories.remove(&String::from_utf8_lossy(entry).to_string()) {
                     Some(value) => {
                         let mut directory_name = String::new();
-                        if let Some(file_name) = entry.rsplit('/').next() {
+                        if let Some(file_name) = String::from_utf8_lossy(entry).to_string().rsplit('/').next() {
                             println!("File name: {}", file_name);
                             directory_name = file_name.to_string();
                         }
                         let tree_content = Self::process_files_and_subdirectories(subdirectories, &value)?;
-                        let tree_hash = Self::write_object_file_bytes(tree_content.as_bytes(), ObjectType::Tree, tree_content.len())?;
+                        let tree_hash = Self::write_object_file_bytes(&tree_content, ObjectType::Tree, tree_content.len())?;
                         let hash_decimal = helpers::convert_hash_to_decimal_bytes(&tree_hash)?;
-                        let tree_entry = format!("{} {}\0{}", TREE_SUBTREE_MODE, directory_name, String::from_utf8_lossy(&hash_decimal).to_string());
-                        sub_tree_content.push_str(&tree_entry);
+                        let tree_entry = format!("{} {}\0", TREE_SUBTREE_MODE, directory_name);
+                        let mut final_entry = Vec::new();
+                        final_entry.extend_from_slice(&tree_entry.as_bytes());
+                        final_entry.extend_from_slice(&hash_decimal);
+                        sub_tree_content.extend_from_slice(&final_entry);
                     }
                     None => {}
                 }
             } else {
-                sub_tree_content.push_str(entry);
+                println!("aca");
+                sub_tree_content.extend_from_slice(entry);
             }
         }
         Ok(sub_tree_content)
