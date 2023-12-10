@@ -69,6 +69,15 @@ pub fn decompress_file_content(content: Vec<u8>) -> Result<String, io::Error> {
     Ok(decompressed_data)
 }
 
+pub fn decompress_file_content_byte(content: Vec<u8>) -> Result<Vec<u8>, io::Error> {
+    let mut decompressed_data = Vec::new();
+
+    let mut decoder = Decoder::new(&content[..])?;
+    decoder.read_to_end(&mut decompressed_data)?;
+    
+    Ok(decompressed_data)
+}
+
 /// Generates a SHA-1 hash as a hexadecimal string from the provided string
 pub fn generate_sha1_string(str: &str) -> String {
     let mut hasher = Sha1::new();
@@ -465,15 +474,59 @@ pub fn read_tree_content(tree_hash: &str) -> Result<Vec<(String, String, String)
     file.read_to_end(&mut buffer);
     // Decoder::new(file)?.read_to_end(&mut buffer)?;
     println!("compressed data: {:?}", buffer);
-    let decompressed = decompress_file_content(buffer)?;
-    println!("tree content: {}", decompressed);
+    let decompressed = decompress_file_content(buffer.clone())?;
+    println!("-------------- decompressed: {}", decompressed);
     // let buffer_to_string = String::from_utf8_lossy(&decompressed).to_string();
-    let split_content: Vec<String> = decompressed.splitn(2, '\0').map(String::from).collect();
+    let split_content: Vec<String> = decompressed.splitn(3, '\0').map(String::from).collect();
 
     let mut divided_content = Vec::new();
-    println!("tree split_content: {}", split_content[1]);
+    println!("-------------- tree split_content: {:?}", split_content);
+
+
+// Split the decompressed string by the null character and convert to byte slices
+let decompressed_byte: Vec<u8> = decompress_file_content_byte(buffer)?;
+let byte_subvectors: Vec<Vec<u8>> = decompressed_byte.split(|&c| c == b'\0').map(|s| s.to_vec()).collect();
+
+    // Do something with each byte subvector
+    for subvector in &byte_subvectors {
+        // Process subvector as needed
+        println!("{:?}", subvector);
+    }
+    println!("-------------- byte_subvectors 2: {:?}", byte_subvectors[2]);
+let bytes_subvectors_2_to_lossy = String::from_utf8_lossy(&byte_subvectors[2]);
+    println!("-------------- bytes_subvectors_2_to_lossy: {:?}", bytes_subvectors_2_to_lossy);
+        let hash_string = hex_string_to_bytes(&byte_subvectors[2])?;
+println!("-------------- hash_string len: {:?}", hash_string.len());
+println!("-------------- hash_string: {:?}", hash_string);
+println!("-------------- decompressed_len: {:?}", decompressed_byte.len());
+
+let result_string_lossy = String::from_utf8_lossy(&decompressed_byte);
+println!("-------------- result_string_lossy len: {:?}", result_string_lossy.len());
+println!("-------------- result_string_lossy: {:?}", result_string_lossy);
+// Append each byte as a character to the result string
+for byte in &decompressed_byte {
+    print!("{:x}", byte);
+}
+
+
+    /*let byte_substrings: Vec<&[u8]> = decompressed_byte.split('\0').map(|s| s.as_bytes()).collect();
+
+    println!("-------------- byte_substrings: {:?}", byte_substrings.clone());
+
+    let mut result_string = String::new();
+
+    // Concatenate byte substrings into a single string
+    for bytes in &byte_substrings {
+        // Process bytes as needed
+        result_string.push_str(&String::from_utf8_lossy(bytes));
+        println!("{:?}", bytes);
+    }
+
+    println!("------------- result_string: {:?}", result_string.clone());*/
+
+
     let mut substrings: Vec<String> = split_content[1].split("\0").map(String::from).collect();
-    println!("substrings: {:?}", substrings);
+    println!("substrings: {:?}", substrings.clone());
     // Process each substring of 20 bytes
     let tree_data: Vec<String> = substrings[0].split_whitespace().map(String::from).collect();
     let mut file_mode = tree_data[0].clone();
@@ -483,7 +536,7 @@ pub fn read_tree_content(tree_hash: &str) -> Result<Vec<(String, String, String)
         let substring_bytes = substring.bytes();
         println!("substring bytes: {:?}", substring_bytes);
         // let processed_bytes = &substring_bytes[..20];
-        let processed_bytes: Vec<u8> = substring_bytes.take(16).collect();
+        let processed_bytes: Vec<u8> = substring_bytes.take(20).collect();
         println!("bytes: {:?}", processed_bytes);
         let hash_string = hex_string_to_bytes(&processed_bytes)?;
         // Perform your processing here, for example, print the processed bytes
