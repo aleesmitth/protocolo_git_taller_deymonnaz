@@ -13,79 +13,79 @@ fn parse_arguments(args: &[String]) -> Option<Vec<&str>> {
     Some(arg_slices)
 }
 
-fn hex_to_bytes(hex_string: &str) -> Vec<u8> {
-    // Check if the length of the input string is even
-    if hex_string.len() % 2 != 0 {
-        panic!("Hexadecimal string must have an even number of characters");
-    }
+// fn hex_to_bytes(hex_string: &str) -> Vec<u8> {
+//     // Check if the length of the input string is even
+//     if hex_string.len() % 2 != 0 {
+//         panic!("Hexadecimal string must have an even number of characters");
+//     }
 
-    let mut bytes = Vec::new();
+//     let mut bytes = Vec::new();
 
-    // Iterate over the input string by 2 characters at a time
-    let mut chars = hex_string.chars();
-    while let Some(hex_char1) = chars.next() {
-        if let Some(hex_char2) = chars.next() {
-            // Combine two hexadecimal characters into a substring
-            let hex_pair = format!("{}{}", hex_char1, hex_char2);
+//     // Iterate over the input string by 2 characters at a time
+//     let mut chars = hex_string.chars();
+//     while let Some(hex_char1) = chars.next() {
+//         if let Some(hex_char2) = chars.next() {
+//             // Combine two hexadecimal characters into a substring
+//             let hex_pair = format!("{}{}", hex_char1, hex_char2);
 
-            // Parse the hexadecimal substring into a u8
-            match u8::from_str_radix(&hex_pair, 16) {
-                Ok(byte) => bytes.push(byte),
-                Err(err) => {
-                    eprintln!("Error parsing hexadecimal string: {:?}", err);
-                    panic!("Failed to parse hexadecimal string");
-                }
-            }
-        } else {
-            panic!("Unexpected end of input");
-        }
-    }
+//             // Parse the hexadecimal substring into a u8
+//             match u8::from_str_radix(&hex_pair, 16) {
+//                 Ok(byte) => bytes.push(byte),
+//                 Err(err) => {
+//                     eprintln!("Error parsing hexadecimal string: {:?}", err);
+//                     panic!("Failed to parse hexadecimal string");
+//                 }
+//             }
+//         } else {
+//             panic!("Unexpected end of input");
+//         }
+//     }
 
-    bytes
-}
+//     bytes
+// }
 
-fn extract_hashes_from_tree_content(tree_content: &str) -> Vec<String> {
-    let mut hashes = Vec::new();
+// fn extract_hashes_from_tree_content(tree_content: &str) -> Vec<String> {
+//     let mut hashes = Vec::new();
 
-    let mut chars = tree_content.chars();
-    while let Some(c) = chars.next() {
-        // Check if the current character is a hexadecimal digit
-        println!("{}", c);
-        if c.is_ascii_hexdigit() {
-            // Collect the hexadecimal string
-            let mut hash = String::new();
-            hash.push(c);
+//     let mut chars = tree_content.chars();
+//     while let Some(c) = chars.next() {
+//         // Check if the current character is a hexadecimal digit
+//         println!("{}", c);
+//         if c.is_ascii_hexdigit() {
+//             // Collect the hexadecimal string
+//             let mut hash = String::new();
+//             hash.push(c);
 
-            // Continue collecting characters until a non-hexadecimal digit is encountered
-            while let Some(next_c) = chars.next() {
-                if next_c.is_ascii_hexdigit() {
-                    hash.push(next_c);
-                } else {
-                    break;
-                }
-            }
+//             // Continue collecting characters until a non-hexadecimal digit is encountered
+//             while let Some(next_c) = chars.next() {
+//                 if next_c.is_ascii_hexdigit() {
+//                     hash.push(next_c);
+//                 } else {
+//                     break;
+//                 }
+//             }
 
-            // Check if the collected string is of expected length
-            if hash.len() == 40 {
-                hashes.push(hash);
-            }
-        } else {
-            // Skip non-hexadecimal characters
-        }
-    }
+//             // Check if the collected string is of expected length
+//             if hash.len() == 40 {
+//                 hashes.push(hash);
+//             }
+//         } else {
+//             // Skip non-hexadecimal characters
+//         }
+//     }
 
-    hashes
-}
+//     hashes
+// }
 
-pub fn hex_string_to_bytes(bytes: &[u8]) -> String {
-    let mut hash: String = String::new();
-    for byte in bytes {
-        // println!("{:x}", byte);
-        hash.push_str(&format!("{:x}", byte));
-    }
+// pub fn hex_string_to_bytes(bytes: &[u8]) -> String {
+//     let mut hash: String = String::new();
+//     for byte in bytes {
+//         // println!("{:x}", byte);
+//         hash.push_str(&format!("{:x}", byte));
+//     }
 
-    hash
-}
+//     hash
+// }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     //env::set_var(RELATIVE_PATH, "src/client/");
@@ -97,16 +97,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
      } else {
          println!("MY_VARIABLE is not set.");
      }*/
-
-    // let content = helpers::read_file_content_to_bytes("9c/1e06ee28dabfd29e6a8c6919ac25121e5cd706")?;
-    // println!("content: {:?}", content);
-    // println!("content as str: {}", &String::from_utf8_lossy(&content.clone()));
-    // let decompressed = helpers::decompress_file_content_to_bytes(content)?;
-    // println!("content: {:?}", decompressed);
-    // let split_decompressed: Vec<Vec<u8>> = decompressed.split(|&c| c == 0).map(|slice| slice.to_vec()).collect();
-    // let hash = hex_string_to_bytes(&split_decompressed[3]);
-    // println!("hash: {}", hash);
-    
     let args: Vec<String> = env::args().collect();
     if args.len() >= 2 {
         let command = &args[1];

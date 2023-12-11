@@ -255,21 +255,32 @@ pub fn generate_sha1_string_from_bytes(data: &Vec<u8>) -> String {
     hasher.result_str()
 }
 
-pub fn read_object(hash: String) -> Result<(ObjectType, String, String), Box<dyn Error>> {
+pub fn read_object_to_bytes(hash: String) -> Result<(ObjectType, Vec<u8>, String), Box<dyn Error>> {
 
     let mut file = fs::File::open(PathHandler::get_relative_path(&get_object_path(&hash)))?;
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer);
-    let file_data = decompress_file_content(buffer)?;
+    let file_data = decompress_file_content_to_bytes(buffer)?;
 
-    let file_content: Vec<String> = file_data.split('\0').map(String::from).collect();
-    let object_header: Vec<String> = file_content[0].split(' ').map(String::from).collect();
+    let split_content: Vec<Vec<u8>> = file_data.splitn(2, |&c| c == 0).map(|slice| slice.to_vec()).collect();
+
+    let object_header: Vec<String> = String::from_utf8_lossy(&split_content[0]).to_string().split(' ').map(String::from).collect();
     let object_type = ObjectType::new(&object_header[0]).ok_or(io::Error::new(
         io::ErrorKind::InvalidData,
         "Failed to determine object type",
     ))?;
     let object_size = if object_header.len() >= 2 { object_header[1].clone() } else { String::new() };
-    Ok((object_type, file_content[1].clone(), object_size))
+    
+    Ok((object_type, split_content[1].clone(), object_size))
+}
+
+pub fn read_object_to_string(hash: String) -> Result<(ObjectType, String, String), Box<dyn Error>> {
+
+    let (object_type, file_content, object_size) = read_object_to_bytes(hash)?;
+
+    let content_to_string = String::from_utf8_lossy(&file_content).to_string();
+
+    Ok((object_type, content_to_string, object_size))
 }
 
 pub fn get_remote_tracking_branches() -> Result<HashMap<String, (String, String)>, Box<dyn Error>> {
@@ -569,6 +580,27 @@ pub fn hex_to_ascii_bytes(hex_string: &str) -> Vec<u8> {
 
     ascii_bytes
 }
+
+// pub fn get_object_type(object_hash: &str) -> Result<ObjectType, Box<dyn Error>> {
+//     let mut decoder = Decoder::new(file)?;
+//     let mut header = Vec::new();
+
+//     loop {
+//         let mut byte = [0; 1];
+//         decoder.read_exact(&mut byte)?;
+
+//         // Check if the byte is '\0'
+//         if byte[0] == b'\0' {
+//             break; // Exit the loop if null byte is encountered
+//         }
+//         header.push(byte[0]);
+//     }
+
+//     let header_str = String::from_utf8(header)?;
+//     let parts: Vec<&str> = header_str.trim_end().split(' ').collect();
+
+//     Ok(ObjectType::new(parts[0])?)
+// }
 
 pub const RELATIVE_PATH: &str = "RELATIVE_PATH";
 /* pub const RELATIVE_PATH: &str = "RELATIVE_PATH";

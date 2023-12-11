@@ -1,7 +1,7 @@
 use std::fmt::format;
 use std::fs::ReadDir;
 use std::{fs, error::Error, io, io::Write, io::Read, str, env, io::BufRead, io::Seek, io::SeekFrom, io::ErrorKind, collections::HashSet};
-
+use chrono::{DateTime, Local};
 
 extern crate libflate;
 use libflate::zlib::Decoder;
@@ -387,19 +387,23 @@ impl Command for CatFile {
     fn execute(&self,  args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         match args {
             Some(args) => {
-                let path = format!(".git/objects/{}/{}", &args[1][..2], &args[1][2..]);
-                let file = fs::File::open(&PathHandler::get_relative_path(&path))?;
+                let file = fs::File::open(&PathHandler::get_relative_path(&helpers::get_object_path(args[1])))?;
 
-                /* let mut decoder = Decoder::new(file)?;
+                let mut decoder = Decoder::new(file)?;
+                let mut header = Vec::new();
 
-                let mut header = [0u8; 8];
-                decoder.read_exact(&mut header)?; */
-                let mut header = Vec::with_capacity(8);
-                Decoder::new(file)?.read_to_end(&mut header)?;
-
-                let header_str = str::from_utf8(&header)?;
-
-                // Extract the object type and size
+                loop {
+                    let mut byte = [0; 1];
+                    decoder.read_exact(&mut byte)?;
+            
+                    // Check if the byte is '\0'
+                    if byte[0] == b'\0' {
+                        break; // Exit the loop if null byte is encountered
+                    }
+                    header.push(byte[0]);
+                }
+            
+                let header_str = String::from_utf8(header)?;
                 let parts: Vec<&str> = header_str.trim_end().split(' ').collect();
 
                 match args[0] {
@@ -411,7 +415,7 @@ impl Command for CatFile {
             None => {
                 return Err(Box::new(io::Error::new(
                     io::ErrorKind::Other,
-                    "No arguments recieve",
+                    "No arguments received",
                 )))
             }
         }
@@ -502,6 +506,11 @@ impl Commit {
     ) -> Result<String, Box<dyn Error>> {
         let head_commit = Head::get_head_commit()?;
         let mut content = String::new();
+
+        let username = env::var("USER")?;
+        let current_time: DateTime<Local> = Local::now();
+        let timestamp = current_time.timestamp();
+
         if head_commit.is_empty() {
             content = format!("tree {}", tree_hash);
         } else {
@@ -534,7 +543,11 @@ impl Command for Commit {
         for arg in arg_slice {
             match arg {
                 MESSAGE_FLAG => message_flag = true,
-                _ => message = Some(arg),
+                _ => {
+                    if message_flag {
+                        message = Some(arg)
+                    }
+                }
             }
         }
         let tree_hash = HashObjectCreator::create_tree_object()?;
@@ -833,79 +846,57 @@ impl PackObjects {
         Ok(())
     }
 
-    pub fn calculate_object_header(&self, object_size: usize, object_type: ObjectType) -> Vec<u8> {
+    fn calculate_object_header(&self, object_type: ObjectType, object_size: usize) -> Vec<u8> {
         let mut header = Vec::new();
     
-        header.push(0);
-        header.extend_from_slice(&object_type.get_object_for_pack_file());
+        // Encode the object type
+        let type_byte: u8 = match object_type {
+            ObjectType::Commit => 0b0001,
+            ObjectType::Tree => 0b0010,
+            ObjectType::Blob => 0b0011,
+            ObjectType::Tag => 0b0100,
+        };
 
-        let binary_size = format!("{:b}", object_size);
+        // Print the bit representation of type_byte
+        // print_bits(&[type_byte]);
 
-        let mut size: Vec<u8> = binary_size
-            .chars()
-            .map(|c| c.to_digit(2).unwrap() as u8)
-            .collect();
-        if size.len() > 4 {
-            header[0] = 1;
-            while size.len() <= 11 {
-                size.insert(0, 0);
-            }
-            header.extend_from_slice(&size[8..]);
-            header.extend_from_slice(&size[..8]);
-            header.insert(8, 0);
+        // Print the bit representation of type_byte after left-shifting by 4 bits
+        let partial_byte = (type_byte << 4);
+        // print_bits(&[partial_byte]);
+
+        // Combine type_byte and the last 4 bits of object_size
+        let combined_byte = (type_byte << 4) | ((object_size as u8) & 0x0F);
+        // print_bits(&[combined_byte]);
+
+        // Encode the object size in a variable-length format if it requires more than one byte
+        let mut size = object_size >> 3;
+        if size > 0 {
+            header.push(combined_byte | 0x80); // Set the first bit to 1 in the first byte
         } else {
-            while size.len() <= 4 {
-                size.insert(0, 0);
-            }
-            header.extend_from_slice(&size);
+            header.push(combined_byte);
         }
 
+        while size > 0 {
+            let mut byte = (size as u8) & 0x7F;
+            size >>= 7;
+            header.push(byte);
+        }
+
+        // Print the bit representation of the final header
+        print_bits(&header);
+
         header
-    } //esta mal este header
+    }
+}
 
-    // pub fn calculate_object_header(&self, object_size: usize, object_type: ObjectType) -> Vec<u8> {
-    //     let mut header = Vec::new();
-    
-    //     header.push(0);
-    //     head.extend_from_slice(object_type.get_object_for_pack_file());
-    //     // Encode type using lower 4 bits
-    //     let mut type_size_byte = (object_type.get_object_for_pack_file() & 0x0F) << 4;
-    
-    //     // Encode size using variable-length encoding
-    //     let mut size_byte = object_size as u8;
-    //     let mut size_extension = Vec::new();
-    
-    //     while size_byte > 0 {
-    //         size_extension.push((size_byte & 0x7F) | 0x80);
-    //         size_byte >>= 7;
-    //     }
-    
-    //     //let last_byte = size_extension.pop().unwrap_or(0) & 0x7F;
-
-    //     // Combine type and size bytes
-    //     //type_size_byte |= last_byte;
-
-    //     if !size_extension.is_empty() {
-    //         type_size_byte |= 0x80;
-    //     }
- 
-    //     // Encodethe first byte (type and partial size) in binary
-    //     for i in (0..8).rev() {
-    //         header.push(((type_size_byte >> i) & 1) as u8);
-    //     }
-
-    //     // Encode the extended size bytes in binary
-    //     for byte in size_extension.into_iter().rev() {
-    //         println!("byte: {}", byte);
-    //         for i in (0..7).rev() {
-    //             header.push(((byte >> i) & 1) as u8);
-    //         }
-    //     }
-
-    //     header
-    // }
-    
-    
+fn print_bits(vector: &[u8]) {
+    for &byte in vector.iter() {
+        for i in (0..8).rev() {
+            let bit = (byte >> i) & 1;
+            print!("{}", bit);
+        }
+    }
+    println!(); // Print a newline after printing all bits
 }
 
 impl Command for PackObjects {
@@ -939,7 +930,12 @@ impl Command for PackObjects {
         for object_hash in object_set { // going through hashes in objects_list
             object_count += 1;
             
-            let (object_type, object_content, object_size) = helpers::read_object(object_hash.to_string())?;
+            // tengo qwue diferenciar si leo un objeto normal o un tree
+            // match helpers::get_object_type(&object_hash) {
+            //     ObjectType::Tree => helpers::read_tree_content(tree_hash)
+            // }
+            println!("reading object: {}", object_hash);
+            let (object_type, object_content, object_size) = helpers::read_object_to_bytes(object_hash.to_string())?;
             // let decompressed_data: String = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&object_path)?)?;
             // let file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
             // let object_header: Vec<String> = file_content[0].split(' ').map(String::from).collect();
@@ -947,7 +943,7 @@ impl Command for PackObjects {
             // let object_size: u64 = object_header[1].parse()?;
             // let object_content: &str = &file_content[1];
             println!("header=> type: {}, size: {}", object_type, object_size);
-            println!("content: {}", object_content);
+            // println!("content: {}", object_content);
             // Calculate the SHA-1 hash of the object content
 
             // index_entries.extend_from_slice(&object_type.get_object_for_pack_file().to_be_bytes());  // Object type
@@ -961,10 +957,11 @@ impl Command for PackObjects {
 
             // Append object content to the uncompressed pack file
             let object_size_usize: usize = object_size.parse()?;
-            let compressed_content = &helpers::compress_content(&object_content)?;
+            let compressed_content: &Vec<u8> = &helpers::compress_bytes(&object_content)?;
             // let header_byte = ((object_type.get_object_for_pack_file() & 0x07) << 4) | ((object_size_u64 & 0x0F) as u8);
             // let header_byte = ((object_type.get_object_for_pack_file() & 0x07) << 4) | ((compressed_content.len() & 0x0F) as u8);
-            let header = self.calculate_object_header(object_size_usize, object_type);
+            let header = self.calculate_object_header(object_type, object_size_usize);
+            // let header = self.calculate_object_header(object_size_usize, object_type);;
             println!("header: {:?}", header);
             pack_file_content.extend_from_slice(&header);
             pack_file_content.extend_from_slice(&compressed_content);
@@ -1259,7 +1256,7 @@ impl UnpackObjects {
             PackObjectType::HashDelta => {
                 println!("HashDelta");
                 let hash = Self::read_hash(pack_file)?; // esto lo tengo que ver como implementar yo. seria la lectura del hash del delta object
-                let (object_type, base_object_content, _) = helpers::read_object(hash)?; // aca como hace referencia a un objecto base, ya va a tener que estar descomprimido
+                let (object_type, base_object_content, _) = helpers::read_object_to_string(hash)?; // aca como hace referencia a un objecto base, ya va a tener que estar descomprimido
                 return Self::apply_delta(pack_file, base_object_content.as_bytes(), object_type);
             }
         }
@@ -1680,7 +1677,7 @@ impl LsTree {
 
             if long_flag {
                 // add size to the line
-                let (_, object_content, object_size) = helpers::read_object(object_hash.clone())?;
+                let (_, object_content, object_size) = helpers::read_object_to_string(object_hash.clone())?;
                 line.push_str(" ");
                 line.push_str(object_size.as_str());
             }

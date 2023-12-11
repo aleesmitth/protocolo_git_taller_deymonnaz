@@ -542,7 +542,7 @@ impl WorkingDirectory {
     
             match file_mode.as_str() {
                 TREE_FILE_MODE => {
-                    let (_, object_content, _) = helpers::read_object(file_hash)?;
+                    let (_, object_content, _) = helpers::read_object_to_string(file_hash)?;
                     println!("object to write content: {} in path: {}", object_content, relative_file_path);
                     let mut object_file = fs::File::create(relative_file_path)?;
                     object_file.write_all(&object_content.as_bytes())?;
