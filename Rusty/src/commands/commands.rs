@@ -511,11 +511,18 @@ impl Commit {
         let current_time: DateTime<Local> = Local::now();
         let timestamp = current_time.timestamp();
 
+        let offset_minutes = current_time.offset().local_minus_utc();
+        let offset_string = format!("{:02}{:02}", offset_minutes / 60, offset_minutes % 60);
+
+        let author_line = format!("author {} {} {}", username, timestamp, offset_string);
+        let commiter_line = format!("commiter {} {} {}", username, timestamp, offset_string);
+
         if head_commit.is_empty() {
             content = format!("tree {}", tree_hash);
         } else {
             content = format!("tree {}\nparent {}", tree_hash, head_commit);
         }
+        content = format!("{}\n{}\n{}\n", content, author_line, commiter_line);
         if let Some(message) = message {
             content = format!("{}\n{}", content, message);
         }
