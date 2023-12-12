@@ -1,39 +1,23 @@
-use std::{fs, error::Error, io, io::Write, io::Read};
+use std::{
+    collections::HashMap, error::Error, fs, io, io::Read, io::Write, path::Path,
+};
 extern crate crypto;
 extern crate libflate;
 
-use crypto::sha1::Sha1;
+use crate::commands::{commands::Log, structs::Head};
 use crypto::digest::Digest;
-use libflate::zlib::{Encoder, Decoder};
-use crate::commands::structs::Head;
+use crypto::sha1::Sha1;
+use libflate::zlib::{Decoder, Encoder};
 
+use super::{commands::PathHandler, structs::ObjectType};
+
+const OBJECT: &str = ".git/objects";
 const R_HEADS: &str = ".git/refs/heads";
 const HEAD_FILE: &str = ".git/HEAD";
-const DEFAULT_BRANCH_NAME: &str = "main";
+const DEFAULT_BRANCH_NAME: &str = "master";
 const INDEX_FILE: &str = ".git/index";
 const CONFIG_FILE: &str = ".git/config";
-
-/// Retrieves the path to the current branch from the Git HEAD file.
-pub fn get_current_branch_path() -> Result<String, Box<dyn Error>> {
-    let head_file_content = read_file_content(HEAD_FILE)?;
-    let split_head_content: Vec<&str> = head_file_content.split(" ").collect();
-    if let Some(branch_path) = split_head_content.get(1) { 
-        let full_branch_path: String = format!(".git/{}", branch_path);
-        return Ok(full_branch_path);
-    }
-    Err(Box::new(io::Error::new(
-        io::ErrorKind::Other,
-        "Eror reading branch path",
-    )))
-}
-
-/// Returns head commit
-pub fn get_head_commit() ->  Result<String, Box<dyn Error>> {    
-    let mut file = fs::File::open(get_current_branch_path()?)?;
-    let mut content = String::new();
-    file.read_to_string(&mut content)?;
-    Ok(content)
-}
+//const R_REMOTES: &str = ".git/refs/remotes";
 
 /// Returns length of a file's content
 pub fn get_file_length(path: &str) -> Result<u64, Box<dyn Error>> {
@@ -52,39 +36,42 @@ pub fn read_file_content(path: &str) -> Result<String, io::Error> {
 /// Give a file's path it reads it's lines and returns them as a Vec<u8>
 pub fn read_file_content_to_bytes(path: &str) -> Result<Vec<u8>, io::Error> {
     let mut file_content: Vec<u8> = Vec::new();
-    let mut file = fs::File::open(path)?;
+    let mut file: fs::File = fs::File::open(path)?;
     file.read_to_end(&mut file_content)?;
     Ok(file_content)
 }
 
-/// Given a file's content it compresses it using an encoder from the libflate external crate and
-/// returns a Vec<u8> containing the encoded content
-// pub fn compress_content(content: &str) -> Result<Vec<u8>, io::Error> {
-//     let mut encoder = Encoder::new(Vec::new())?;
-//     encoder.write_all(content.as_bytes())?;
-//     encoder.finish().into_result()
-// }
 pub fn compress_content(content: &str) -> Result<Vec<u8>, io::Error> {
-    // Crea un nuevo `Encoder` y un vector para almacenar los datos comprimidos.
     let mut encoder = Encoder::new(Vec::new())?;
 
-    // Escribe el contenido (en bytes) en el `Encoder`.
     encoder.write_all(content.as_bytes())?;
-
-    // Finaliza la compresión y obtiene el resultado comprimido.
     let compressed_data = encoder.finish().into_result()?;
 
-    // Devuelve el resultado comprimido.
+    Ok(compressed_data)
+}
+
+pub fn compress_bytes(bytes: &[u8]) -> Result<Vec<u8>, io::Error> {
+    let mut encoder = Encoder::new(Vec::new())?;
+
+    encoder.write_all(bytes)?;
+    let compressed_data = encoder.finish().into_result()?;
+
     Ok(compressed_data)
 }
 
 /// This function takes a `Vec<u8>` containing compressed data, decompresses it using
 /// the zlib decoder, and returns the decompressed content as a `String`.
 pub fn decompress_file_content(content: Vec<u8>) -> Result<String, io::Error> {
-    let mut decompressed_data= String::new();
-    
+    let mut decompressed_data = String::new();
     let mut decoder = Decoder::new(&content[..])?;
     decoder.read_to_string(&mut decompressed_data)?;
+    Ok(decompressed_data)
+}
+
+pub fn decompress_file_content_to_bytes(content: Vec<u8>) -> Result<Vec<u8>, io::Error> {
+    let mut decompressed_data = Vec::new();
+    let mut decoder = Decoder::new(&content[..])?;
+    decoder.read_to_end(&mut decompressed_data)?;
     Ok(decompressed_data)
 }
 
@@ -95,30 +82,15 @@ pub fn generate_sha1_string(str: &str) -> String {
     hasher.result_str()
 }
 
-/// Creates a new branch with the specified name. Creates branch file.
-pub fn create_new_branch(branch_name: &str, head: &mut Head) -> Result<(), Box<dyn Error>> { 
-    let branch_path = format!("{}/{}", R_HEADS, branch_name);
-    
-    let previous_branch_path = get_current_branch_path()?;
-    let last_commit_hash = read_file_content(&previous_branch_path)?;
-    let mut branch_file = fs::File::create(&branch_path)?;
-
-    if branch_name == DEFAULT_BRANCH_NAME {
-        write!(branch_file, "")?;
-    }
-    else {
-        write!(branch_file, "{}", last_commit_hash)?;
-    }
-    head.add_branch(branch_name);
-
-    Ok(())
-}
-
 /// Updates the index file with a new file path, object hash and status for a specific file.
 /// If the file was already contained in the index file, it replaces it.
-pub fn update_file_with_hash(object_hash: &str, new_status: &str, file_path: &str) -> io::Result<()> {
+pub fn update_file_with_hash(
+    object_hash: &str,
+    new_status: &str,
+    file_path: &str,
+) -> io::Result<()> {
     // Read the file into a vector of lines.
-    let file_contents = fs::read_to_string(INDEX_FILE)?;
+    let file_contents = fs::read_to_string(PathHandler::get_relative_path(INDEX_FILE))?;
 
     // Split the file contents into lines.
     let mut lines: Vec<String> = file_contents.lines().map(|s| s.to_string()).collect();
@@ -143,7 +115,7 @@ pub fn update_file_with_hash(object_hash: &str, new_status: &str, file_path: &st
     let updated_contents = lines.join("\n");
 
     // Write the updated contents back to the file.
-    fs::write(INDEX_FILE, updated_contents)?;
+    fs::write(PathHandler::get_relative_path(INDEX_FILE), updated_contents)?;
 
     Ok(())
 }
@@ -151,16 +123,15 @@ pub fn update_file_with_hash(object_hash: &str, new_status: &str, file_path: &st
 /// Removes an object's entry from the index file by its file path.
 pub fn remove_object_from_file(file_path: &str) -> io::Result<()> {
     // Read the file into a vector of lines.
-    
+
     let file_contents = fs::read_to_string(INDEX_FILE)?;
-    
+
     // Split the file contents into lines.
     let mut lines: Vec<String> = file_contents.lines().map(|s| s.to_string()).collect();
 
     // Search for the hash in the lines.
     let mut found_index: Option<usize> = None;
     for (index, line) in lines.iter().enumerate() {
-        
         if line.starts_with(file_path) {
             found_index = Some(index);
             break;
@@ -170,8 +141,7 @@ pub fn remove_object_from_file(file_path: &str) -> io::Result<()> {
     // If the hash was found, remove the line.
     if let Some(index) = found_index {
         lines.remove(index);
-    }
-    else {
+    } else {
         return Err(io::Error::new(
             io::ErrorKind::Other,
             "path did not match any files",
@@ -187,26 +157,47 @@ pub fn remove_object_from_file(file_path: &str) -> io::Result<()> {
     Ok(())
 }
 
-pub fn list_files_recursively(dir_path: &str, files_list: &mut Vec<String>) -> io::Result<()> {
+pub fn get_all_branches() -> Result<Vec<String>, Box<dyn Error>> {
+    let current_branch_path = PathHandler::get_relative_path(&Head::get_current_branch_path()?);
+    println!("test: {:?}", current_branch_path);
+
+    // Extract the directory path from the file path
+    let dir_path = Path::new(&current_branch_path)
+        .parent()
+        .ok_or("Failed to get parent directory")?;
+
+    // Remove the ".git/" prefix if it exists
+    let dir_path_without_git = dir_path.strip_prefix(".git/").unwrap_or(dir_path);
+
+    // Read the contents of the directory
     let entries = fs::read_dir(dir_path)?;
 
+    // Iterate over the entries
+    let mut branches: Vec<String> = Vec::new();
     for entry in entries {
         let entry = entry?;
-        let file_type = entry.file_type()?;
-        let entry_path = entry.path();
 
-        if file_type.is_dir() {
-            // If it's a subdirectory, recurse into it
-            list_files_recursively(entry_path.to_str().ok_or(io::Error::from(io::ErrorKind::InvalidInput))?, files_list)?;
-        } else if file_type.is_file() {
-            // If it's a file, add its path to the list
-            if let Some(current_obj_path) = entry_path.to_str() {
-                files_list.push(current_obj_path.to_string());
-            }
-        }
+        let file_name = dir_path_without_git
+                .join(entry.file_name())
+                .to_string_lossy()
+                .into_owned();
+        // Get the file name and content
+        // let file_name = if entry.path() == Path::new(&current_branch_path) {
+        //     "HEAD".to_string()
+        // } else {
+        //     dir_path_without_git
+        //         .join(entry.file_name())
+        //         .to_string_lossy()
+        //         .into_owned()
+        // };
+        let file_content = fs::read_to_string(entry.path())?;
+
+        // Combine content and filename
+        let branch = format!("{} {}\n", file_content, file_name);
+        branches.push(branch);
     }
 
-    Ok(())
+    Ok(branches)
 }
 
 pub fn get_remote_url(name: &str) -> Result<String, Box<dyn Error>> {
@@ -234,3 +225,405 @@ pub fn generate_sha1_string_from_bytes(data: &Vec<u8>) -> String {
     hasher.input(&data);
     hasher.result_str()
 }
+
+pub fn read_object_to_bytes(hash: String) -> Result<(ObjectType, Vec<u8>, String), Box<dyn Error>> {
+
+    let mut file = fs::File::open(PathHandler::get_relative_path(&get_object_path(&hash)))?;
+    let mut buffer = Vec::new();
+    file.read_to_end(&mut buffer);
+    let file_data = decompress_file_content_to_bytes(buffer)?;
+
+    let split_content: Vec<Vec<u8>> = file_data.splitn(2, |&c| c == 0).map(|slice| slice.to_vec()).collect();
+
+    let object_header: Vec<String> = String::from_utf8_lossy(&split_content[0]).to_string().split(' ').map(String::from).collect();
+    let object_type = ObjectType::new(&object_header[0]).ok_or(io::Error::new(
+        io::ErrorKind::InvalidData,
+        "Failed to determine object type",
+    ))?;
+    let object_size = if object_header.len() >= 2 { object_header[1].clone() } else { String::new() };
+    
+    Ok((object_type, split_content[1].clone(), object_size))
+}
+
+pub fn read_object_to_string(hash: String) -> Result<(ObjectType, String, String), Box<dyn Error>> {
+
+    let (object_type, file_content, object_size) = read_object_to_bytes(hash)?;
+
+    let content_to_string = String::from_utf8_lossy(&file_content).to_string();
+
+    Ok((object_type, content_to_string, object_size))
+}
+
+pub fn get_remote_tracking_branches() -> Result<HashMap<String, (String, String)>, Box<dyn Error>> {
+    // Read the content of the Git configuration file
+    let config_content = read_file_content(&PathHandler::get_relative_path(CONFIG_FILE))?;
+
+    // Initialize a HashMap to store branch names and their corresponding remotes
+    let mut branches_and_remotes = HashMap::new();
+
+    // Parse the INI-like configuration content manually
+    let mut lines = config_content.lines().peekable();
+    while let Some(line) = lines.next() {
+        // Check if the line represents a section header
+        if line.starts_with("[branch ") {
+            let branch_name = line.trim_start_matches("[branch ").trim_end_matches(']');
+            // Extract remote and merge values
+            let mut remote = None;
+            let mut merge = None;
+
+            while let Some(next_line) = lines.next() {
+                if next_line.starts_with("remote = ") {
+                    remote = Some(next_line.trim_start_matches("remote = ").to_string());
+                } else if next_line.starts_with("merge = ") {
+                    merge = Some(
+                        next_line
+                            .trim_start_matches("merge = refs/heads/")
+                            .to_string(),
+                    );
+                } else if next_line.starts_with('[') {
+                    // End of the current section
+                    break;
+                }
+            }
+
+            // If both remote and merge values are present, store in the HashMap
+            if let (Some(remote), Some(merge)) = (remote, merge) {
+                // branches_and_remotes.insert(branch_name.to_string(), format!("{}/{}", remote, merge));
+                branches_and_remotes.insert(branch_name.to_string(), (remote, merge));
+            }
+        }
+    }
+    Ok(branches_and_remotes)
+}
+
+pub fn update_local_branch_with_commit(
+    remote_name: &str,
+    branch_name: &str,
+    remote_hash: &str,
+) -> Result<(), Box<dyn Error>> {
+    let config_content = read_file_content(&PathHandler::get_relative_path(&CONFIG_FILE))?;
+
+    let branch_header = format!("[branch '{}']", branch_name);
+    let mut lines = config_content.lines().peekable();
+    while let Some(line) = lines.next() {
+        if line == branch_header {
+            let mut remote = None;
+            while let Some(next_line) = lines.next() {
+                if next_line.starts_with("remote = ") {
+                    remote = Some(next_line.trim_start_matches("remote = ").to_string());
+                } else if next_line.starts_with('[') {
+                    break;
+                }
+            }
+            if let Some(remote) = remote {
+                if remote == remote_name {
+                    let _ = update_branch_hash(branch_name, remote_hash);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn update_branch_hash(branch_name: &str, new_commit_hash: &str) -> Result<(), Box<dyn Error>> {
+    let mut file = fs::File::create(PathHandler::get_relative_path(&get_branch_path(branch_name)))?;
+    file.write_all(new_commit_hash.as_bytes())?;
+    Ok(())
+}
+
+pub fn get_branch_last_commit(branch_path: &str) -> Result<String, Box<dyn Error>> {
+    let mut file: fs::File = fs::File::open(branch_path)?;
+    let mut content = String::new();
+    file.read_to_string(&mut content)?;
+    Ok(content)
+}
+
+pub fn get_branch_path(branch_name: &str) -> String {
+    format!("{}/{}", R_HEADS, branch_name)
+}
+
+pub fn get_object_path(object_hash: &str) -> String {
+    println!("{}", object_hash);
+    format!("{}/{}/{}", OBJECT, object_hash[..2].to_string(), object_hash[2..].to_string())
+}
+
+pub fn find_common_ancestor_commit(_current_branch: &str, merging_branch: &str) -> Result<String, Box<dyn Error>> {
+    let mut current_branch_log = Vec::new();
+    let current_branch_commit = Head::get_head_commit()?;
+    let _ = Log::new().generate_log_entries(&mut current_branch_log, current_branch_commit);
+    println!("current branch log: {:?}", current_branch_log);
+
+
+    let mut merging_branch_log = Vec::new();
+    let merging_branch_commit = get_branch_last_commit(&get_branch_path(merging_branch))?;
+    let _ = Log::new().generate_log_entries(&mut merging_branch_log, merging_branch_commit);
+    println!("merging branch log: {:?}", merging_branch_log);
+    // tal vez eso parametrizarlo en una funcion
+
+    for (commit, _message) in merging_branch_log {
+        if current_branch_log.contains(&(commit.clone(), _message)) {
+            return Ok(commit);
+        }
+    }
+
+    Ok(String::new())
+}
+
+pub fn ancestor_commit_exists(current_commit_hash: &str, merging_commit_hash: &str) -> Result<bool, Box<dyn Error>> {
+    // let current_branch_commit = Head::get_head_commit()?;
+    // println!("current commit: {}", current_branch_commit);
+    let mut merging_branch_log = Vec::new();
+    // aca rompe al hacer con fetch porque estamos queriendo unir una branch que esta en remotes, tal vez ya habria que pasar los hash de commits como parametro
+    // de cambiar eso el nombre pasaria a ser tipo ancestor_commit_exists()
+    // let merging_branch_commit = get_branch_last_commit(&get_branch_path(merging_branch))?;
+    println!("mergin commitg: {}", merging_commit_hash);
+    if current_commit_hash.is_empty() {
+        println!("true");
+        return Ok(true);
+    }
+    
+    println!("generating log...");
+    let _ = Log::new().generate_log_entries(&mut merging_branch_log, merging_commit_hash.to_string());
+    println!("log: {:?}", merging_branch_log);
+    for (commit, _message) in merging_branch_log {
+        println!("commit: {} == current commit: {} ", commit, current_commit_hash);
+        if commit == current_commit_hash {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Given a commit's hash it accesses its file and returns the hash of its associated
+/// tree object.
+pub fn get_commit_tree(commit_hash: &str) -> Result<String, Box<dyn Error>> {
+    //println!("commit hash: {}", commit_hash);
+    let decompressed_data = decompress_file_content(read_file_content_to_bytes(&PathHandler::get_relative_path(&get_object_path(commit_hash)))?)?;
+
+    let commit_file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
+    //println!("commit_file_content: {:?}", commit_file_content);
+
+    let commit_file_lines: Vec<String> = commit_file_content[1].lines().map(|s| s.to_string()).collect();
+    //println!("commit_file_lines: {:?}", commit_file_lines);
+    let tree_split_line: Vec<String> = commit_file_lines[0].split_whitespace().map(String::from).collect();
+    //println!("tree_split_line: {:?}", tree_split_line);
+    
+    let tree_hash_trimmed = &tree_split_line[1];
+
+    Ok(tree_hash_trimmed.to_string())
+}
+
+/// Checks if the file in the given path exists and returns true or false
+pub fn check_if_file_exists(file_path: &str) -> bool {
+    if let Ok(metadata) = fs::metadata(PathHandler::get_relative_path(file_path)) {
+        if metadata.is_file() {
+            return true
+        }
+    }
+    false
+}
+
+/// Checks if the directory in the given path exists and returns true or false
+pub fn check_if_directory_exists(dir_path: &str) -> bool {
+    if let Ok(metadata) = fs::metadata(dir_path) {
+        if metadata.is_dir() {
+            return true
+        }
+    }
+    false
+}
+
+pub fn hex_string_to_bytes(bytes: &[u8]) -> String {
+    let mut hash: String = String::new();
+    for byte in bytes {
+        // println!("{:x}", byte);
+        hash.push_str(&format!("{:x}", byte));
+    }
+
+    hash
+}
+
+pub fn read_tree_content(tree_hash: &str) -> Result<Vec<(String, String, String)>, Box<dyn Error>> {
+    println!("reading tree content..");
+
+    println!("before reading file");
+    let compressed_content = read_file_content_to_bytes(&PathHandler::get_relative_path(&get_object_path(tree_hash)))?;
+    let tree_content = decompress_file_content_to_bytes(compressed_content)?;
+    println!("decompressed data: {:?}", tree_content);
+    // let decompressed = decompress_file_content(buffer)?;
+    // println!("tree content: {}", decompressed);
+    // let buffer_to_string = String::from_utf8_lossy(&decompressed).to_string();
+    // let split_content: Vec<String> = decompressed.splitn(2, '\0').map(String::from).collect();
+    let split_content: Vec<Vec<u8>> = tree_content.splitn(2, |&c| c == 0).map(|slice| slice.to_vec()).collect();
+
+    let mut divided_content = Vec::new();
+    println!("tree split_content: {:?}", split_content[1]);
+    // let mut substrings: Vec<String> = split_content[1].split("\0").map(String::from).collect();
+    let mut substrings: Vec<Vec<u8>> = split_content[1].split(|&c| c == 0).map(|slice| slice.to_vec()).collect();
+    
+    let tree_data: Vec<Vec<u8>> = substrings[0].split(|&c| c == 32).map(|slice| slice.to_vec()).collect();
+
+    let mut file_mode = String::from_utf8_lossy(&tree_data[0]).to_string();
+    let mut file_name = String::from_utf8_lossy(&tree_data[1]).to_string();
+    substrings.remove(0);
+    for substring in &substrings {
+        println!("substring: {:?}", &substring);
+        let processed_bytes = &substring[..20];
+
+        let hash_string = hex_string_to_bytes(&processed_bytes);
+        println!("hash_string: {}", hash_string);
+
+        divided_content.push((file_mode.clone(), file_name.clone(), hash_string));
+        println!("substring len: {}", substring.len());
+        if substring.len() > 20 {
+            let tree_entry_data =  String::from_utf8_lossy(&substring[20..]).to_string();
+            println!("entry data: {}", tree_entry_data);
+            let split_entry: Vec<String> = tree_entry_data.split_whitespace().map(String::from).collect();
+            file_mode = split_entry[0].clone();
+            file_name = split_entry[1].clone();
+        }
+    }
+    println!("{:?}", divided_content);
+    Ok(divided_content)
+}
+
+pub fn convert_hash_to_decimal_bytes(hash: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+    let mut decimal_hash = Vec::new();
+    for chunk in hash.chars().collect::<Vec<char>>().chunks(2) {
+        let chunk_str: String = chunk.iter().collect();
+        let result = u8::from_str_radix(&chunk_str, 16)?;
+        decimal_hash.push(result);
+    }
+
+    println!("hash: {:?}", decimal_hash);
+    Ok(decimal_hash)
+} 
+
+pub const RELATIVE_PATH: &str = "RELATIVE_PATH";
+/* pub const RELATIVE_PATH: &str = "RELATIVE_PATH";
+#[cfg(test)]
+mod tests {
+    use crate::commands::commands::{Init, Command, Branch};
+
+    use super::*;
+    use std::{fs, env};
+    use tempfile::tempdir;
+
+    fn common_setup() -> (tempfile::TempDir, String) {
+        // Create a temporary directory
+        let temp_dir = tempdir().unwrap();
+        let temp_path = temp_dir.path().to_str().unwrap().to_string();
+
+        // Set the environment variable for the relative path
+        env::set_var(RELATIVE_PATH, &temp_path);
+
+        // Create and execute the Init command
+        let init_command = Init::new();
+        let result = init_command.execute(None);
+
+        // Check if the Init command was successful
+        assert!(result.is_ok(), "Init command failed: {:?}", result);
+
+        (temp_dir, temp_path)
+    }
+
+    #[test]
+    fn test_get_current_branch_path() {
+        // Common setup: create a temporary directory and initialize a Git repository
+        let (_temp_dir, _temp_path) = common_setup();
+
+        // Create a sample branch name
+        let branch_name = "main";
+
+        // Create and execute the Branch command to set the initial branch
+        let branch_command = Branch::new();
+        let result = branch_command.execute(Some((&[branch_name]).to_vec()));
+        assert!(result.is_ok(), "Branch command failed: {:?}", result);
+
+        // Call the function to get the current branch path
+        let current_branch_path = get_current_branch_path().expect("Failed to get current branch path");
+
+        // Check if the current branch path matches the expected path
+        let expected_branch_path = format!(".git/refs/heads/{}", branch_name);
+        assert_eq!(current_branch_path, expected_branch_path);
+    }
+
+
+    #[test]
+    fn test_get_file_length() {
+        // Create a temporary file with some content
+        let temp_dir = tempdir().expect("Failed to create temporary directory");
+        let file_path = temp_dir.path().join("test_file.txt");
+        fs::write(&file_path, "Test content").expect("Failed to write to file");
+
+        // Call the function to get the file length
+        let file_length = get_file_length(file_path.to_str().unwrap()).unwrap();
+
+        // Check if the file length is as expected
+        assert_eq!(file_length, 12);
+    }
+
+    #[test]
+    fn test_read_file_content() {
+        // Create a temporary file with some content
+        let temp_dir = tempdir().expect("Failed to create temporary directory");
+        let file_path = temp_dir.path().join("test_file.txt");
+        fs::write(&file_path, "Test content").expect("Failed to write to file");
+
+        // Call the function to read file content
+        let content = read_file_content(file_path.to_str().unwrap()).unwrap();
+
+        // Check if the content is as expected
+        assert_eq!(content, "Test content");
+    }
+
+    #[test]
+    fn test_read_file_content_to_bytes() {
+        // Create a temporary file with some content
+        let temp_dir = tempdir().expect("Failed to create temporary directory");
+        let file_path = temp_dir.path().join("test_file.txt");
+        fs::write(&file_path, "Test content").expect("Failed to write to file");
+
+        // Call the function to read file content to bytes
+        let content_bytes = read_file_content_to_bytes(file_path.to_str().unwrap()).unwrap();
+
+        // Check if the content bytes are as expected
+        assert_eq!(content_bytes, b"Test content");
+    }
+    #[test]
+    fn test_compress_and_decompress_content() {
+        let original_content = "This is a test content.";
+        let compressed_content = compress_content(original_content).unwrap();
+        let decompressed_content = decompress_file_content(compressed_content).unwrap();
+        assert_eq!(original_content, decompressed_content);
+    }
+
+    #[test]
+    fn test_generate_sha1_string() {
+        let input_str = "Hello, world!";
+        let hash = generate_sha1_string(input_str);
+        // TODO: Add assertions based on known hash values
+        assert_eq!(hash.len(), 40);
+    }
+
+    #[test]
+    fn test_create_new_branch() {
+        // Common setup: create a temporary directory and initialize a Git repository
+        let (_temp_dir, _temp_path) = common_setup();
+    
+        // Create a new branch
+        let mut head = Head::new();
+        let branch_name = "test_branch";
+        create_new_branch(branch_name, &mut head).expect("Failed to create new branch");
+    
+        // Check if the branch file was created
+        let branch_file_path = format!(".git/refs/heads/{}", branch_name);
+        assert!(Path::new(&PathHandler::get_relative_path(&branch_file_path)).exists(), "Branch file not created");
+    
+        // Check if the Head state was updated
+        let current_branch = head.get_current_branch().expect("Failed to get current branch");
+        assert_eq!(current_branch, branch_name, "Head state not updated");
+    }
+    
+}
+ */

@@ -1,0 +1,138 @@
+{
+    // Use IntelliSense para saber los atributos posibles.
+    // Mantenga el puntero para ver las descripciones de los existentes atributos.
+    // Para más información, visite: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'rusty'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=rusty"
+                ],
+                "filter": {
+                    "name": "rusty",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'main'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=main",
+                    "--package=rusty"
+                ],
+                "filter": {
+                    "name": "main",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'main'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=main",
+                    "--package=rusty"
+                ],
+                "filter": {
+                    "name": "main",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'server'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=server",
+                    "--package=rusty"
+                ],
+                "filter": {
+                    "name": "server",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'server'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=server",
+                    "--package=rusty"
+                ],
+                "filter": {
+                    "name": "server",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'ui'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=ui",
+                    "--package=rusty"
+                ],
+                "filter": {
+                    "name": "ui",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'ui'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=ui",
+                    "--package=rusty"
+                ],
+                "filter": {
+                    "name": "ui",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
