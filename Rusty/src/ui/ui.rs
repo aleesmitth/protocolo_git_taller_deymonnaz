@@ -247,13 +247,14 @@ fn main() {
             match result {
                 Ok(mssg) => {
                     let  output_label_mut = output_label_ref.borrow_mut();
-                    let success_message = format!("<span font_desc='20'>Command run successfully\n{}</span>", mssg);
+                    let success_message = format!("<span font_desc='20'>Command run successfully\n{}</span>", mssg.replace("@", "&#64"));
                     output_label_mut.set_markup(&success_message);
                 },
                 Err(err) => {
-                    let error_message = format!("<span font_desc='20'>Error during Command:\n{}</span>", err);
+                    let error_message = format!("<span font_desc='20'>Error during Command:\n{}</span>", err.to_string().replace("@", "&#64"));
                     let  output_label_mut = output_label_ref.borrow_mut();
                     output_label_mut.set_markup(&error_message);
+
                 }
         }}});
 
