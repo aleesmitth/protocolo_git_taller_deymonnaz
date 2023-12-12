@@ -1,3 +1,4 @@
+use crate::commands::commands::PathHandler;
 use crate::commands::helpers;
 use crate::commands::protocol_utils;
 use crate::commands::commands::PackObjects;
@@ -48,7 +49,7 @@ impl ClientProtocol {
         }
 
         let current_branch_ref = Head::get_current_branch_ref()?;
-        let last_commit_hash: String = Head::get_head_commit()?;
+        let last_commit_hash: String = Head::get_head_commit()?.replace("\n", &String::new());
         println!("last_commit: {}", last_commit_hash);
         println!("refs in remote: {:?}", refs_in_remote);
         let mut push_line = String::new();
@@ -56,7 +57,7 @@ impl ClientProtocol {
             // let want_request = protocol_utils::format_line_to_send(format!("{} {}\n", protocol_utils::WANT_REQUEST, ref_hash));
             // println!("want_request sent: {}", want_request.clone());
             if ref_name.to_string() == current_branch_ref {
-                push_line = protocol_utils::format_line_to_send(format!("{} {} {}", ref_hash, last_commit_hash, ref_name));
+                push_line = protocol_utils::format_line_to_send(format!("{} {} {}\n", ref_hash, last_commit_hash, ref_name));
                 println!("push line: {}", push_line);
             }
 
@@ -68,7 +69,7 @@ impl ClientProtocol {
         }
 
         if push_line.is_empty() {
-            push_line = protocol_utils::format_line_to_send(format!("{} {} {}", ZERO_HASH, last_commit_hash, current_branch_ref));
+            push_line = protocol_utils::format_line_to_send(format!("{} {} {}\n", ZERO_HASH, last_commit_hash, current_branch_ref));
             println!("push line: {}", push_line);
         }
 
@@ -77,8 +78,9 @@ impl ClientProtocol {
         let _ = stream.write_all(protocol_utils::REQUEST_LENGTH_CERO.as_bytes());
         println!("sent 0000");
         
-        PackObjects::new().execute(Some(vec![&last_commit_hash]))?;
-        let mut pack_file = fs::File::open(".git/pack/pack_file.pack")?;
+        let pack_checksum = PackObjects::new().execute(Some(vec![&last_commit_hash]))?;
+        let pack_file_path = format!(".git/pack/pack-{}.pack", pack_checksum);
+        let mut pack_file = fs::File::open(pack_file_path)?;
         std::io::copy(&mut pack_file, &mut stream)?;
         println!("sending pack file");
         // stream.flush()?;
@@ -123,7 +125,8 @@ impl ClientProtocol {
         println!("response received {:?}", response_received);
         for line in response_received {
             if let [remote_hash, branch_name, ..] = line.split_whitespace().collect::<Vec<&str>>().as_slice() {
-                refs_in_remote.push((remote_hash.to_string(), branch_name.to_string()));
+                let split_branch_name: Vec<String> = branch_name.split("\0").map(String::from).collect();
+                refs_in_remote.push((remote_hash.to_string(), split_branch_name[0].to_string()));
             }
         }
         println!("branches received");
@@ -145,15 +148,18 @@ impl ClientProtocol {
         println!("sent done");
         stream.flush()?;
 
-        let _: Vec<String> =
+        let read_lines: Vec<String> =
             protocol_utils::read_until(&mut reader, protocol_utils::NAK_RESPONSE, false)?;
         println!("received NAK");
 
         let mut buffer = Vec::new();
         stream.read_to_end(&mut buffer)?;
+        println!("buffer received: {:?}", buffer);
         // ACA PODRIA HACER EL CHECKSUM: asi ya verifica apenas me llega que esta bien y sino lanzo error
-        let mut file = fs::File::create(".git/pack/received_pack_file.pack")?;
+        let mut file = fs::File::create(PathHandler::get_relative_path(".git/pack/received_pack_file.pack"))?;
         file.write_all(&buffer)?;
+
+        println!("pack file received");
 
         stream.shutdown(Shutdown::Both)?;
 

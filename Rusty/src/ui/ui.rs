@@ -55,6 +55,12 @@ fn main() {
         let text_input_ref = Rc::new(RefCell::new(text_input.clone()));
         text_input.set_placeholder_text(Some("Enter text here"));
 
+        let entry_buffer_flag = EntryBuffer::new(None);
+        let flag_input = Entry::with_buffer(&entry_buffer_flag);
+        flag_input.set_size_request(WIDTH_BUTTON, HEIGHT_BUTTON);
+        let flag_input_ref = Rc::new(RefCell::new(flag_input.clone()));
+        flag_input.set_placeholder_text(Some("Enter flag here"));
+
         let button_right = Button::with_label("Commit");
         button_right.set_size_request(WIDTH_BUTTON, HEIGHT_BUTTON);
         let button_right_ref = Rc::new(RefCell::new(button_right.clone()));
@@ -64,11 +70,14 @@ fn main() {
         commit_button.connect_clicked({
             let button_right_ref = Rc::clone(&button_right_ref);
             let text_input_ref = Rc::clone(&text_input_ref);
+            let flag_input_ref = Rc::clone(&flag_input_ref);
             let actual_command_ref = Rc::clone(&actual_command_ref);
             let output_label_ref = Rc::clone(&output_label_ref);
             move |_| {
             text_input_ref.borrow_mut().set_text("");
             text_input_ref.borrow_mut().show();
+            flag_input_ref.borrow_mut().set_text("");
+            flag_input_ref.borrow_mut().hide();
             output_label_ref.borrow_mut().set_text("");
             let mut actual_command_mut = actual_command_ref.borrow_mut();
             *actual_command_mut = COMMIT_COMMAND_NAME;
@@ -81,11 +90,14 @@ fn main() {
         pull_button.connect_clicked({
             let button_right_ref = Rc::clone(&button_right_ref);
             let text_input_ref = Rc::clone(&text_input_ref);
+            let flag_input_ref = Rc::clone(&flag_input_ref);
             let actual_command_ref = Rc::clone(&actual_command_ref);
             let output_label_ref = Rc::clone(&output_label_ref);
             move |_| {
             text_input_ref.borrow_mut().set_text("");
             text_input_ref.borrow_mut().hide();
+            flag_input_ref.borrow_mut().set_text("");
+            flag_input_ref.borrow_mut().hide();
             output_label_ref.borrow_mut().set_text("");
             let mut actual_command_mut = actual_command_ref.borrow_mut();
             *actual_command_mut = PULL_COMMAND_NAME;
@@ -98,11 +110,14 @@ fn main() {
         push_button.connect_clicked({
             let button_right_ref = Rc::clone(&button_right_ref);
             let text_input_ref = Rc::clone(&text_input_ref);
+            let flag_input_ref = Rc::clone(&flag_input_ref);
             let actual_command_ref = Rc::clone(&actual_command_ref);
             let output_label_ref = Rc::clone(&output_label_ref);
             move |_| {
             text_input_ref.borrow_mut().set_text("");
             text_input_ref.borrow_mut().hide();
+            flag_input_ref.borrow_mut().set_text("");
+            flag_input_ref.borrow_mut().hide();
             output_label_ref.borrow_mut().set_text("");
             let mut actual_command_mut = actual_command_ref.borrow_mut();
             *actual_command_mut = PUSH_COMMAND_NAME;
@@ -115,11 +130,14 @@ fn main() {
         add_button.connect_clicked({
             let button_right_ref = Rc::clone(&button_right_ref);
             let text_input_ref = Rc::clone(&text_input_ref);
+            let flag_input_ref = Rc::clone(&flag_input_ref);
             let actual_command_ref = Rc::clone(&actual_command_ref);
             let output_label_ref = Rc::clone(&output_label_ref);
             move |_| {
             text_input_ref.borrow_mut().set_text("");
             text_input_ref.borrow_mut().show();
+            flag_input_ref.borrow_mut().set_text("");
+            flag_input_ref.borrow_mut().hide();
             output_label_ref.borrow_mut().set_text("");
             let mut actual_command_mut = actual_command_ref.borrow_mut();
             *actual_command_mut = ADD_COMMAND_NAME;
@@ -133,10 +151,13 @@ fn main() {
             let button_right_ref = Rc::clone(&button_right_ref);
             let actual_command_ref = Rc::clone(&actual_command_ref);
             let text_input_ref = Rc::clone(&text_input_ref);
+            let flag_input_ref = Rc::clone(&flag_input_ref);
             let output_label_ref = Rc::clone(&output_label_ref);
             move |_| {
             text_input_ref.borrow_mut().set_text("");
             text_input_ref.borrow_mut().show();
+            flag_input_ref.borrow_mut().set_text("");
+            flag_input_ref.borrow_mut().hide();
             output_label_ref.borrow_mut().set_text("");
             let mut actual_command_mut = actual_command_ref.borrow_mut();
             *actual_command_mut = REMOVE_COMMAND_NAME;
@@ -150,10 +171,13 @@ fn main() {
             let button_right_ref = Rc::clone(&button_right_ref);
             let actual_command_ref = Rc::clone(&actual_command_ref);
             let text_input_ref = Rc::clone(&text_input_ref);
+            let flag_input_ref = Rc::clone(&flag_input_ref);
             let output_label_ref = Rc::clone(&output_label_ref);
             move |_| {
             text_input_ref.borrow_mut().set_text("");
             text_input_ref.borrow_mut().show();
+            flag_input_ref.borrow_mut().set_text("");
+            flag_input_ref.borrow_mut().hide();
             output_label_ref.borrow_mut().set_text("");
             let mut actual_command_mut = actual_command_ref.borrow_mut();
             *actual_command_mut = CHECKOUT_COMMAND_NAME;
@@ -167,10 +191,13 @@ fn main() {
             let button_right_ref = Rc::clone(&button_right_ref);
             let actual_command_ref = Rc::clone(&actual_command_ref);
             let text_input_ref = Rc::clone(&text_input_ref);
+            let flag_input_ref = Rc::clone(&flag_input_ref);
             let output_label_ref = Rc::clone(&output_label_ref);
             move |_| {
             text_input_ref.borrow_mut().set_text("");
             text_input_ref.borrow_mut().show();
+            flag_input_ref.borrow_mut().set_text("");
+            flag_input_ref.borrow_mut().show();
             output_label_ref.borrow_mut().set_text("");
             let mut actual_command_mut = actual_command_ref.borrow_mut();
             *actual_command_mut = LOG_COMMAND_NAME;
@@ -184,10 +211,13 @@ fn main() {
             let button_right_ref = Rc::clone(&button_right_ref);
             let actual_command_ref = Rc::clone(&actual_command_ref);
             let text_input_ref = Rc::clone(&text_input_ref);
+            let flag_input_ref = Rc::clone(&flag_input_ref);
             let output_label_ref = Rc::clone(&output_label_ref);
             move |_| {
             text_input_ref.borrow_mut().set_text("");
             text_input_ref.borrow_mut().hide();
+            flag_input_ref.borrow_mut().set_text("");
+            flag_input_ref.borrow_mut().hide();
             output_label_ref.borrow_mut().set_text("");
             let mut actual_command_mut = actual_command_ref.borrow_mut();
             *actual_command_mut = BRANCH_COMMAND_NAME;
@@ -201,10 +231,13 @@ fn main() {
             let button_right_ref = Rc::clone(&button_right_ref);
             let actual_command_ref = Rc::clone(&actual_command_ref);
             let text_input_ref = Rc::clone(&text_input_ref);
+            let flag_input_ref = Rc::clone(&flag_input_ref);
             let output_label_ref = Rc::clone(&output_label_ref);
             move |_| {
             text_input_ref.borrow_mut().set_text("");
             text_input_ref.borrow_mut().hide();
+            flag_input_ref.borrow_mut().set_text("");
+            flag_input_ref.borrow_mut().hide();
             output_label_ref.borrow_mut().set_text("");
             let mut actual_command_mut = actual_command_ref.borrow_mut();
             *actual_command_mut = STATUS_COMMAND_NAME;
@@ -216,10 +249,13 @@ fn main() {
             let actual_command_ref = Rc::clone(&actual_command_ref);
             let output_label_ref = Rc::clone(&output_label_ref);
             let text_input_ref = Rc::clone(&text_input_ref);
+            let flag_input_ref = Rc::clone(&flag_input_ref);
             move |_| {
             
             let actual_command_mut = actual_command_ref.borrow_mut();
             let text = entry_buffer.text();
+            let flag = entry_buffer_flag.text();   
+            let formatted_flag = format!("-{}", flag);
 
             let my_vec: Vec<&str> = vec![&text];
             let args: Option<Vec<&str>> = Option::from(my_vec);
@@ -234,7 +270,7 @@ fn main() {
                     Commit::new().execute(commit_args)
                 }
                 LOG_COMMAND_NAME => {
-                    let log_vec: Vec<&str> = text.split_whitespace().collect();
+                    let log_vec: Vec<&str> = vec![&formatted_flag, &text];
                     let log_args: Option<Vec<&str>> = Option::from(log_vec);
                     Log::new().execute(log_args)
                 }
@@ -263,6 +299,7 @@ fn main() {
 
         let vbox = Box::new(gtk::Orientation::Vertical, 0);
         vbox.pack_start(&title_label, false, false, 0);
+        vbox.pack_start(&flag_input, false, false, 0);
         vbox.pack_start(&text_input, false, false, 0);
         vbox.pack_start(&button_right, false, false, 0);
         vbox.pack_start(&output_label, false, false, 0);
@@ -280,7 +317,6 @@ fn main() {
 
         paned.pack1(&vbox2, false, false);
         paned.pack2(&vbox, false, false);
-
 
         window.add(&paned);
         paned.set_position(200);

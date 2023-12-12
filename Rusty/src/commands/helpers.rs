@@ -63,21 +63,15 @@ pub fn compress_bytes(bytes: &[u8]) -> Result<Vec<u8>, io::Error> {
 /// the zlib decoder, and returns the decompressed content as a `String`.
 pub fn decompress_file_content(content: Vec<u8>) -> Result<String, io::Error> {
     let mut decompressed_data = String::new();
-    println!("decoding");
     let mut decoder = Decoder::new(&content[..])?;
-    println!("created decoder");
     decoder.read_to_string(&mut decompressed_data)?;
-    println!("read to string");
     Ok(decompressed_data)
 }
 
 pub fn decompress_file_content_to_bytes(content: Vec<u8>) -> Result<Vec<u8>, io::Error> {
     let mut decompressed_data = Vec::new();
-    println!("decoding");
     let mut decoder = Decoder::new(&content[..])?;
-    println!("created decoder");
     decoder.read_to_end(&mut decompressed_data)?;
-    println!("read to string");
     Ok(decompressed_data)
 }
 
@@ -164,7 +158,7 @@ pub fn remove_object_from_file(file_path: &str) -> io::Result<()> {
 }
 
 pub fn get_all_branches() -> Result<Vec<String>, Box<dyn Error>> {
-    let current_branch_path = Head::get_current_branch_path()?;
+    let current_branch_path = PathHandler::get_relative_path(&Head::get_current_branch_path()?);
     println!("test: {:?}", current_branch_path);
 
     // Extract the directory path from the file path
@@ -183,15 +177,19 @@ pub fn get_all_branches() -> Result<Vec<String>, Box<dyn Error>> {
     for entry in entries {
         let entry = entry?;
 
-        // Get the file name and content
-        let file_name = if entry.path() == Path::new(&current_branch_path) {
-            "HEAD".to_string()
-        } else {
-            dir_path_without_git
+        let file_name = dir_path_without_git
                 .join(entry.file_name())
                 .to_string_lossy()
-                .into_owned()
-        };
+                .into_owned();
+        // Get the file name and content
+        // let file_name = if entry.path() == Path::new(&current_branch_path) {
+        //     "HEAD".to_string()
+        // } else {
+        //     dir_path_without_git
+        //         .join(entry.file_name())
+        //         .to_string_lossy()
+        //         .into_owned()
+        // };
         let file_content = fs::read_to_string(entry.path())?;
 
         // Combine content and filename
@@ -200,33 +198,6 @@ pub fn get_all_branches() -> Result<Vec<String>, Box<dyn Error>> {
     }
 
     Ok(branches)
-}
-
-pub fn list_files_recursively(dir_path: &str, files_list: &mut Vec<String>) -> io::Result<()> {
-    let entries = fs::read_dir(dir_path)?;
-
-    for entry in entries {
-        let entry = entry?;
-        let file_type = entry.file_type()?;
-        let entry_path = entry.path();
-
-        if file_type.is_dir() {
-            // If it's a subdirectory, recurse into it
-            list_files_recursively(
-                entry_path
-                    .to_str()
-                    .ok_or(io::Error::from(io::ErrorKind::InvalidInput))?,
-                files_list,
-            )?;
-        } else if file_type.is_file() {
-            // If it's a file, add its path to the list
-            if let Some(current_obj_path) = entry_path.to_str() {
-                files_list.push(current_obj_path.to_string());
-            }
-        }
-    }
-
-    Ok(())
 }
 
 pub fn get_remote_url(name: &str) -> Result<String, Box<dyn Error>> {
@@ -284,11 +255,8 @@ pub fn read_object_to_string(hash: String) -> Result<(ObjectType, String, String
 }
 
 pub fn get_remote_tracking_branches() -> Result<HashMap<String, (String, String)>, Box<dyn Error>> {
-    // Assuming CONFIG_FILE is a constant containing the path to the Git configuration file
-    const CONFIG_FILE: &str = ".git/config";
-
     // Read the content of the Git configuration file
-    let config_content = read_file_content(CONFIG_FILE)?;
+    let config_content = read_file_content(&PathHandler::get_relative_path(CONFIG_FILE))?;
 
     // Initialize a HashMap to store branch names and their corresponding remotes
     let mut branches_and_remotes = HashMap::new();
@@ -333,7 +301,7 @@ pub fn update_local_branch_with_commit(
     branch_name: &str,
     remote_hash: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let config_content = read_file_content(CONFIG_FILE)?;
+    let config_content = read_file_content(&PathHandler::get_relative_path(&CONFIG_FILE))?;
 
     let branch_header = format!("[branch '{}']", branch_name);
     let mut lines = config_content.lines().peekable();
@@ -358,7 +326,7 @@ pub fn update_local_branch_with_commit(
 }
 
 pub fn update_branch_hash(branch_name: &str, new_commit_hash: &str) -> Result<(), Box<dyn Error>> {
-    let mut file = fs::File::create(get_branch_path(branch_name))?;
+    let mut file = fs::File::create(PathHandler::get_relative_path(&get_branch_path(branch_name)))?;
     file.write_all(new_commit_hash.as_bytes())?;
     Ok(())
 }
@@ -479,7 +447,7 @@ pub fn read_tree_content(tree_hash: &str) -> Result<Vec<(String, String, String)
     println!("reading tree content..");
 
     println!("before reading file");
-    let compressed_content = read_file_content_to_bytes(&get_object_path(tree_hash))?;
+    let compressed_content = read_file_content_to_bytes(&PathHandler::get_relative_path(&get_object_path(tree_hash)))?;
     let tree_content = decompress_file_content_to_bytes(compressed_content)?;
     println!("decompressed data: {:?}", tree_content);
     // let decompressed = decompress_file_content(buffer)?;
@@ -530,77 +498,6 @@ pub fn convert_hash_to_decimal_bytes(hash: &str) -> Result<Vec<u8>, Box<dyn Erro
     println!("hash: {:?}", decimal_hash);
     Ok(decimal_hash)
 } 
-
-pub fn hex_to_ascii(hex_string: &str) -> String {
-    let mut ascii_string = String::new();
-    let mut chars = hex_string.chars();
-
-    while let Some(hex_char1) = chars.next() {
-        if let Some(hex_char2) = chars.next() {
-            // Combine two hexadecimal characters into a substring
-            let hex_pair = format!("{}{}", hex_char1, hex_char2);
-
-            // Parse the hexadecimal substring into a u8
-            if let Ok(byte) = u8::from_str_radix(&hex_pair, 16) {
-                // Append the byte to a Vec<u8>
-                let byte_vec = vec![byte];
-
-                ascii_string.push_str(&String::from_utf8_lossy(&byte_vec).to_string());
-            } else {
-                panic!("Failed to parse hexadecimal string");
-            }
-        } else {
-            panic!("Unexpected end of input");
-        }
-    }
-
-    ascii_string
-}
-
-pub fn hex_to_ascii_bytes(hex_string: &str) -> Vec<u8> {
-    let mut ascii_bytes = Vec::new();
-    let mut chars = hex_string.chars();
-
-    while let Some(hex_char1) = chars.next() {
-        if let Some(hex_char2) = chars.next() {
-            // Combine two hexadecimal characters into a substring
-            let hex_pair = format!("{}{}", hex_char1, hex_char2);
-
-            // Parse the hexadecimal substring into a u8
-            if let Ok(byte) = u8::from_str_radix(&hex_pair, 16) {
-                // Append the byte to the Vec<u8>
-                ascii_bytes.push(byte);
-            } else {
-                panic!("Failed to parse hexadecimal string");
-            }
-        } else {
-            panic!("Unexpected end of input");
-        }
-    }
-
-    ascii_bytes
-}
-
-// pub fn get_object_type(object_hash: &str) -> Result<ObjectType, Box<dyn Error>> {
-//     let mut decoder = Decoder::new(file)?;
-//     let mut header = Vec::new();
-
-//     loop {
-//         let mut byte = [0; 1];
-//         decoder.read_exact(&mut byte)?;
-
-//         // Check if the byte is '\0'
-//         if byte[0] == b'\0' {
-//             break; // Exit the loop if null byte is encountered
-//         }
-//         header.push(byte[0]);
-//     }
-
-//     let header_str = String::from_utf8(header)?;
-//     let parts: Vec<&str> = header_str.trim_end().split(' ').collect();
-
-//     Ok(ObjectType::new(parts[0])?)
-// }
 
 pub const RELATIVE_PATH: &str = "RELATIVE_PATH";
 /* pub const RELATIVE_PATH: &str = "RELATIVE_PATH";

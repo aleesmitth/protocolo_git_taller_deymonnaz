@@ -5,10 +5,12 @@ use chrono::{DateTime, Local};
 
 extern crate libflate;
 use libflate::zlib::Decoder;
-
+use crypto::sha1::Sha1;
+use crypto::digest::Digest;
 const GIT: &str = ".git";
 const OBJECT: &str = ".git/objects";
 const PACK: &str = ".git/pack";
+const PARENT: &str = "parent";
 
 const TREE_FILE_MODE: &str = "100644";
 const TREE_SUBTREE_MODE: &str = "040000";
@@ -59,7 +61,9 @@ const COPY_ZERO_SIZE: usize = 0x10000;
 
 //CODES FOR COLORS IN TEXT
 const COLOR_GREEN_CODE: &str = "\x1b[32m";
+const COLOR_YELLOW_CODE: &str  = "\x1b[33m";
 const COLOR_RESET_CODE: &str = "\x1b[0m";
+
 
 use crate::client;
 use crate::client::client_protocol::ClientProtocol;
@@ -106,7 +110,7 @@ impl Command for Init {
     /// for branches, tags, and objects. It also sets the default branch to 'main' and creates an empty
     ///  index file. If successful, it returns an empty string; otherwise, it returns an error message.
     fn execute(&self, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
-        if helpers::check_if_directory_exists(GIT) {
+        if helpers::check_if_directory_exists(&PathHandler::get_relative_path(GIT)) {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
                 "A git repository already exists in this directory",
@@ -512,10 +516,12 @@ impl Commit {
         let timestamp = current_time.timestamp();
 
         let offset_minutes = current_time.offset().local_minus_utc();
-        let offset_string = format!("{:02}{:02}", offset_minutes / 60, offset_minutes % 60);
+        let offset_hours = (offset_minutes / 60) / 60;
 
-        let author_line = format!("author {} {} {}", username, timestamp, offset_string);
-        let commiter_line = format!("commiter {} {} {}", username, timestamp, offset_string);
+        let offset_string = format!("{:03}{:02}", offset_hours, (offset_minutes % 60).abs());
+
+        let author_line = format!("author {} <{}@fi.uba.ar> {} {}", username, username, timestamp , offset_string);
+        let commiter_line = format!("committer {} <{}@fi.uba.ar> {} {}", username, username, timestamp, offset_string);
 
         if head_commit.is_empty() {
             content = format!("tree {}", tree_hash);
@@ -867,16 +873,12 @@ impl PackObjects {
         // Print the bit representation of type_byte
         // print_bits(&[type_byte]);
 
-        // Print the bit representation of type_byte after left-shifting by 4 bits
-        let partial_byte = (type_byte << 4);
-        // print_bits(&[partial_byte]);
-
         // Combine type_byte and the last 4 bits of object_size
         let combined_byte = (type_byte << 4) | ((object_size as u8) & 0x0F);
         // print_bits(&[combined_byte]);
 
         // Encode the object size in a variable-length format if it requires more than one byte
-        let mut size = object_size >> 3;
+        let mut size = object_size >> 4;
         if size > 0 {
             header.push(combined_byte | 0x80); // Set the first bit to 1 in the first byte
         } else {
@@ -924,7 +926,7 @@ impl Command for PackObjects {
         // por cada hash de tree agrego objetos necesarios a una lista o hasta a un diccionario para chequear rapido que no este ya, pero sin ningun value
         // let objects_list: Vec<String> = arg_slice[0]; // aca tengo que tener los hashes de todos los objetos que quiero procesar
         // Open pack and index files
-        let mut pack_file = fs::File::create(".git/pack/pack_file.pack")?;
+        
         // Create an uncompressed pack file
         let mut pack_file_content = Vec::new();
         // let mut index_entries: Vec<u8> = Vec::new();
@@ -965,8 +967,6 @@ impl Command for PackObjects {
             // Append object content to the uncompressed pack file
             let object_size_usize: usize = object_size.parse()?;
             let compressed_content: &Vec<u8> = &helpers::compress_bytes(&object_content)?;
-            // let header_byte = ((object_type.get_object_for_pack_file() & 0x07) << 4) | ((object_size_u64 & 0x0F) as u8);
-            // let header_byte = ((object_type.get_object_for_pack_file() & 0x07) << 4) | ((compressed_content.len() & 0x0F) as u8);
             let header = self.calculate_object_header(object_type, object_size_usize);
             // let header = self.calculate_object_header(object_size_usize, object_type);;
             println!("header: {:?}", header);
@@ -977,19 +977,28 @@ impl Command for PackObjects {
         let mut pack_file_final = Vec::new();
         // Generate pack header
         let version = [0u8, 0u8, 0u8, 2u8];
+        println!("{:?}", b"PACK");
         pack_file_final.extend_from_slice(b"PACK");
+        println!("{:?}", version);
         pack_file_final.extend_from_slice(&version);
+        println!("{:?}", &object_count.to_be_bytes());
         pack_file_final.extend_from_slice(&object_count.to_be_bytes());
-        //pack_file.write_all(helpers::generate_sha1_string_from_bytes(&pack_header).as_bytes())?;
 
         pack_file_final.extend_from_slice(&pack_file_content);
-        // Write the uncompressed pack file content to the pack file
-        pack_file.write_all(&pack_file_final)?;
+        // let pack_checksum = helpers::generate_sha1_string_from_bytes(&pack_file_final);
+        let pack_checksum = calculate_sha1_hash(&pack_file_final);
+        let checksum_str = helpers::hex_string_to_bytes(&pack_checksum.clone());
 
-        // Calculate the SHA-1 hash of the entire pack file content
-        let pack_checksum = helpers::generate_sha1_string_from_bytes(&pack_file_final);
-        println!("pack checksum: {}", pack_checksum);
-        pack_file.write_all(pack_checksum.as_bytes())?;
+        let pack_file_path = format!(".git/pack/pack-{}.pack", checksum_str);
+        // let pack_file_path = format!(".git/pack/pack-{}.pack", pack_checksum);
+        let mut pack_file = fs::File::create(PathHandler::get_relative_path(&pack_file_path))?;
+
+        // pack_file_final.extend_from_slice(pack_checksum.as_bytes());
+
+        pack_file.write_all(&pack_file_final)?;
+        
+        println!("pack checksum: {:?}", checksum_str);
+        pack_file.write_all(&pack_checksum)?;
 
         // let mut index_file = fs::File::create(".git/pack/pack_file.idx")?;
         // let mut index_content = Vec::new();
@@ -1003,7 +1012,7 @@ impl Command for PackObjects {
         // index_content.extend_from_slice(index_checksum.as_bytes());
         // index_file.write_all(&index_content)?;
 
-        Ok(String::new())
+        Ok(String::from_utf8_lossy(&pack_checksum).to_string())
     }
 }
 
@@ -1024,6 +1033,20 @@ impl Command for PackObjects {
 
 //     fanout_table
 // }
+
+fn calculate_sha1_hash(data: &[u8]) -> [u8; 20] {
+    // Create a Sha1 object
+    let mut sha1 = Sha1::new();
+
+    // Update the hash with the data
+    sha1.input(data);
+
+    // Obtain the hash result as a Vec<u8>
+    let mut hash_result: [u8; 20] = Default::default();
+    sha1.result(&mut hash_result);
+
+    hash_result
+}
 
 pub struct UnpackObjects;
 
@@ -1399,28 +1422,29 @@ impl Command for Push {
         &self,
         args: Option<Vec<&str>>,
     ) -> Result<String, Box<dyn Error>> {
-        let mut remote_url = helpers::get_remote_url(DEFAULT_REMOTE_REPOSITORY)?;
+        // let mut remote_url = helpers::get_remote_url(DEFAULT_REMOTE_REPOSITORY)?;
+        let remote_url = args.unwrap()[0];
         let mut remote_name = DEFAULT_REMOTE_REPOSITORY;
         let branch = Head::get_current_branch_name()?;
-        match args {
-            Some(args) => match helpers::get_remote_url(args[0]) {
-                Ok(url) => {
-                    remote_url = url;
-                    remote_name = args[0];
-                    // branch = &args[1];
-                }
-                Err(_) => return Err(Box::new(io::Error::new(
-                    io::ErrorKind::Other,
-                    "Error: Name is not a remote",
-                ))),
-            },
-            None => {}
-        }
+        // match args {
+        //     Some(args) => match helpers::get_remote_url(args[0]) {
+        //         Ok(url) => {
+        //             remote_url = url;
+        //             remote_name = args[0];
+        //             // branch = &args[1];
+        //         }
+        //         Err(_) => return Err(Box::new(io::Error::new(
+        //             io::ErrorKind::Other,
+        //             "Error: Name is not a remote",
+        //         ))),
+        //     },
+        //     None => {}
+        // }
 
         // me parece mejor asumir que siempre va a ser desde la rama actual, solo si esta bueno
         // declarar a que repo remoto
         
-        ClientProtocol::new().receive_pack(remote_url)?;
+        ClientProtocol::new().receive_pack(remote_url.to_string())?;
         // // volver esto abstracto como decia y no isntanciarlo
         Ok(String::new())
     }
@@ -1455,6 +1479,12 @@ impl Command for Pull {
         Fetch::new().execute(Some(vec![&remote_url]))?;
         let remote_branch = format!("{}/{}", remote_name, Head::get_current_branch_name()?);
         println!("merging");
+        if !helpers::check_if_file_exists(&format!("{}/{}", R_REMOTES, remote_branch)) {
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "Error: There is no tracking information for the current branch.",
+            )))
+        }
         Merge::new().execute(Some(vec![&remote_branch]))?;
         Ok(String::new())
     }
@@ -1526,46 +1556,46 @@ impl Log {
             return Ok(String::new());
         }
 
-        let commit_path = helpers::get_object_path(&current_commit);
-        let decompressed_data = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&commit_path)?)?;
-        let object_type = decompressed_data.splitn(2, ' ').next().ok_or("")?;
+        // let commit_path = helpers::get_object_path(&current_commit);
+        // let decompressed_data = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&commit_path)?)?;
+        // let object_type = decompressed_data.splitn(2, ' ').next().ok_or("")?;
 
-        if object_type != ObjectType::Commit.to_string() {
+        let (object_type, commit_file_content, _) = helpers::read_object_to_string(current_commit.clone())?;
+
+        if object_type != ObjectType::Commit {
             return Err(Box::new(io::Error::new(
                         io::ErrorKind::Other,
                         "Error: Invalid SHA-1. Is not a commit",
                     )))
         }
         // trim header
-        let commit_file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
+        // let commit_file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
 
-        let commit_file_lines: Vec<String> = commit_file_content[1].lines().map(|s| s.to_string()).collect();
+        // let commit_file_lines: Vec<String> = commit_file_content[1].lines().map(|s| s.to_string()).collect();
         
-        if commit_file_lines.len() < 2 {
-            entries.push((current_commit, String::new()));
-            return Ok(String::new());
-        }
+        let commit_lines: Vec<String> = commit_file_content.split("\n").map(|s| s.to_string()).collect();;
 
-        let parent_commit_split_line: Vec<String> = commit_file_lines[1].split_whitespace().map(String::from).collect();
+        let parent_commit_split_line: Vec<String> = commit_lines[1].split_whitespace().map(String::from).collect();
 
-        if parent_commit_split_line.len() < 2 {
-            let message = if commit_file_lines.len() >= 4 { commit_file_lines[3].clone() } else { String::new() };
+        let mut message = String::new();
+        if parent_commit_split_line[0] != PARENT {
+            //root commit
+            message.push_str(&commit_lines[1..].join("\n"));
             entries.push((current_commit, message));
             return Ok(String::new());
         }
 
-
         let parent_commit_trimmed = &parent_commit_split_line[1]; //aca esta bien pero rompe en caso base
 
-        let message = if commit_file_lines.len() >= 4 { commit_file_lines[3].clone() } else { String::new() };
+        message.push_str(&commit_lines[2..].join("\n"));
 
         entries.push((current_commit, message));
 
-        if parent_commit_trimmed.is_empty() {            
-            //root commit
-            // println!("returning, found root commit");
-            return Ok(String::new());
-        }
+        // if parent_commit_trimmed.is_empty() {            
+        //     //root commit
+        //     // println!("returning, found root commit");
+        //     return Ok(String::new());
+        // }
 
         // println!("parent commit {:?}", parent_commit_trimmed.clone());
         self.generate_log_entries(entries, parent_commit_trimmed.clone())?;
@@ -1631,11 +1661,7 @@ impl Command for Log {
 
         // Display the resulting log entries
         for (commit, message) in &log_entries {
-            if message.is_empty() {
-                println!("{:?}", commit);
-            } else {
-                println!("{:?}, {:?}", commit, message);
-            }
+            println!("{}commit {}{}\n{}", COLOR_YELLOW_CODE, commit, COLOR_RESET_CODE, message);
         }
         let result: String = log_entries
             .into_iter()

@@ -1,8 +1,11 @@
+use crate::commands::commands::PackObjects;
 use crate::commands::commands::UnpackObjects;
 use crate::commands::commands::Command;
 use crate::commands::helpers;
 use crate::commands::protocol_utils;
 use crate::commands::structs::Head;
+use crate::commands::commands::RELATIVE_PATH;
+use crate::commands::commands::PathHandler;
 
 use std::{
     error::Error, io, io::Write, net::TcpListener, net::TcpStream, io::Read, fs::File
@@ -36,7 +39,7 @@ impl ServerProtocol {
     pub fn handle_client_conection(stream: &mut TcpStream) -> Result<(), Box<dyn Error>> {
         // In the Git Dumb Protocol, Git commands are sent as text lines.
         // You would parse the incoming lines and respond accordingly.
-        let stream_clone = stream.try_clone()?;
+        let mut stream_clone = stream.try_clone()?;
         let mut reader = std::io::BufReader::new(stream_clone);
         println!("waiting for request...");
         let request_length = protocol_utils::get_request_length(&mut reader)?;
@@ -83,7 +86,7 @@ impl ServerProtocol {
         let mut reader = std::io::BufReader::new(stream.try_clone()?);
         let requests_received: Vec<String> =
             protocol_utils::read_until(&mut reader, protocol_utils::REQUEST_DELIMITER_DONE, false)?;
-        for request_received in requests_received {
+        for request_received in requests_received.clone() {
             let request_array: Vec<&str> = request_received.split_whitespace().collect();
             println!("request in array: {:?}", request_array);
             if request_array[0] != protocol_utils::WANT_REQUEST {
@@ -113,11 +116,31 @@ impl ServerProtocol {
 
         let _ = stream.write_all(protocol_utils::format_line_to_send(protocol_utils::NAK_RESPONSE.to_string()).as_bytes());
         println!("sent NAK");
-        let _: Vec<String> =
-            protocol_utils::read_until(&mut reader, protocol_utils::REQUEST_DELIMITER_DONE, false)?;
+        // let _: Vec<String> =
+        //     protocol_utils::read_until(&mut reader, protocol_utils::REQUEST_DELIMITER_DONE, false)?;
         println!("received done");
         println!("TODO SEND PACKFILE");
-        // TODO SEND PACKFILE
+        let mut commits: Vec<String> = Vec::new();
+
+        for request_received in requests_received.clone() {
+            let request_array: Vec<&str> = request_received.split_whitespace().collect();
+            if let Some(second_element) = request_array.get(1) {
+                commits.push(second_element.to_string());
+            }
+        }
+
+        let commits_str: Vec<&str> = commits.iter().map(|s| s.as_str()).collect();
+        let checksum = PackObjects::new().execute(Some(commits_str.clone()))?;
+        println!("created pack file");
+        let pack_file_path = format!(".git/pack/pack-{}.pack", checksum);
+        let mut pack_file = File::open(PathHandler::get_relative_path(&pack_file_path))?;
+        let mut buffer = Vec::new();
+        pack_file.read_to_end(&mut buffer);
+        stream.write_all(&mut buffer);
+        // no se esta mandando bien aca, el buffer llega vacio
+        // volvi a probar con git daemon y funciona
+        // std::io::copy(&mut pack_file, &mut stream_clone)?;
+        println!("sent pack file");
 
         Ok(())
     }
