@@ -158,38 +158,30 @@ pub fn remove_object_from_file(file_path: &str) -> io::Result<()> {
 }
 
 pub fn get_all_branches() -> Result<Vec<String>, Box<dyn Error>> {
-    let current_branch_path = PathHandler::get_relative_path(&Head::get_current_branch_path()?);
+    let current_branch_path = &Head::get_current_branch_path()?;
     println!("test: {:?}", current_branch_path);
 
     // Extract the directory path from the file path
     let dir_path = Path::new(&current_branch_path)
         .parent()
         .ok_or("Failed to get parent directory")?;
-
-    // Remove the ".git/" prefix if it exists
-    let dir_path_without_git = dir_path.strip_prefix(".git/").unwrap_or(dir_path);
-
-    // Read the contents of the directory
-    let entries = fs::read_dir(dir_path)?;
+    
+    let entries = fs::read_dir(PathHandler::get_relative_path(&dir_path.to_string_lossy().to_string()))?;
 
     // Iterate over the entries
     let mut branches: Vec<String> = Vec::new();
     for entry in entries {
         let entry = entry?;
 
-        let file_name = PathHandler::remove_relative_path(dir_path_without_git
+        let dir_path_without_git = dir_path.strip_prefix(".git/").unwrap_or(dir_path);
+
+        println!("dir path: {:?}", dir_path_without_git);  
+
+        let file_name = dir_path_without_git
                 .join(entry.file_name())
                 .to_string_lossy()
-                .into_owned().as_str());
-        // Get the file name and content
-        // let file_name = if entry.path() == Path::new(&current_branch_path) {
-        //     "HEAD".to_string()
-        // } else {
-        //     dir_path_without_git
-        //         .join(entry.file_name())
-        //         .to_string_lossy()
-        //         .into_owned()
-        // };
+                .into_owned();
+                
         let file_content = fs::read_to_string(entry.path())?;
 
         // Combine content and filename

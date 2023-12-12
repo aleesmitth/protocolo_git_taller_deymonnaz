@@ -1359,6 +1359,7 @@ impl Fetch {
         let split_ref_name: Vec<&str> = ref_name.split('/').collect(); //aca tendria que ver si es un tag o un branch
         let remote_ref_name = split_ref_name[2];
         let mut ref_path = String::new();
+        println!("split ref name: {:?}", split_ref_name);
         match split_ref_name[1] {
             "heads" => {
                 let dir_path = format!("{}/{}", R_REMOTES, remote_name);
@@ -1434,24 +1435,24 @@ impl Command for Push {
         &self,
         args: Option<Vec<&str>>,
     ) -> Result<String, Box<dyn Error>> {
-        // let mut remote_url = helpers::get_remote_url(DEFAULT_REMOTE_REPOSITORY)?;
-        let remote_url = args.unwrap()[0];
+        let mut remote_url = helpers::get_remote_url(DEFAULT_REMOTE_REPOSITORY)?;
+        // let remote_url = args.unwrap()[0];
         let mut remote_name = DEFAULT_REMOTE_REPOSITORY;
         let branch = Head::get_current_branch_name()?;
-        // match args {
-        //     Some(args) => match helpers::get_remote_url(args[0]) {
-        //         Ok(url) => {
-        //             remote_url = url;
-        //             remote_name = args[0];
-        //             // branch = &args[1];
-        //         }
-        //         Err(_) => return Err(Box::new(io::Error::new(
-        //             io::ErrorKind::Other,
-        //             "Error: Name is not a remote",
-        //         ))),
-        //     },
-        //     None => {}
-        // }
+        match args {
+            Some(args) => match helpers::get_remote_url(args[0]) {
+                Ok(url) => {
+                    remote_url = url;
+                    remote_name = args[0];
+                    // branch = &args[1];
+                }
+                Err(_) => return Err(Box::new(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Error: Name is not a remote",
+                ))),
+            },
+            None => {}
+        }
 
         // me parece mejor asumir que siempre va a ser desde la rama actual, solo si esta bueno
         // declarar a que repo remoto

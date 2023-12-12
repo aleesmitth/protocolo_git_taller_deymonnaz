@@ -182,13 +182,17 @@ impl ServerProtocol {
         let mut file = File::create(".git/pack/received_pack_file.pack")?;
         file.write_all(&buffer)?;
 
-        match UnpackObjects::new().execute(None) {
+        println!("received packfile");
+
+        match UnpackObjects::new().execute(Some(vec![".git/pack/received_pack_file.pack"])) {
             Ok(_) => {
                 let unpack_confirmation = protocol_utils::format_line_to_send(protocol_utils::UNPACK_CONFIRMATION.to_string());
                 stream.write_all(unpack_confirmation.as_bytes())?;
             }
             Err(_) => {}
         }
+
+        println!("packfile unpacked");
 
         Ok(())
     }
