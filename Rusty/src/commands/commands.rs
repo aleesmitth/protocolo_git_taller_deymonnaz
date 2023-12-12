@@ -720,10 +720,12 @@ impl Command for Status {
             }
             println!("{}", line);
             line_result.push_str(&line);
+            line_result.push_str("\n");
         }
         if no_changes {
             line = format!("nothing to commit, working tree clean");
             line_result.push_str(&line);
+            line_result.push_str("\n");
             println!("{}", line);
         }
         Ok(line_result)

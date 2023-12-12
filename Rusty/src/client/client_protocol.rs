@@ -3,6 +3,7 @@ use crate::commands::helpers;
 use crate::commands::protocol_utils;
 use crate::commands::commands::PackObjects;
 use crate::commands::commands::Command;
+use crate::commands::protocol_utils::UNPACK_CONFIRMATION;
 use crate::commands::structs::Head;
 
 const ZERO_HASH: &str = "0000000000000000000000000000000000000000";
@@ -80,25 +81,34 @@ impl ClientProtocol {
         
         let pack_checksum = PackObjects::new().execute(Some(vec![&last_commit_hash]))?;
         let pack_file_path = format!(".git/pack/pack-{}.pack", pack_checksum);
+        println!("{}", pack_file_path);
         let mut pack_file = fs::File::open(pack_file_path)?;
-        std::io::copy(&mut pack_file, &mut stream)?;
+        let mut buffer = Vec::new();
+        pack_file.read_to_end(&mut buffer)?;
+        println!("buffer: {:?}", buffer);
+        stream.write_all(&mut buffer);
+        // std::io::copy(&mut pack_file, &mut stream)?;
         println!("sending pack file");
-        // stream.flush()?;
+        stream.flush()?;
 
-        // response_received = protocol_utils::read_until(&mut reader, protocol_utils::UNPACK_CONFIRMATION, true)?;
+        stream.shutdown(Shutdown::Write)?;
+        response_received = protocol_utils::read_until(&mut reader, protocol_utils::UNPACK_CONFIRMATION, true)?;
 
-        // println!("response received {:?}", response_received);
-        // for line in response_received {
-        //     println!("push succesful");
-        // }
-        println!("awaiting response from server...");
-        let reader = std::io::BufReader::new(&stream);
-        for line in reader.lines() {
-            let line = line?;
-            println!("response line: {}", line);
-            // break;
+        println!("response received {:?}", response_received);
+        for line in response_received {
+            if line == protocol_utils::UNPACK_CONFIRMATION {
+                println!("unpack ok");
+                break
+            }
         }
-
+        // println!("awaiting response from server...");
+        // let reader = std::io::BufReader::new(&stream);
+        // for line in reader.lines() {
+        //     let line = line?;
+        //     println!("response line: {}", line);
+        //     // break;
+        // }
+        stream.shutdown(Shutdown::Read)?;
         Ok(())
     }
 

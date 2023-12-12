@@ -232,9 +232,13 @@ fn main() {
                     Commit::new().execute(commit_args)
                 }
                 LOG_COMMAND_NAME => {
+                    let mut log_args: Option<Vec<&str>> = None;
                     let log_vec: Vec<&str> = text.split_whitespace().collect();
-                    let log_args: Option<Vec<&str>> = Option::from(log_vec);
+                    if !log_vec.is_empty(){
+                        log_args = Some(log_vec);
+                    }
                     Log::new().execute(log_args)
+
                 }
                 BRANCH_COMMAND_NAME => Branch::new().execute(None), 
                 STATUS_COMMAND_NAME => Status::new().execute(None),
@@ -247,11 +251,19 @@ fn main() {
             match result {
                 Ok(mssg) => {
                     let  output_label_mut = output_label_ref.borrow_mut();
-                    let success_message = format!("<span font_desc='20'>Command run successfully\n{}</span>", mssg.replace("@", "&#64"));
+                    let success_message = format!("<span font_desc='20'>Command run successfully\n{}</span>", mssg.replace(">", "&gt;")
+                    .replace("<", "&lt;")
+                    .replace("@", "&#64;")
+                    .replace("%", "&#37;")
+                    .replace("^", "&#94;"));
                     output_label_mut.set_markup(&success_message);
                 },
                 Err(err) => {
-                    let error_message = format!("<span font_desc='20'>Error during Command:\n{}</span>", err.to_string().replace("@", "&#64"));
+                    let error_message = format!("<span font_desc='20'>Error during Command:\n{}</span>", err.to_string().replace(">", "&gt;")
+                    .replace("<", "&lt;")
+                    .replace("@", "&#64;")
+                    .replace("%", "&#37;")
+                    .replace("^", "&#94;"));
                     let  output_label_mut = output_label_ref.borrow_mut();
                     output_label_mut.set_markup(&error_message);
 
