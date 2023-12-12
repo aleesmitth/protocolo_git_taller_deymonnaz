@@ -7,7 +7,7 @@ const DEFAULT_HEAD_LINE: &str = "ref: refs/heads/";
 const HEAD_FILE: &str = ".git/HEAD";
 //const DEFAULT_REMOTE: &str = "origin";
 
-use gtk::gdk::keys::constants::L;
+//use gtk::gdk::keys::constants::L;
 
 use crate::commands::helpers;
 use libflate::zlib::{Decoder, Encoder};
@@ -165,9 +165,10 @@ impl HashObjectCreator {
             let _split_path: Vec<&str> = index_file_content.split("/").collect();
             let mut file_name = String::new();
 
-            //println!("_split_path: {:?}", _split_path);
+            println!("_split_path: {:?}", _split_path);
             if let Some(name) = path.file_name().and_then(|name| name.to_str()) {
-                //println!("File name: {}", name);
+                println!("File name: {}", name);
+                println!("File path: {:?}", path);
                 file_name = name.to_string();
             }
             let hash = helpers::convert_hash_to_decimal_bytes(hash)?;
@@ -296,11 +297,12 @@ impl StagingArea {
     /// Adds a file to the staging area. Creating a git object and saving the object's path, hash and state in the
     /// index file, following the format: file_path;hash;state.
     pub fn add_file(&self, path: &str) -> Result<(), Box<dyn Error>> {
-        let file_content = helpers::read_file_content(path)?;
+    	let relative_path = PathHandler::get_relative_path(path);
+        let file_content = helpers::read_file_content(relative_path.as_str())?;
         let object_hash = HashObjectCreator::write_object_file(
             file_content,
             ObjectType::Blob,
-            get_file_length(path)?,
+            get_file_length(relative_path.as_str())?,
         )?;
         helpers::update_file_with_hash(&object_hash.as_str(), IndexFileEntryState::Staged.to_string().as_str(), path)?;
 

@@ -137,9 +137,6 @@ impl ServerProtocol {
         let mut buffer = Vec::new();
         pack_file.read_to_end(&mut buffer);
         stream.write_all(&mut buffer);
-        // no se esta mandando bien aca, el buffer llega vacio
-        // volvi a probar con git daemon y funciona
-        // std::io::copy(&mut pack_file, &mut stream_clone)?;
         println!("sent pack file");
 
         Ok(())

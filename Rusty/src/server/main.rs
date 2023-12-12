@@ -14,15 +14,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = ServerProtocol::bind("127.0.0.1:9418")?; // Default Git port
     println!("bind complete");
 
-    // Init::new().execute(None)?;
-    // Add::new().execute(Some(vec!["file.txt"]))?;
-    // Commit::new().execute(Some(vec!["-m", "test"]))?;
+    //Init::new().execute(None)?;
+    //Add::new().execute(Some(vec!["invincible.txt"]))?;
+    //Commit::new().execute(Some(vec!["-m", "test"]))?;
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
                 let mut cloned_stream = stream.try_clone()?;
                 thread::spawn(move || {
-                    ServerProtocol::handle_client_conection(&mut cloned_stream);
+                    if let Err(err) = ServerProtocol::handle_client_conection(&mut cloned_stream) {
+                        println!("Error: {:?}", err);
+                    }
                 });
             }
             Err(e) => {

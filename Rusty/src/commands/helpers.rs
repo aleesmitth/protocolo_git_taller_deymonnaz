@@ -177,10 +177,10 @@ pub fn get_all_branches() -> Result<Vec<String>, Box<dyn Error>> {
     for entry in entries {
         let entry = entry?;
 
-        let file_name = dir_path_without_git
+        let file_name = PathHandler::remove_relative_path(dir_path_without_git
                 .join(entry.file_name())
                 .to_string_lossy()
-                .into_owned();
+                .into_owned().as_str());
         // Get the file name and content
         // let file_name = if entry.path() == Path::new(&current_branch_path) {
         //     "HEAD".to_string()
@@ -398,10 +398,18 @@ pub fn ancestor_commit_exists(current_commit_hash: &str, merging_commit_hash: &s
 /// tree object.
 pub fn get_commit_tree(commit_hash: &str) -> Result<String, Box<dyn Error>> {
     //println!("commit hash: {}", commit_hash);
-    let decompressed_data = decompress_file_content(read_file_content_to_bytes(&PathHandler::get_relative_path(&get_object_path(commit_hash)))?)?;
+    println!("get_commit_tree starts");
+    let get_obj_path = get_object_path(commit_hash);
+    println!("get_obj_path {:?}", get_obj_path);
+    let get_obj_path_relative = PathHandler::get_relative_path(&get_obj_path);
+    println!("get_obj_path_relative {:?}", get_obj_path_relative);
+    let read_file_content_to_bytes = read_file_content_to_bytes(&get_obj_path_relative)?;
+    println!("read_file_content_to_bytes {:?}", read_file_content_to_bytes);
+    let decompressed_data = decompress_file_content(read_file_content_to_bytes)?;
+    println!("decompressed_data {:?}", decompressed_data);
 
     let commit_file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
-    //println!("commit_file_content: {:?}", commit_file_content);
+    println!("commit_file_content: {:?}", commit_file_content);
 
     let commit_file_lines: Vec<String> = commit_file_content[1].lines().map(|s| s.to_string()).collect();
     //println!("commit_file_lines: {:?}", commit_file_lines);
@@ -457,7 +465,8 @@ pub fn read_tree_content(tree_hash: &str) -> Result<Vec<(String, String, String)
     let split_content: Vec<Vec<u8>> = tree_content.splitn(2, |&c| c == 0).map(|slice| slice.to_vec()).collect();
 
     let mut divided_content = Vec::new();
-    println!("tree split_content: {:?}", split_content[1]);
+    println!("all tree split_content: {:?}", &split_content);
+    println!("tree split_content: {:?}", String::from_utf8_lossy(&split_content[1]));
     // let mut substrings: Vec<String> = split_content[1].split("\0").map(String::from).collect();
     let mut substrings: Vec<Vec<u8>> = split_content[1].split(|&c| c == 0).map(|slice| slice.to_vec()).collect();
     
@@ -465,7 +474,33 @@ pub fn read_tree_content(tree_hash: &str) -> Result<Vec<(String, String, String)
 
     let mut file_mode = String::from_utf8_lossy(&tree_data[0]).to_string();
     let mut file_name = String::from_utf8_lossy(&tree_data[1]).to_string();
+    println!("file_mode {}", file_mode);
+    println!("file_name {}", file_name);
+        println!("all substrings: {:?}", &substrings);
     substrings.remove(0);
+
+// TODO find a better way to do this, it's a fix for when the hash contains 0, so it breaks the split , but it doesnt work because it breaks somewhere else latter
+/*    let mut result: Vec<Vec<u8>> = Vec::new();
+
+    for inner_vec in substrings {
+        if let Some(last_vec) = result.last_mut() {
+            // Check if the last vector in the result has length less than 5
+            if last_vec.len() < 5 {
+                // If yes, append the current inner_vec to it
+                let middle_index = last_vec.len();
+                last_vec.insert(middle_index, 0);
+                last_vec.extend(inner_vec);
+                continue;
+            }
+        }
+
+        // If the last vector is empty or its length is >= 5, start a new vector in the result
+        result.push(inner_vec);
+    }
+
+    println!("fixed substrings {:?}", &result);
+
+*/
     for substring in &substrings {
         println!("substring: {:?}", &substring);
         let processed_bytes = &substring[..20];

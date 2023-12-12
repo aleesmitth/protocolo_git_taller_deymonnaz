@@ -90,6 +90,16 @@ impl PathHandler {
         }
         return original_path.to_string();
     }
+
+    pub fn remove_relative_path(original_path: &str) -> String {
+        if let Ok(relative_path) = env::var(RELATIVE_PATH) {
+            if original_path.starts_with(&relative_path) {
+                // Remove the relative path from the beginning of the original path
+                return original_path[relative_path.len()..].to_string();
+            }
+        }
+        original_path.to_string()
+    }
 }
 
 pub trait Command {
@@ -918,8 +928,10 @@ impl Command for PackObjects {
         //por cada hash de commit busco su hash de tree
         let mut object_set: HashSet<String> = HashSet::new();
         for commit_hash in commit_list {
+            println!("looping first commit {}", commit_hash);
             object_set.insert(commit_hash.to_string());
             let tree_hash = helpers::get_commit_tree(commit_hash)?;
+            println!("tree_hash {}", tree_hash);
             self.get_tree_objects(&mut object_set, &tree_hash)?;
         }
         println!("object_set: {:?}", object_set);
@@ -1012,7 +1024,7 @@ impl Command for PackObjects {
         // index_content.extend_from_slice(index_checksum.as_bytes());
         // index_file.write_all(&index_content)?;
 
-        Ok(String::from_utf8_lossy(&pack_checksum).to_string())
+        Ok(helpers::hex_string_to_bytes(&pack_checksum).to_string())
     }
 }
 
