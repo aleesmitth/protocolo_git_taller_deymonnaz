@@ -1,10 +1,10 @@
 use std::{
-    collections::HashMap, error::Error, fs, io, io::Read, io::Write, path::Path,
+    collections::HashMap, error::Error, fs, io, io::Read, io::Write, path::Path, env,
 };
 extern crate crypto;
 extern crate libflate;
 
-use crate::commands::{commands::Log, structs::Head};
+use crate::{commands::{commands::Log, structs::Head}, client::client_protocol};
 use crypto::digest::Digest;
 use crypto::sha1::Sha1;
 use libflate::zlib::{Decoder, Encoder};
@@ -14,10 +14,8 @@ use super::{commands::PathHandler, structs::ObjectType};
 const OBJECT: &str = ".git/objects";
 const R_HEADS: &str = ".git/refs/heads";
 const HEAD_FILE: &str = ".git/HEAD";
-const DEFAULT_BRANCH_NAME: &str = "master";
 const INDEX_FILE: &str = ".git/index";
 const CONFIG_FILE: &str = ".git/config";
-//const R_REMOTES: &str = ".git/refs/remotes";
 
 /// Returns length of a file's content
 pub fn get_file_length(path: &str) -> Result<u64, Box<dyn Error>> {
@@ -35,8 +33,17 @@ pub fn read_file_content(path: &str) -> Result<String, io::Error> {
 
 /// Give a file's path it reads it's lines and returns them as a Vec<u8>
 pub fn read_file_content_to_bytes(path: &str) -> Result<Vec<u8>, io::Error> {
+    if check_if_directory_exists(".git/object/5e") {
+        println!("dir exists")
+    }
+    if check_if_file_exists(path) {
+        println!("exists");
+    }
+    println!("current dir: {:?}", env::current_dir()?.display());
     let mut file_content: Vec<u8> = Vec::new();
+    println!("path before reading: {:?}", path);
     let mut file: fs::File = fs::File::open(path)?;
+    println!("after reading");
     file.read_to_end(&mut file_content)?;
     Ok(file_content)
 }
@@ -165,7 +172,7 @@ pub fn get_all_branches() -> Result<Vec<String>, Box<dyn Error>> {
     let dir_path = Path::new(&current_branch_path)
         .parent()
         .ok_or("Failed to get parent directory")?;
-    
+
     let entries = fs::read_dir(PathHandler::get_relative_path(&dir_path.to_string_lossy().to_string()))?;
 
     // Iterate over the entries
@@ -335,7 +342,6 @@ pub fn get_branch_path(branch_name: &str) -> String {
 }
 
 pub fn get_object_path(object_hash: &str) -> String {
-    println!("{}", object_hash);
     format!("{}/{}/{}", OBJECT, object_hash[..2].to_string(), object_hash[2..].to_string())
 }
 
@@ -436,17 +442,14 @@ pub fn check_if_directory_exists(dir_path: &str) -> bool {
 pub fn hex_string_to_bytes(bytes: &[u8]) -> String {
     let mut hash: String = String::new();
     for byte in bytes {
-        // println!("{:x}", byte);
-        hash.push_str(&format!("{:x}", byte));
+        hash.push_str(&format!("{:02x}", byte));
     }
 
     hash
 }
 
 pub fn read_tree_content(tree_hash: &str) -> Result<Vec<(String, String, String)>, Box<dyn Error>> {
-    println!("reading tree content..");
 
-    println!("before reading file");
     let compressed_content = read_file_content_to_bytes(&PathHandler::get_relative_path(&get_object_path(tree_hash)))?;
     let tree_content = decompress_file_content_to_bytes(compressed_content)?;
     println!("decompressed data: {:?}", tree_content);
@@ -525,6 +528,45 @@ pub fn convert_hash_to_decimal_bytes(hash: &str) -> Result<Vec<u8>, Box<dyn Erro
     println!("hash: {:?}", decimal_hash);
     Ok(decimal_hash)
 } 
+
+pub fn validate_ref_update_request(prev_remote_hash: &str, new_remote_hash: &str, branch_ref: &str) -> Result<(), Box<dyn Error>> {
+    println!("{} {} {}", prev_remote_hash, new_remote_hash, branch_ref);
+    let branch_path = format!(".git/{}", branch_ref);
+    println!("path: {}", branch_path);
+    if check_if_file_exists(&branch_path) {
+        if prev_remote_hash == client_protocol::ZERO_HASH {
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "Error: Trying to initialize existing ref",
+            )))
+        }
+        if get_branch_last_commit(&PathHandler::get_relative_path(&branch_path))? != prev_remote_hash {
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "Error: New hash is different from ref's current hash",
+            )))
+        }
+    } else {
+        if prev_remote_hash != client_protocol::ZERO_HASH {
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "Error: Ref was not found",
+            )))
+        }
+    }
+
+    Ok(())
+}
+
+pub fn update_hash_for_refs(refs_to_update: Vec<(String, String, String)>) -> Result<(), Box<dyn Error>> {
+
+    for (_, new_remote_hash, branch_ref) in refs_to_update {
+        let ref_path = format!(".git/{}", branch_ref);
+        let mut file = fs::File::create(PathHandler::get_relative_path(&ref_path))?;
+        file.write_all(new_remote_hash.as_bytes())?
+    }
+    Ok(())
+}
 
 pub const RELATIVE_PATH: &str = "RELATIVE_PATH";
 /* pub const RELATIVE_PATH: &str = "RELATIVE_PATH";

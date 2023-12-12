@@ -6,11 +6,11 @@ use crate::commands::commands::Command;
 use crate::commands::protocol_utils::UNPACK_CONFIRMATION;
 use crate::commands::structs::Head;
 
-const ZERO_HASH: &str = "0000000000000000000000000000000000000000";
+pub const ZERO_HASH: &str = "0000000000000000000000000000000000000000";
 
 use std::{
     error::Error, fs, io::BufRead, io::Read, io::Write, net::Shutdown, net::TcpStream,
-    str, thread, time::Duration,
+    str, thread, time::Duration, io,
 };
 pub struct ClientProtocol;
 
@@ -43,7 +43,7 @@ impl ClientProtocol {
             protocol_utils::read_until(&mut reader, protocol_utils::REQUEST_DELIMITER_DONE, true)?;
 
         println!("response received {:?}", response_received);
-        for line in response_received {
+        for line in response_received.clone() {
             if let [remote_hash, branch_name, ..] = line.split_whitespace().collect::<Vec<&str>>().as_slice() {
                 refs_in_remote.push((remote_hash.to_string(), branch_name.to_string()));
             }
@@ -57,16 +57,11 @@ impl ClientProtocol {
         for (ref_hash, ref_name) in &refs_in_remote {
             // let want_request = protocol_utils::format_line_to_send(format!("{} {}\n", protocol_utils::WANT_REQUEST, ref_hash));
             // println!("want_request sent: {}", want_request.clone());
+            println!("{} == {}", ref_name, current_branch_ref);
             if ref_name.to_string() == current_branch_ref {
                 push_line = protocol_utils::format_line_to_send(format!("{} {} {}\n", ref_hash, last_commit_hash, ref_name));
                 println!("push line: {}", push_line);
             }
-
-            // si esta la ref en el remote la actualizo
-            
-            // si no esta, la pusheo con hash de 0's para crearla 
-
-            break; //ver este break que onda
         }
 
         if push_line.is_empty() {
@@ -86,29 +81,15 @@ impl ClientProtocol {
         let mut buffer = Vec::new();
         pack_file.read_to_end(&mut buffer)?;
         println!("buffer: {:?}", buffer);
-        stream.write_all(&mut buffer);
-        // std::io::copy(&mut pack_file, &mut stream)?;
+
+        thread::sleep(Duration::from_millis(500));
+        stream.write_all(&mut buffer)?;
+
         println!("sending pack file");
         stream.flush()?;
-
+        
         stream.shutdown(Shutdown::Write)?;
-        response_received = protocol_utils::read_until(&mut reader, protocol_utils::UNPACK_CONFIRMATION, true)?;
 
-        println!("response received {:?}", response_received);
-        for line in response_received {
-            if line == protocol_utils::UNPACK_CONFIRMATION {
-                println!("unpack ok");
-                break
-            }
-        }
-        // println!("awaiting response from server...");
-        // let reader = std::io::BufReader::new(&stream);
-        // for line in reader.lines() {
-        //     let line = line?;
-        //     println!("response line: {}", line);
-        //     // break;
-        // }
-        stream.shutdown(Shutdown::Read)?;
         Ok(())
     }
 

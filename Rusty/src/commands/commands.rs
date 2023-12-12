@@ -1695,7 +1695,7 @@ impl LsTree {
 
     pub fn generate_tree_entries(&self, entries: &mut Vec<String>, tree_hash: String, direct_flag: bool, recurse_flag: bool, long_flag: bool) -> Result<(), Box<dyn Error>> {
         let current_hash = if tree_hash == HEAD { helpers::get_commit_tree(Head::get_head_commit()?.as_str())? } else { tree_hash };
-
+        println!("current hash: {}", current_hash);
         let mut tree_content = helpers::read_tree_content(&current_hash)?;
         println!("content: {:?}", tree_content);
 
@@ -1714,7 +1714,7 @@ impl LsTree {
             // let file_mode = split_line[0].as_str();
             // let object_hash = split_line[2].clone();
 
-            let mut line: String = format!("{} {} {}\n", file_mode, object_hash, file_name);
+            let mut line: String = format!("{} {} {}", file_mode, object_hash, file_name);
             // volver a poner el file type, se puede sacar de file mode
 
             if file_mode == TREE_FILE_MODE && direct_flag {
@@ -1788,7 +1788,7 @@ impl Command for LsTree {
         }
 
         for entry in tree_entries {
-            println!("{:?}", entry);
+            println!("{}", entry);
         }
 
         // Return a successful result (an empty string in this case)

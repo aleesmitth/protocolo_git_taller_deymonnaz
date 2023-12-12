@@ -7,6 +7,8 @@ use crate::commands::structs::Head;
 use crate::commands::commands::RELATIVE_PATH;
 use crate::commands::commands::PathHandler;
 
+
+
 use std::{
     error::Error, io, io::Write, net::TcpListener, net::TcpStream, io::Read, fs::File
 };
@@ -135,8 +137,10 @@ impl ServerProtocol {
         let pack_file_path = format!(".git/pack/pack-{}.pack", checksum);
         let mut pack_file = File::open(PathHandler::get_relative_path(&pack_file_path))?;
         let mut buffer = Vec::new();
-        pack_file.read_to_end(&mut buffer);
-        stream.write_all(&mut buffer);
+
+        pack_file.read_to_end(&mut buffer)?;
+
+        stream.write_all(&mut buffer)?;
         println!("sent pack file");
 
         Ok(())
@@ -167,12 +171,14 @@ impl ServerProtocol {
 
         let _ = stream.write_all(protocol_utils::REQUEST_LENGTH_CERO.as_bytes());
 
-        let mut refs_to_update: Vec<(String, String, String)> = Vec::new();
+        
         let mut reader = std::io::BufReader::new(stream.try_clone()?);
         let requests_received: Vec<String> =
             protocol_utils::read_until(&mut reader, protocol_utils::REQUEST_LENGTH_CERO, true)?;
-        for request_received in requests_received {
+        let mut refs_to_update: Vec<(String, String, String)> = Vec::new();
+        for request_received in requests_received.clone() {
             if let [prev_remote_hash, new_remote_hash, branch_name] = request_received.split_whitespace().collect::<Vec<&str>>().as_slice() {
+                helpers::validate_ref_update_request(prev_remote_hash, new_remote_hash, branch_name)?;
                 refs_to_update.push((prev_remote_hash.to_string(), new_remote_hash.to_string(), branch_name.to_string()));
             }
         }
@@ -186,20 +192,23 @@ impl ServerProtocol {
         let mut file = File::create(PathHandler::get_relative_path(".git/pack/received_pack_file.pack"))?;
 
         file.write_all(&buffer)?;
-
+        
+        // // Optionally, you can print the user's input
+        // println!("You pressed Enter: {}", input.trim());
         println!("received packfile");
 
         match UnpackObjects::new().execute(Some(vec![&PathHandler::get_relative_path(".git/pack/received_pack_file.pack")])) {
             Ok(_) => {
+                println!("packfile unpacked");
                 let unpack_confirmation = protocol_utils::format_line_to_send(protocol_utils::UNPACK_CONFIRMATION.to_string());
                 println!("{}", unpack_confirmation);
                 stream.write_all(unpack_confirmation.as_bytes())?;
                 println!("unpack confirmation sent")
             }
-            Err(_) => {}
+            Err(err) => {println!("error unpacking: {}", err);}
         }
 
-        println!("packfile unpacked");
+        helpers::update_hash_for_refs(refs_to_update)?;
 
         Ok(())
     }
