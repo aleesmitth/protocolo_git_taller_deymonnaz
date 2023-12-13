@@ -1,10 +1,11 @@
-use std::{
-    collections::HashMap, error::Error, fs, io, io::Read, io::Write, path::Path, env,
-};
+use std::{collections::HashMap, error::Error, fs, io, io::Read, io::Write, path::Path};
 extern crate crypto;
 extern crate libflate;
 
-use crate::{commands::{commands::Log, structs::Head}, client::client_protocol};
+use crate::{
+    client::client_protocol,
+    commands::{commands::Log, structs::Head},
+};
 use crypto::digest::Digest;
 use crypto::sha1::Sha1;
 use libflate::zlib::{Decoder, Encoder};
@@ -13,7 +14,7 @@ use super::{commands::PathHandler, structs::ObjectType};
 
 const OBJECT: &str = ".git/objects";
 const R_HEADS: &str = ".git/refs/heads";
-const HEAD_FILE: &str = ".git/HEAD";
+// const HEAD_FILE: &str = ".git/HEAD";
 const INDEX_FILE: &str = ".git/index";
 const CONFIG_FILE: &str = ".git/config";
 
@@ -33,17 +34,8 @@ pub fn read_file_content(path: &str) -> Result<String, io::Error> {
 
 /// Give a file's path it reads it's lines and returns them as a Vec<u8>
 pub fn read_file_content_to_bytes(path: &str) -> Result<Vec<u8>, io::Error> {
-    if check_if_directory_exists(".git/object/5e") {
-        println!("dir exists")
-    }
-    if check_if_file_exists(path) {
-        println!("exists");
-    }
-    println!("current dir: {:?}", env::current_dir()?.display());
     let mut file_content: Vec<u8> = Vec::new();
-    println!("path before reading: {:?}", path);
     let mut file: fs::File = fs::File::open(path)?;
-    println!("after reading");
     file.read_to_end(&mut file_content)?;
     Ok(file_content)
 }
@@ -166,14 +158,16 @@ pub fn remove_object_from_file(file_path: &str) -> io::Result<()> {
 
 pub fn get_all_branches() -> Result<Vec<String>, Box<dyn Error>> {
     let current_branch_path = &Head::get_current_branch_path()?;
-    println!("test: {:?}", current_branch_path);
+    // println!("test: {:?}", current_branch_path);
 
     // Extract the directory path from the file path
     let dir_path = Path::new(&current_branch_path)
         .parent()
         .ok_or("Failed to get parent directory")?;
 
-    let entries = fs::read_dir(PathHandler::get_relative_path(&dir_path.to_string_lossy().to_string()))?;
+    let entries = fs::read_dir(PathHandler::get_relative_path(
+        &dir_path.to_string_lossy(),
+    ))?;
 
     // Iterate over the entries
     let mut branches: Vec<String> = Vec::new();
@@ -182,13 +176,13 @@ pub fn get_all_branches() -> Result<Vec<String>, Box<dyn Error>> {
 
         let dir_path_without_git = dir_path.strip_prefix(".git/").unwrap_or(dir_path);
 
-        println!("dir path: {:?}", dir_path_without_git);  
+        // println!("dir path: {:?}", dir_path_without_git);
 
         let file_name = dir_path_without_git
-                .join(entry.file_name())
-                .to_string_lossy()
-                .into_owned();
-                
+            .join(entry.file_name())
+            .to_string_lossy()
+            .into_owned();
+
         let file_content = fs::read_to_string(entry.path())?;
 
         // Combine content and filename
@@ -208,7 +202,7 @@ pub fn get_remote_url(name: &str) -> Result<String, Box<dyn Error>> {
         if line == current_remote_line.as_str() {
             in_remote = true;
         } else if in_remote {
-            let parts: Vec<&str> = line.split(" ").collect();
+            let parts: Vec<&str> = line.split(' ').collect();
             let url = parts.last().unwrap_or(&"");
             return Ok(url.to_string());
         }
@@ -221,31 +215,40 @@ pub fn get_remote_url(name: &str) -> Result<String, Box<dyn Error>> {
 
 pub fn generate_sha1_string_from_bytes(data: &Vec<u8>) -> String {
     let mut hasher = Sha1::new();
-    hasher.input(&data);
+    hasher.input(data);
     hasher.result_str()
 }
 
 pub fn read_object_to_bytes(hash: String) -> Result<(ObjectType, Vec<u8>, String), Box<dyn Error>> {
-
     let mut file = fs::File::open(PathHandler::get_relative_path(&get_object_path(&hash)))?;
     let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer);
+    file.read_to_end(&mut buffer)?;
     let file_data = decompress_file_content_to_bytes(buffer)?;
 
-    let split_content: Vec<Vec<u8>> = file_data.splitn(2, |&c| c == 0).map(|slice| slice.to_vec()).collect();
+    let split_content: Vec<Vec<u8>> = file_data
+        .splitn(2, |&c| c == 0)
+        .map(|slice| slice.to_vec())
+        .collect();
 
-    let object_header: Vec<String> = String::from_utf8_lossy(&split_content[0]).to_string().split(' ').map(String::from).collect();
+    let object_header: Vec<String> = String::from_utf8_lossy(&split_content[0])
+        .to_string()
+        .split(' ')
+        .map(String::from)
+        .collect();
     let object_type = ObjectType::new(&object_header[0]).ok_or(io::Error::new(
         io::ErrorKind::InvalidData,
         "Failed to determine object type",
     ))?;
-    let object_size = if object_header.len() >= 2 { object_header[1].clone() } else { String::new() };
-    
+    let object_size = if object_header.len() >= 2 {
+        object_header[1].clone()
+    } else {
+        String::new()
+    };
+
     Ok((object_type, split_content[1].clone(), object_size))
 }
 
 pub fn read_object_to_string(hash: String) -> Result<(ObjectType, String, String), Box<dyn Error>> {
-
     let (object_type, file_content, object_size) = read_object_to_bytes(hash)?;
 
     let content_to_string = String::from_utf8_lossy(&file_content).to_string();
@@ -270,7 +273,7 @@ pub fn get_remote_tracking_branches() -> Result<HashMap<String, (String, String)
             let mut remote = None;
             let mut merge = None;
 
-            while let Some(next_line) = lines.next() {
+            for next_line in lines.by_ref() {
                 if next_line.starts_with("remote = ") {
                     remote = Some(next_line.trim_start_matches("remote = ").to_string());
                 } else if next_line.starts_with("merge = ") {
@@ -300,14 +303,14 @@ pub fn update_local_branch_with_commit(
     branch_name: &str,
     remote_hash: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let config_content = read_file_content(&PathHandler::get_relative_path(&CONFIG_FILE))?;
+    let config_content = read_file_content(&PathHandler::get_relative_path(CONFIG_FILE))?;
 
     let branch_header = format!("[branch '{}']", branch_name);
     let mut lines = config_content.lines().peekable();
     while let Some(line) = lines.next() {
         if line == branch_header {
             let mut remote = None;
-            while let Some(next_line) = lines.next() {
+            for next_line in lines.by_ref() {
                 if next_line.starts_with("remote = ") {
                     remote = Some(next_line.trim_start_matches("remote = ").to_string());
                 } else if next_line.starts_with('[') {
@@ -325,7 +328,9 @@ pub fn update_local_branch_with_commit(
 }
 
 pub fn update_branch_hash(branch_name: &str, new_commit_hash: &str) -> Result<(), Box<dyn Error>> {
-    let mut file = fs::File::create(PathHandler::get_relative_path(&get_branch_path(branch_name)))?;
+    let mut file = fs::File::create(PathHandler::get_relative_path(&get_branch_path(
+        branch_name,
+    )))?;
     file.write_all(new_commit_hash.as_bytes())?;
     Ok(())
 }
@@ -342,20 +347,27 @@ pub fn get_branch_path(branch_name: &str) -> String {
 }
 
 pub fn get_object_path(object_hash: &str) -> String {
-    format!("{}/{}/{}", OBJECT, object_hash[..2].to_string(), object_hash[2..].to_string())
+    format!(
+        "{}/{}/{}",
+        OBJECT,
+        &object_hash[..2].to_string(),
+        &object_hash[2..].to_string()
+    )
 }
 
-pub fn find_common_ancestor_commit(_current_branch: &str, merging_branch: &str) -> Result<String, Box<dyn Error>> {
+pub fn find_common_ancestor_commit(
+    _current_branch: &str,
+    merging_branch: &str,
+) -> Result<String, Box<dyn Error>> {
     let mut current_branch_log = Vec::new();
     let current_branch_commit = Head::get_head_commit()?;
     let _ = Log::new().generate_log_entries(&mut current_branch_log, current_branch_commit);
-    println!("current branch log: {:?}", current_branch_log);
-
+    // println!("current branch log: {:?}", current_branch_log);
 
     let mut merging_branch_log = Vec::new();
     let merging_branch_commit = get_branch_last_commit(&get_branch_path(merging_branch))?;
     let _ = Log::new().generate_log_entries(&mut merging_branch_log, merging_branch_commit);
-    println!("merging branch log: {:?}", merging_branch_log);
+    // println!("merging branch log: {:?}", merging_branch_log);
     // tal vez eso parametrizarlo en una funcion
 
     for (commit, _message) in merging_branch_log {
@@ -367,24 +379,28 @@ pub fn find_common_ancestor_commit(_current_branch: &str, merging_branch: &str) 
     Ok(String::new())
 }
 
-pub fn ancestor_commit_exists(current_commit_hash: &str, merging_commit_hash: &str) -> Result<bool, Box<dyn Error>> {
+pub fn ancestor_commit_exists(
+    current_commit_hash: &str,
+    merging_commit_hash: &str,
+) -> Result<bool, Box<dyn Error>> {
     // let current_branch_commit = Head::get_head_commit()?;
     // println!("current commit: {}", current_branch_commit);
     let mut merging_branch_log = Vec::new();
     // aca rompe al hacer con fetch porque estamos queriendo unir una branch que esta en remotes, tal vez ya habria que pasar los hash de commits como parametro
     // de cambiar eso el nombre pasaria a ser tipo ancestor_commit_exists()
     // let merging_branch_commit = get_branch_last_commit(&get_branch_path(merging_branch))?;
-    println!("mergin commitg: {}", merging_commit_hash);
+    // println!("mergin commitg: {}", merging_commit_hash);
     if current_commit_hash.is_empty() {
-        println!("true");
+        // println!("true");
         return Ok(true);
     }
-    
-    println!("generating log...");
-    let _ = Log::new().generate_log_entries(&mut merging_branch_log, merging_commit_hash.to_string());
-    println!("log: {:?}", merging_branch_log);
+
+    // println!("generating log...");
+    let _ =
+        Log::new().generate_log_entries(&mut merging_branch_log, merging_commit_hash.to_string());
+    // println!("log: {:?}", merging_branch_log);
     for (commit, _message) in merging_branch_log {
-        println!("commit: {} == current commit: {} ", commit, current_commit_hash);
+        // println!("commit: {} == current commit: {} ", commit, current_commit_hash);
         if commit == current_commit_hash {
             return Ok(true);
         }
@@ -396,24 +412,31 @@ pub fn ancestor_commit_exists(current_commit_hash: &str, merging_commit_hash: &s
 /// tree object.
 pub fn get_commit_tree(commit_hash: &str) -> Result<String, Box<dyn Error>> {
     //println!("commit hash: {}", commit_hash);
-    println!("get_commit_tree starts");
+    // println!("get_commit_tree starts");
     let get_obj_path = get_object_path(commit_hash);
-    println!("get_obj_path {:?}", get_obj_path);
+    // println!("get_obj_path {:?}", get_obj_path);
     let get_obj_path_relative = PathHandler::get_relative_path(&get_obj_path);
-    println!("get_obj_path_relative {:?}", get_obj_path_relative);
+    // println!("get_obj_path_relative {:?}", get_obj_path_relative);
     let read_file_content_to_bytes = read_file_content_to_bytes(&get_obj_path_relative)?;
-    println!("read_file_content_to_bytes {:?}", read_file_content_to_bytes);
+    // println!("read_file_content_to_bytes {:?}", read_file_content_to_bytes);
     let decompressed_data = decompress_file_content(read_file_content_to_bytes)?;
-    println!("decompressed_data {:?}", decompressed_data);
+    // println!("decompressed_data {:?}", decompressed_data);
 
-    let commit_file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
-    println!("commit_file_content: {:?}", commit_file_content);
+    let commit_file_content: Vec<String> =
+        decompressed_data.split('\0').map(String::from).collect();
+    // println!("commit_file_content: {:?}", commit_file_content);
 
-    let commit_file_lines: Vec<String> = commit_file_content[1].lines().map(|s| s.to_string()).collect();
+    let commit_file_lines: Vec<String> = commit_file_content[1]
+        .lines()
+        .map(|s| s.to_string())
+        .collect();
     //println!("commit_file_lines: {:?}", commit_file_lines);
-    let tree_split_line: Vec<String> = commit_file_lines[0].split_whitespace().map(String::from).collect();
+    let tree_split_line: Vec<String> = commit_file_lines[0]
+        .split_whitespace()
+        .map(String::from)
+        .collect();
     //println!("tree_split_line: {:?}", tree_split_line);
-    
+
     let tree_hash_trimmed = &tree_split_line[1];
 
     Ok(tree_hash_trimmed.to_string())
@@ -423,7 +446,7 @@ pub fn get_commit_tree(commit_hash: &str) -> Result<String, Box<dyn Error>> {
 pub fn check_if_file_exists(file_path: &str) -> bool {
     if let Ok(metadata) = fs::metadata(PathHandler::get_relative_path(file_path)) {
         if metadata.is_file() {
-            return true
+            return true;
         }
     }
     false
@@ -433,7 +456,7 @@ pub fn check_if_file_exists(file_path: &str) -> bool {
 pub fn check_if_directory_exists(dir_path: &str) -> bool {
     if let Ok(metadata) = fs::metadata(dir_path) {
         if metadata.is_dir() {
-            return true
+            return true;
         }
     }
     false
@@ -449,71 +472,74 @@ pub fn hex_string_to_bytes(bytes: &[u8]) -> String {
 }
 
 pub fn read_tree_content(tree_hash: &str) -> Result<Vec<(String, String, String)>, Box<dyn Error>> {
-
-    let compressed_content = read_file_content_to_bytes(&PathHandler::get_relative_path(&get_object_path(tree_hash)))?;
+    let compressed_content =
+        read_file_content_to_bytes(&PathHandler::get_relative_path(&get_object_path(tree_hash)))?;
     let tree_content = decompress_file_content_to_bytes(compressed_content)?;
-    println!("decompressed data: {:?}", tree_content);
-    // let decompressed = decompress_file_content(buffer)?;
-    // println!("tree content: {}", decompressed);
-    // let buffer_to_string = String::from_utf8_lossy(&decompressed).to_string();
-    // let split_content: Vec<String> = decompressed.splitn(2, '\0').map(String::from).collect();
-    let split_content: Vec<Vec<u8>> = tree_content.splitn(2, |&c| c == 0).map(|slice| slice.to_vec()).collect();
+    let split_content: Vec<Vec<u8>> = tree_content
+        .splitn(2, |&c| c == 0)
+        .map(|slice| slice.to_vec())
+        .collect();
 
     let mut divided_content = Vec::new();
-    println!("all tree split_content: {:?}", &split_content);
-    println!("tree split_content: {:?}", String::from_utf8_lossy(&split_content[1]));
-    // let mut substrings: Vec<String> = split_content[1].split("\0").map(String::from).collect();
-    let mut substrings: Vec<Vec<u8>> = split_content[1].split(|&c| c == 0).map(|slice| slice.to_vec()).collect();
-    
-    let tree_data: Vec<Vec<u8>> = substrings[0].split(|&c| c == 32).map(|slice| slice.to_vec()).collect();
+
+    let mut substrings: Vec<Vec<u8>> = split_content[1]
+        .split(|&c| c == 0)
+        .map(|slice| slice.to_vec())
+        .collect();
+
+    let tree_data: Vec<Vec<u8>> = substrings[0]
+        .split(|&c| c == 32)
+        .map(|slice| slice.to_vec())
+        .collect();
 
     let mut file_mode = String::from_utf8_lossy(&tree_data[0]).to_string();
     let mut file_name = String::from_utf8_lossy(&tree_data[1]).to_string();
-    println!("file_mode {}", file_mode);
-    println!("file_name {}", file_name);
-        println!("all substrings: {:?}", &substrings);
+
     substrings.remove(0);
 
-// TODO find a better way to do this, it's a fix for when the hash contains 0, so it breaks the split , but it doesnt work because it breaks somewhere else latter
-/*    let mut result: Vec<Vec<u8>> = Vec::new();
+    // TODO find a better way to do this, it's a fix for when the hash contains 0, so it breaks the split , but it doesnt work because it breaks somewhere else latter
+    /*    let mut result: Vec<Vec<u8>> = Vec::new();
 
-    for inner_vec in substrings {
-        if let Some(last_vec) = result.last_mut() {
-            // Check if the last vector in the result has length less than 5
-            if last_vec.len() < 5 {
-                // If yes, append the current inner_vec to it
-                let middle_index = last_vec.len();
-                last_vec.insert(middle_index, 0);
-                last_vec.extend(inner_vec);
-                continue;
+        for inner_vec in substrings {
+            if let Some(last_vec) = result.last_mut() {
+                // Check if the last vector in the result has length less than 5
+                if last_vec.len() < 5 {
+                    // If yes, append the current inner_vec to it
+                    let middle_index = last_vec.len();
+                    last_vec.insert(middle_index, 0);
+                    last_vec.extend(inner_vec);
+                    continue;
+                }
             }
+
+            // If the last vector is empty or its length is >= 5, start a new vector in the result
+            result.push(inner_vec);
         }
 
-        // If the last vector is empty or its length is >= 5, start a new vector in the result
-        result.push(inner_vec);
-    }
+        println!("fixed substrings {:?}", &result);
 
-    println!("fixed substrings {:?}", &result);
-
-*/
+    */
     for substring in &substrings {
-        println!("substring: {:?}", &substring);
+        // println!("substring: {:?}", &substring);
         let processed_bytes = &substring[..20];
 
-        let hash_string = hex_string_to_bytes(&processed_bytes);
-        println!("hash_string: {}", hash_string);
+        let hash_string = hex_string_to_bytes(processed_bytes);
+        // println!("hash_string: {}", hash_string);
 
         divided_content.push((file_mode.clone(), file_name.clone(), hash_string));
-        println!("substring len: {}", substring.len());
+        // println!("substring len: {}", substring.len());
         if substring.len() > 20 {
-            let tree_entry_data =  String::from_utf8_lossy(&substring[20..]).to_string();
-            println!("entry data: {}", tree_entry_data);
-            let split_entry: Vec<String> = tree_entry_data.split_whitespace().map(String::from).collect();
+            let tree_entry_data = String::from_utf8_lossy(&substring[20..]).to_string();
+            // println!("entry data: {}", tree_entry_data);
+            let split_entry: Vec<String> = tree_entry_data
+                .split_whitespace()
+                .map(String::from)
+                .collect();
             file_mode = split_entry[0].clone();
             file_name = split_entry[1].clone();
         }
     }
-    println!("{:?}", divided_content);
+    // println!("{:?}", divided_content);
     Ok(divided_content)
 }
 
@@ -525,41 +551,48 @@ pub fn convert_hash_to_decimal_bytes(hash: &str) -> Result<Vec<u8>, Box<dyn Erro
         decimal_hash.push(result);
     }
 
-    println!("hash: {:?}", decimal_hash);
+    // println!("hash: {:?}", decimal_hash);
     Ok(decimal_hash)
-} 
+}
 
-pub fn validate_ref_update_request(prev_remote_hash: &str, new_remote_hash: &str, branch_ref: &str) -> Result<(), Box<dyn Error>> {
-    println!("{} {} {}", prev_remote_hash, new_remote_hash, branch_ref);
+pub fn validate_ref_update_request(
+    prev_remote_hash: &str,
+    _new_remote_hash: &str,
+    branch_ref: &str,
+) -> Result<(), Box<dyn Error>> {
+    // println!("{} {} {}", prev_remote_hash, new_remote_hash, branch_ref);
     let branch_path = format!(".git/{}", branch_ref);
-    println!("path: {}", branch_path);
+    // println!("path: {}", branch_path);
     if check_if_file_exists(&branch_path) {
         if prev_remote_hash == client_protocol::ZERO_HASH {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
                 "Error: Trying to initialize existing ref",
-            )))
+            )));
         }
-        if get_branch_last_commit(&PathHandler::get_relative_path(&branch_path))? != prev_remote_hash {
+        if get_branch_last_commit(&PathHandler::get_relative_path(&branch_path))?
+            != prev_remote_hash
+        {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
                 "Error: New hash is different from ref's current hash",
-            )))
+            )));
         }
     } else {
         if prev_remote_hash != client_protocol::ZERO_HASH {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
                 "Error: Ref was not found",
-            )))
+            )));
         }
     }
 
     Ok(())
 }
 
-pub fn update_hash_for_refs(refs_to_update: Vec<(String, String, String)>) -> Result<(), Box<dyn Error>> {
-
+pub fn update_hash_for_refs(
+    refs_to_update: Vec<(String, String, String)>,
+) -> Result<(), Box<dyn Error>> {
     for (_, new_remote_hash, branch_ref) in refs_to_update {
         let ref_path = format!(".git/{}", branch_ref);
         let mut file = fs::File::create(PathHandler::get_relative_path(&ref_path))?;
@@ -679,20 +712,20 @@ mod tests {
     fn test_create_new_branch() {
         // Common setup: create a temporary directory and initialize a Git repository
         let (_temp_dir, _temp_path) = common_setup();
-    
+
         // Create a new branch
         let mut head = Head::new();
         let branch_name = "test_branch";
         create_new_branch(branch_name, &mut head).expect("Failed to create new branch");
-    
+
         // Check if the branch file was created
         let branch_file_path = format!(".git/refs/heads/{}", branch_name);
         assert!(Path::new(&PathHandler::get_relative_path(&branch_file_path)).exists(), "Branch file not created");
-    
+
         // Check if the Head state was updated
         let current_branch = head.get_current_branch().expect("Failed to get current branch");
         assert_eq!(current_branch, branch_name, "Head state not updated");
     }
-    
+
 }
  */

@@ -1,12 +1,14 @@
-use std::fmt::format;
-use std::fs::ReadDir;
-use std::{fs, error::Error, io, io::Write, io::Read, str, env, io::BufRead, io::Seek, io::SeekFrom, io::ErrorKind, collections::HashSet};
 use chrono::{DateTime, Local};
+use std::fs::ReadDir;
+use std::{
+    collections::HashSet, env, error::Error, fs, io, io::BufRead, io::ErrorKind, io::Read,
+    io::Seek, io::SeekFrom, io::Write, str,
+};
 
 extern crate libflate;
-use libflate::zlib::Decoder;
-use crypto::sha1::Sha1;
 use crypto::digest::Digest;
+use crypto::sha1::Sha1;
+use libflate::zlib::Decoder;
 const GIT: &str = ".git";
 const OBJECT: &str = ".git/objects";
 const PACK: &str = ".git/pack";
@@ -39,7 +41,7 @@ const HEAD: &str = "HEAD";
 const ADD_FLAG: &str = "add";
 const REMOVE_FLAG: &str = "rm";
 pub const R_HEADS: &str = ".git/refs/heads";
-const HEAD_FILE: &str = ".git/HEAD";
+// const HEAD_FILE: &str = ".git/HEAD";
 const R_TAGS: &str = ".git/refs/tags";
 const R_REMOTES: &str = ".git/refs/remotes";
 const DEFAULT_BRANCH_NAME: &str = "master";
@@ -61,24 +63,21 @@ const COPY_ZERO_SIZE: usize = 0x10000;
 
 //CODES FOR COLORS IN TEXT
 const COLOR_GREEN_CODE: &str = "\x1b[32m";
-const COLOR_YELLOW_CODE: &str  = "\x1b[33m";
+const COLOR_YELLOW_CODE: &str = "\x1b[33m";
 const COLOR_RESET_CODE: &str = "\x1b[0m";
-
 
 use crate::client;
 use crate::client::client_protocol::ClientProtocol;
-use crate::commands::structs::{Head, self};
 use crate::commands::helpers::get_file_length;
 use crate::commands::structs::HashObjectCreator;
+use crate::commands::structs::Head;
 use crate::commands::structs::ObjectType;
 use crate::commands::structs::PackObjectType;
 use crate::commands::structs::StagingArea;
 
-use crate::commands::structs::WorkingDirectory;
-use crate::commands::structs::IndexFileEntryState;
 use crate::commands::helpers;
-use crate::server::server_protocol::ServerProtocol;
-
+use crate::commands::structs::IndexFileEntryState;
+use crate::commands::structs::WorkingDirectory;
 // TODO MOVER A OTRA CARPETA. NO TIENE SENTIDO commands::commands::PathHandler
 pub struct PathHandler;
 
@@ -124,7 +123,7 @@ impl Command for Init {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
                 "A git repository already exists in this directory",
-            )))
+            )));
         }
         let _refs_heads = fs::create_dir_all(PathHandler::get_relative_path(R_HEADS));
         let _refs_tags = fs::create_dir_all(PathHandler::get_relative_path(R_TAGS))?;
@@ -152,14 +151,14 @@ impl Branch {
     /// Creates a new branch with the specified name. Creates branch file.
     pub fn create_new_branch(&self, branch_name: &str) -> Result<(), Box<dyn Error>> {
         let branch_path = helpers::get_branch_path(branch_name);
-        
+
         if helpers::check_if_file_exists(&branch_path) {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
                 "A branch with the specified name already exists",
-            )))
+            )));
         }
-        
+
         let mut branch_file = fs::File::create(&PathHandler::get_relative_path(&branch_path))?;
 
         if branch_name == DEFAULT_BRANCH_NAME {
@@ -179,14 +178,14 @@ impl Branch {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
                 "No branch with the specified name was found",
-            )))
+            )));
         }
 
         if Head::get_current_branch_name()? == branch_name {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
                 "Cannot delete current branch",
-            )))
+            )));
         }
 
         fs::remove_file(PathHandler::get_relative_path(&branch_path))?;
@@ -196,19 +195,21 @@ impl Branch {
 
     pub fn list_all_branches(&self) -> Result<String, Box<dyn Error>> {
         let mut branches: Vec<String> = Vec::new();
-        
+
         match fs::read_dir(PathHandler::get_relative_path(R_HEADS)) {
             Ok(entries) => {
                 for entry in entries {
                     branches.push(entry?.file_name().to_string_lossy().to_string())
                 }
             }
-            Err(_) => return Err(Box::new(io::Error::new(
-                io::ErrorKind::Other,
-                "Error reading branches",
-            )))
+            Err(_) => {
+                return Err(Box::new(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Error reading branches",
+                )))
+            }
         }
-            
+
         let current_branch = Head::get_current_branch_name()?;
 
         for branch in branches.clone() {
@@ -234,12 +235,15 @@ impl Branch {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
                 "No branch with the specified name was found",
-            )))
+            )));
         }
 
         let new_branch_path = PathHandler::get_relative_path(&helpers::get_branch_path(new_name));
 
-        fs::rename(PathHandler::get_relative_path(&previous_branch_path), &new_branch_path)?;
+        fs::rename(
+            PathHandler::get_relative_path(&previous_branch_path),
+            &new_branch_path,
+        )?;
 
         if Head::get_current_branch_name()? == previous_name {
             Head::change_head_branch(new_name)?
@@ -247,7 +251,6 @@ impl Branch {
 
         Ok(())
     }
-
 }
 
 /// Implementation of the `Command` trait for the `Branch` type.
@@ -329,7 +332,9 @@ impl Command for Branch {
         ) {
             (true, _, _, _, _) => result = self.list_all_branches()?,
             (_, true, _, Some(name), _) => self.delete_branch(&name)?,
-            (_, false, true, Some(old_name), Some(new_name)) => self.rename_branch(&old_name, &new_name)?,
+            (_, false, true, Some(old_name), Some(new_name)) => {
+                self.rename_branch(&old_name, &new_name)?
+            }
             (false, false, false, Some(name), _) => self.create_new_branch(&name)?,
             _ => {}
         }
@@ -349,21 +354,21 @@ impl Command for Checkout {
     /// Executes the `git checkout` command, which changes the current branch to the specified one.
     /// It updates the `HEAD` file to point to the new branch if it's different from the current branch.
     /// If successful, it returns an empty string; otherwise, it returns an error message.
-    fn execute(&self,  args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         match args {
             Some(args) => {
                 let branch_name = args[0];
                 if !helpers::check_if_file_exists(&helpers::get_branch_path(branch_name)) {
                     return Err(Box::new(io::Error::new(
-                                io::ErrorKind::Other,
-                                "Name did not match any known branch",
-                        )))
+                        io::ErrorKind::Other,
+                        "Name did not match any known branch",
+                    )));
                 }
                 if Head::get_current_branch_name()? == branch_name {
                     return Err(Box::new(io::Error::new(
                         io::ErrorKind::Other,
                         "Already on specified branch",
-                    )))
+                    )));
                 }
                 // falla aca que no chequeo que haya algun commit, si no hay commit previo rompe
                 Head::change_head_branch(branch_name)?;
@@ -375,7 +380,6 @@ impl Command for Checkout {
                     WorkingDirectory::update_working_directory_to(&head_tree)?;
                     StagingArea::new().change_index_file(head_tree)?; //esto rompe en caso aca, pero quiero testear abtes
                 }
-                
             }
             None => {
                 return Err(Box::new(io::Error::new(
@@ -398,10 +402,12 @@ impl CatFile {
 
 impl Command for CatFile {
     /// Executes the `cat-file` command, which displays information about a Git object's type or size.
-    fn execute(&self,  args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         match args {
             Some(args) => {
-                let file = fs::File::open(&PathHandler::get_relative_path(&helpers::get_object_path(args[1])))?;
+                let file = fs::File::open(&PathHandler::get_relative_path(
+                    &helpers::get_object_path(args[1]),
+                ))?;
 
                 let mut decoder = Decoder::new(file)?;
                 let mut header = Vec::new();
@@ -409,14 +415,14 @@ impl Command for CatFile {
                 loop {
                     let mut byte = [0; 1];
                     decoder.read_exact(&mut byte)?;
-            
+
                     // Check if the byte is '\0'
                     if byte[0] == b'\0' {
                         break; // Exit the loop if null byte is encountered
                     }
                     header.push(byte[0]);
                 }
-            
+
                 let header_str = String::from_utf8(header)?;
                 let parts: Vec<&str> = header_str.trim_end().split(' ').collect();
 
@@ -450,7 +456,7 @@ impl Command for HashObject {
     /// Executes the `hash-object` command, which calculates the hash of a given file or data.
     /// If the write flag is specified, the object is created as a file in the objects subdirectory.
     /// Default object type is "blob" but can be specified with type flag.
-    fn execute(&self,  args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         if args.is_none() {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
@@ -516,10 +522,10 @@ impl Commit {
         &self,
         tree_hash: String,
         message: Option<&str>,
-        branch_path: &str,
+        _branch_path: &str,
     ) -> Result<String, Box<dyn Error>> {
         let head_commit = Head::get_head_commit()?;
-        let mut content = String::new();
+        let mut content;
 
         let username = env::var("USER")?;
         let current_time: DateTime<Local> = Local::now();
@@ -530,8 +536,14 @@ impl Commit {
 
         let offset_string = format!("{:03}{:02}", offset_hours, (offset_minutes % 60).abs());
 
-        let author_line = format!("author {} <{}@fi.uba.ar> {} {}", username, username, timestamp , offset_string);
-        let commiter_line = format!("committer {} <{}@fi.uba.ar> {} {}", username, username, timestamp, offset_string);
+        let author_line = format!(
+            "author {} <{}@fi.uba.ar> {} {}",
+            username, username, timestamp, offset_string
+        );
+        let commiter_line = format!(
+            "committer {} <{}@fi.uba.ar> {} {}",
+            username, username, timestamp, offset_string
+        );
 
         if head_commit.is_empty() {
             content = format!("tree {}", tree_hash);
@@ -551,7 +563,7 @@ impl Command for Commit {
     /// To achieve this, it creates a "tree" which is the index file turned into a tree object.
     /// Then it creates a commit file, which contains the tree object hash, the commit's parent
     /// commits and the given message with the message flag.
-    fn execute(&self,  args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         if helpers::get_file_length(&PathHandler::get_relative_path(INDEX_FILE))? == 0 {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
@@ -588,7 +600,7 @@ impl Command for Commit {
         let mut branch_file = fs::File::create(PathHandler::get_relative_path(&branch_path))?;
         branch_file.write_all(commit_object_hash.as_bytes())?;
 
-         self.stg_area.unstage_index_file()?;
+        self.stg_area.unstage_index_file()?;
         Ok(commit_content)
     }
 }
@@ -607,7 +619,7 @@ impl Rm {
 
 impl Command for Rm {
     /// Receives a file path and removes it from the staging area.
-    fn execute(&self,  args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         match args {
             Some(args) => {
                 self.stg_area.remove_file(args[0])?;
@@ -673,20 +685,19 @@ impl Command for Status {
     /// This command checks the status of the current Git repository and prints the
     /// status of files in the working directory, indicating whether they are
     /// modified, staged, or unstaged.
-    fn execute(
-        &self,
-        _args: Option<Vec<&str>>,
-    ) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let last_commit_hash: String = Head::get_head_commit()?;
         let mut no_changes = true;
-        let mut tree_content: Vec<(String, String, String)> = Vec::new();
+        let tree_content: Vec<(String, String, String)> = Vec::new();
         if !last_commit_hash.is_empty() {
             let last_commit = Head::get_head_commit()?;
             let tree_hash = helpers::get_commit_tree(&last_commit)?;
-            let tree_content: Vec<(String, String, String)> = helpers::read_tree_content(&tree_hash)?;
+            let _tree_content: Vec<(String, String, String)> =
+                helpers::read_tree_content(&tree_hash)?;
         }
 
-        let index_file_content = helpers::read_file_content(&PathHandler::get_relative_path(INDEX_FILE))?;
+        let index_file_content =
+            helpers::read_file_content(&PathHandler::get_relative_path(INDEX_FILE))?;
         let index_objects: Vec<String> =
             index_file_content.lines().map(|s| s.to_string()).collect();
 
@@ -741,7 +752,8 @@ impl Remote {
 
     /// Adds a new remote repository configuration to the Git configuration file.
     fn add_new_remote(&self, remote_name: String, url: String) -> Result<(), Box<dyn Error>> {
-        let config_content = helpers::read_file_content(&PathHandler::get_relative_path(CONFIG_FILE))?;
+        let config_content =
+            helpers::read_file_content(&PathHandler::get_relative_path(CONFIG_FILE))?;
 
         let section_header = format!("[remote '{}']", remote_name);
         let new_config_content = format!("{}{}\nurl = {}\n", config_content, section_header, url);
@@ -765,7 +777,8 @@ impl Remote {
 
     /// Removes a specified remote repository configuration from the Git configuration file.
     fn remove_remote(&self, remote_name: String) -> Result<(), Box<dyn Error>> {
-        let config_content = helpers::read_file_content(&PathHandler::get_relative_path(CONFIG_FILE))?;
+        let config_content =
+            helpers::read_file_content(&PathHandler::get_relative_path(CONFIG_FILE))?;
 
         let remote_header = format!("[remote '{}']", remote_name);
         let mut new_config_content = String::new();
@@ -811,7 +824,7 @@ impl Command for Remote {
     /// Executes Command for Remote. When no flags are received, all remotes are listed. If the add flag is received
     /// with a name and a new url, a remote is added to the config file. If a remove flag and a name is received,
     /// the remote with said name will be removed from the config file.
-    fn execute(&self,  args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         if args.is_none() {
             self.list_remotes()?;
             return Ok(String::new());
@@ -851,7 +864,11 @@ impl PackObjects {
         PackObjects {}
     }
 
-    fn get_tree_objects(&self, object_set: &mut HashSet<String>, tree_hash: &str) -> Result<(), Box<dyn Error>> {
+    fn get_tree_objects(
+        &self,
+        object_set: &mut HashSet<String>,
+        tree_hash: &str,
+    ) -> Result<(), Box<dyn Error>> {
         object_set.insert(tree_hash.to_string());
         let tree_content = helpers::read_tree_content(tree_hash)?;
 
@@ -873,7 +890,7 @@ impl PackObjects {
 
     fn calculate_object_header(&self, object_type: ObjectType, object_size: usize) -> Vec<u8> {
         let mut header = Vec::new();
-    
+
         // Encode the object type
         let type_byte: u8 = match object_type {
             ObjectType::Commit => 0b0001,
@@ -898,7 +915,7 @@ impl PackObjects {
         }
 
         while size > 0 {
-            let mut byte = (size as u8) & 0x7F;
+            let byte = (size as u8) & 0x7F;
             size >>= 7;
             header.push(byte);
         }
@@ -925,22 +942,22 @@ impl Command for PackObjects {
     /// This command generates a Git pack file that contains compressed Git objects.
     /// The pack file format is used to efficiently store objects and their history.
     /// It also creates an index file that helps locate objects in the pack file.
-    fn execute(&self,  args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let commit_list = args.unwrap_or(Vec::new()); //aca recibo hashes de commits
-        //por cada hash de commit busco su hash de tree
+                                                      //por cada hash de commit busco su hash de tree
         let mut object_set: HashSet<String> = HashSet::new();
         for commit_hash in commit_list {
-            println!("looping first commit {}", commit_hash);
+            // println!("looping first commit {}", commit_hash);
             object_set.insert(commit_hash.to_string());
             let tree_hash = helpers::get_commit_tree(commit_hash)?;
-            println!("tree_hash {}", tree_hash);
+            // println!("tree_hash {}", tree_hash);
             self.get_tree_objects(&mut object_set, &tree_hash)?;
         }
-        println!("object_set: {:?}", object_set);
+        // println!("object_set: {:?}", object_set);
         // por cada hash de tree agrego objetos necesarios a una lista o hasta a un diccionario para chequear rapido que no este ya, pero sin ningun value
         // let objects_list: Vec<String> = arg_slice[0]; // aca tengo que tener los hashes de todos los objetos que quiero procesar
         // Open pack and index files
-        
+
         // Create an uncompressed pack file
         let mut pack_file_content = Vec::new();
         // let mut index_entries: Vec<u8> = Vec::new();
@@ -950,22 +967,24 @@ impl Command for PackObjects {
         let mut object_count: u32 = 0;
         // let mut offset: u64 = 12;
         // Iterate through objects
-        for object_hash in object_set { // going through hashes in objects_list
+        for object_hash in object_set {
+            // going through hashes in objects_list
             object_count += 1;
-            
+
             // tengo qwue diferenciar si leo un objeto normal o un tree
             // match helpers::get_object_type(&object_hash) {
             //     ObjectType::Tree => helpers::read_tree_content(tree_hash)
             // }
-            println!("reading object: {}", object_hash);
-            let (object_type, object_content, object_size) = helpers::read_object_to_bytes(object_hash.to_string())?;
+            // println!("reading object: {}", object_hash);
+            let (object_type, object_content, object_size) =
+                helpers::read_object_to_bytes(object_hash.to_string())?;
             // let decompressed_data: String = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&object_path)?)?;
             // let file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
             // let object_header: Vec<String> = file_content[0].split(' ').map(String::from).collect();
             // let object_type = ObjectType::new(&object_header[0]).unwrap_or(ObjectType::Blob);
             // let object_size: u64 = object_header[1].parse()?;
             // let object_content: &str = &file_content[1];
-            println!("header=> type: {}, size: {}", object_type, object_size);
+            // println!("header=> type: {}, size: {}", object_type, object_size);
             // println!("content: {}", object_content);
             // Calculate the SHA-1 hash of the object content
 
@@ -983,7 +1002,7 @@ impl Command for PackObjects {
             let compressed_content: &Vec<u8> = &helpers::compress_bytes(&object_content)?;
             let header = self.calculate_object_header(object_type, object_size_usize);
             // let header = self.calculate_object_header(object_size_usize, object_type);;
-            println!("header: {:?}", header);
+            // println!("header: {:?}", header);
             pack_file_content.extend_from_slice(&header);
             pack_file_content.extend_from_slice(&compressed_content);
         }
@@ -991,11 +1010,8 @@ impl Command for PackObjects {
         let mut pack_file_final = Vec::new();
         // Generate pack header
         let version = [0u8, 0u8, 0u8, 2u8];
-        println!("{:?}", b"PACK");
         pack_file_final.extend_from_slice(b"PACK");
-        println!("{:?}", version);
         pack_file_final.extend_from_slice(&version);
-        println!("{:?}", &object_count.to_be_bytes());
         pack_file_final.extend_from_slice(&object_count.to_be_bytes());
 
         pack_file_final.extend_from_slice(&pack_file_content);
@@ -1010,8 +1026,6 @@ impl Command for PackObjects {
         // pack_file_final.extend_from_slice(pack_checksum.as_bytes());
 
         pack_file.write_all(&pack_file_final)?;
-        
-        println!("pack checksum: {:?}", checksum_str);
         pack_file.write_all(&pack_checksum)?;
 
         // let mut index_file = fs::File::create(".git/pack/pack_file.idx")?;
@@ -1127,7 +1141,6 @@ impl UnpackObjects {
     fn read_type_and_size<R: Read>(stream: &mut R) -> Result<(u8, usize), Box<dyn Error>> {
         let value = Self::read_size_encoding(stream)?;
         let object_type = Self::keep_bits(value >> TYPE_BYTE_SIZE_BITS, TYPE_BITS) as u8;
-        println!("object type: {}", object_type);
         let size = Self::keep_bits(value, TYPE_BYTE_SIZE_BITS)
             | (value >> VARINT_ENCODING_BITS << TYPE_BYTE_SIZE_BITS);
         Ok((object_type, size))
@@ -1252,7 +1265,6 @@ impl UnpackObjects {
         offset: u64,
     ) -> Result<(ObjectType, Vec<u8>, usize), Box<dyn Error>> {
         let (object_type, size) = Self::read_type_and_size(pack_file)?;
-        println!("obj type: {:?}", object_type);
         let object_type = match object_type {
             1 => PackObjectType::Base(ObjectType::Commit),
             2 => PackObjectType::Base(ObjectType::Tree),
@@ -1269,7 +1281,6 @@ impl UnpackObjects {
         };
         match object_type {
             PackObjectType::Base(object_type) => {
-                println!("Base: {}", object_type);
                 // The object contents are zlib-compressed
                 let mut contents = Vec::with_capacity(size);
                 Decoder::new(pack_file)?.read_to_end(&mut contents)?;
@@ -1284,7 +1295,6 @@ impl UnpackObjects {
                 return Ok((object_type, contents, size));
             }
             PackObjectType::OffsetDelta => {
-                println!("OffsetDelta");
                 let delta_offset = Self::read_offset_encoding(pack_file)?;
                 let base_offset = offset.checked_sub(delta_offset).ok_or(io::Error::new(
                     io::ErrorKind::NotFound,
@@ -1298,7 +1308,6 @@ impl UnpackObjects {
                 return Self::apply_delta(pack_file, &base_object_content, base_object_type);
             }
             PackObjectType::HashDelta => {
-                println!("HashDelta");
                 let hash = Self::read_hash(pack_file)?; // esto lo tengo que ver como implementar yo. seria la lectura del hash del delta object
                 let (object_type, base_object_content, _) = helpers::read_object_to_string(hash)?; // aca como hace referencia a un objecto base, ya va a tener que estar descomprimido
                 return Self::apply_delta(pack_file, base_object_content.as_bytes(), object_type);
@@ -1309,34 +1318,29 @@ impl UnpackObjects {
 }
 
 impl Command for UnpackObjects {
-    fn execute(&self,  args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let arg_slice = args.unwrap_or(Vec::new());
-        println!("unpacking...");
         let mut pack_file = fs::File::open(arg_slice[0])?;
-        println!("opened pack file");
-        let pack_file_size = helpers::get_file_length(arg_slice[0])?;
+        // println!("opened pack file");
+        let _pack_file_size = helpers::get_file_length(arg_slice[0])?;
         let mut header = vec![0; 12]; //Size of header is fixed
         pack_file.read_exact(&mut header)?;
         let object_amount = u32::from_be_bytes(header[8..12].try_into()?);
-        println!("unpack header: {:?}", header);
+        // println!("unpack header: {:?}", header);
         //Self::compare_checksum(&pack_content)?;
-        println!("pack file size: {}", pack_file_size);
+        // println!("pack file size: {}", pack_file_size);
         let mut offset: u64 = 12; //Skipping the header
         let mut objects_unpacked = 1;
         while objects_unpacked <= object_amount {
             let (object_type, content, size) = Self::read_pack_object(&mut pack_file, offset)?;
-            println!(
-                "type: {} ; size: {} ; content: {:?}",
-                object_type, size, content
-            );
-            let content_to_string = String::from_utf8_lossy(&content).to_string();
-            println!("content as str: {}", content_to_string);
+            // println!(
+            //     "type: {} ; size: {} ; content: {:?}",
+            //     object_type, size, content
+            // );
+            let _content_to_string = String::from_utf8_lossy(&content).to_string();
+            // println!("content as str: {}", content_to_string);
 
-            HashObjectCreator::write_object_file_bytes(
-                &content,
-                object_type,
-                size,
-            )?;
+            HashObjectCreator::write_object_file_bytes(&content, object_type, size)?;
             offset += size as u64;
             objects_unpacked += 1;
         }
@@ -1361,7 +1365,7 @@ impl Fetch {
         let split_ref_name: Vec<&str> = ref_name.split('/').collect(); //aca tendria que ver si es un tag o un branch
         let remote_ref_name = split_ref_name[2];
         let mut ref_path = String::new();
-        println!("split ref name: {:?}", split_ref_name);
+        // println!("split ref name: {:?}", split_ref_name);
         match split_ref_name[1] {
             "heads" => {
                 let dir_path = format!("{}/{}", R_REMOTES, remote_name);
@@ -1370,12 +1374,12 @@ impl Fetch {
                 }
                 ref_path = format!("{}/{}", dir_path, remote_ref_name);
                 // helpers::update_local_branch_with_commit(remote_name, remote_ref_name, ref_hash); //no hace falta hacer esto aca
-            } 
-  
+            }
+
             "tags" => ref_path = format!("{}/{}", R_TAGS, remote_ref_name),
             _ => {}
         }
-        println!("ref path: {}", ref_path);
+        // println!("ref path: {}", ref_path);
         let mut ref_file = fs::File::create(ref_path)?;
         ref_file.write_all(ref_hash.as_bytes())?;
         Ok(())
@@ -1394,8 +1398,8 @@ impl Fetch {
 }
 
 impl Command for Fetch {
-    fn execute(&self,  args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
-        let remote_url ;
+    fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        let remote_url;
         let mut remote_name = DEFAULT_REMOTE_REPOSITORY;
         match args {
             Some(args) => match helpers::get_remote_url(args[0]) {
@@ -1410,10 +1414,11 @@ impl Command for Fetch {
             }
         }
 
-        let refs = client::client_protocol::ClientProtocol::new().fetch_from_remote_with_our_server(remote_url)?;
+        let refs = client::client_protocol::ClientProtocol::new()
+            .fetch_from_remote_with_our_server(remote_url)?;
         UnpackObjects::new().execute(Some(vec![RECEIVED_PACK_FILE]))?;
         for (ref_hash, ref_name) in refs {
-            println!("ref: {} {}", ref_hash, ref_name);
+            // println!("ref: {} {}", ref_hash, ref_name);
             self.add_remote_ref(&ref_hash, &ref_name, remote_name)?;
         }
 
@@ -1433,32 +1438,31 @@ impl Push {
 }
 
 impl Command for Push {
-    fn execute(
-        &self,
-        args: Option<Vec<&str>>,
-    ) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let mut remote_url = helpers::get_remote_url(DEFAULT_REMOTE_REPOSITORY)?;
         // let remote_url = args.unwrap()[0];
-        let mut remote_name = DEFAULT_REMOTE_REPOSITORY;
-        let branch = Head::get_current_branch_name()?;
+        let mut _remote_name = DEFAULT_REMOTE_REPOSITORY;
+        let _branch = Head::get_current_branch_name()?;
         match args {
             Some(args) => match helpers::get_remote_url(args[0]) {
                 Ok(url) => {
                     remote_url = url;
-                    remote_name = args[0];
+                    _remote_name = args[0];
                     // branch = &args[1];
                 }
-                Err(_) => return Err(Box::new(io::Error::new(
-                    io::ErrorKind::Other,
-                    "Error: Name is not a remote",
-                ))),
+                Err(_) => {
+                    return Err(Box::new(io::Error::new(
+                        io::ErrorKind::Other,
+                        "Error: Name is not a remote",
+                    )))
+                }
             },
             None => {}
         }
 
         // me parece mejor asumir que siempre va a ser desde la rama actual, solo si esta bueno
         // declarar a que repo remoto
-        
+
         ClientProtocol::new().receive_pack(remote_url.to_string())?;
         // // volver esto abstracto como decia y no isntanciarlo
         Ok(String::new())
@@ -1474,10 +1478,9 @@ impl Pull {
     }
 }
 
-
 impl Command for Pull {
-    fn execute(&self,  args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
-        let remote_url ;
+    fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        let remote_url;
         let mut remote_name = DEFAULT_REMOTE_REPOSITORY;
         match args {
             Some(args) => match helpers::get_remote_url(args[0]) {
@@ -1493,12 +1496,12 @@ impl Command for Pull {
         }
         Fetch::new().execute(Some(vec![&remote_url]))?;
         let remote_branch = format!("{}/{}", remote_name, Head::get_current_branch_name()?);
-        println!("merging");
+        // println!("merging");
         if !helpers::check_if_file_exists(&format!("{}/{}", R_REMOTES, remote_branch)) {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
                 "Error: There is no tracking information for the current branch.",
-            )))
+            )));
         }
         Merge::new().execute(Some(vec![&remote_branch]))?;
         Ok(String::new())
@@ -1515,9 +1518,9 @@ impl Clone {
 }
 
 impl Command for Clone {
-    fn execute(&self,  args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         Init::new().execute(None)?;
-       
+
         match args {
             Some(remote_repository) => {
                 Remote::new().execute(Some(vec!["add", "origin", remote_repository[0]]))?;
@@ -1525,12 +1528,14 @@ impl Command for Clone {
                 // aca tendria que crear las branches de remotes
                 Pull::new().execute(Some(vec!["origin"]))?;
             }
-            None => return Err(Box::new(io::Error::new(
-                io::ErrorKind::Other,
-                "Error: No remote repository was received to clone",
-            ))),
+            None => {
+                return Err(Box::new(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Error: No remote repository was received to clone",
+                )))
+            }
         }
-        
+
         Ok(String::new())
     }
 }
@@ -1555,16 +1560,23 @@ impl Log {
     /// * `base_commit` - The base commit ID to start generating logs from./// # Returns
     ///
     /// A `Result` containing the execution result or an error message.    
-    pub fn generate_log_entries(&self, entries: &mut Vec<(String, String)>, base_commit: String) -> Result<String, Box<dyn Error>> {
-
+    pub fn generate_log_entries(
+        &self,
+        entries: &mut Vec<(String, String)>,
+        base_commit: String,
+    ) -> Result<String, Box<dyn Error>> {
         if base_commit.len() < 4 {
             return Err(Box::new(io::Error::new(
-                        io::ErrorKind::Other,
-                        "Error: Invalid Commit ID. It's too short",
-                    )))
+                io::ErrorKind::Other,
+                "Error: Invalid Commit ID. It's too short",
+            )));
         }
 
-        let current_commit = if base_commit == HEAD { Head::get_head_commit()? } else { base_commit };
+        let current_commit = if base_commit == HEAD {
+            Head::get_head_commit()?
+        } else {
+            base_commit
+        };
 
         if entries.iter().any(|(key, _)| key == &current_commit) {
             // don't process it again
@@ -1575,22 +1587,29 @@ impl Log {
         // let decompressed_data = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&commit_path)?)?;
         // let object_type = decompressed_data.splitn(2, ' ').next().ok_or("")?;
 
-        let (object_type, commit_file_content, _) = helpers::read_object_to_string(current_commit.clone())?;
+        let (object_type, commit_file_content, _) =
+            helpers::read_object_to_string(current_commit.clone())?;
 
         if object_type != ObjectType::Commit {
             return Err(Box::new(io::Error::new(
-                        io::ErrorKind::Other,
-                        "Error: Invalid SHA-1. Is not a commit",
-                    )))
+                io::ErrorKind::Other,
+                "Error: Invalid SHA-1. Is not a commit",
+            )));
         }
         // trim header
         // let commit_file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
 
         // let commit_file_lines: Vec<String> = commit_file_content[1].lines().map(|s| s.to_string()).collect();
-        
-        let commit_lines: Vec<String> = commit_file_content.split("\n").map(|s| s.to_string()).collect();;
 
-        let parent_commit_split_line: Vec<String> = commit_lines[1].split_whitespace().map(String::from).collect();
+        let commit_lines: Vec<String> = commit_file_content
+            .split("\n")
+            .map(|s| s.to_string())
+            .collect();
+
+        let parent_commit_split_line: Vec<String> = commit_lines[1]
+            .split_whitespace()
+            .map(String::from)
+            .collect();
 
         let mut message = String::new();
         if parent_commit_split_line[0] != PARENT {
@@ -1606,7 +1625,7 @@ impl Log {
 
         entries.push((current_commit, message));
 
-        // if parent_commit_trimmed.is_empty() {            
+        // if parent_commit_trimmed.is_empty() {
         //     //root commit
         //     // println!("returning, found root commit");
         //     return Ok(String::new());
@@ -1628,19 +1647,19 @@ impl Command for Log {
     ///
     /// # Returns
     ///
-    /// A `Result` containing the execution result or an error message. 
-    fn execute(&self,  args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+    /// A `Result` containing the execution result or an error message.
+    fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         // Extract the arguments from the provided slice or use an empty slice if none is provided
         let empty_args = args.is_none();
         let arg_slice = args.unwrap_or(Vec::new());
 
-        // Initialize vectors to store log entries (included and excluded)        
+        // Initialize vectors to store log entries (included and excluded)
         let mut log_entries = Vec::new();
         let mut log_entries_excluded = Vec::new();
 
-
         // Iterate through the provided arguments
-        for arg in arg_slice { // Note the & in for &arg
+        for arg in arg_slice {
+            // Note the & in for &arg
             // Check the first character of each argument
             if let Some(first_char) = arg.chars().next() {
                 match first_char {
@@ -1648,13 +1667,11 @@ impl Command for Log {
                         // Generate log entries for exclusion and store them in the excluded entries vector
                         self.generate_log_entries(&mut log_entries_excluded, arg[1..].to_string())?;
                         //println!("exclude {:?}", log_entries_excluded);
-
-                    },
+                    }
                     _ => {
                         // Generate log entries for inclusion and store them in the included entries vector
                         self.generate_log_entries(&mut log_entries, arg.to_string())?;
                         //println!("include {:?}", log_entries);
-
                     }
                 }
             }
@@ -1669,14 +1686,18 @@ impl Command for Log {
         //     .collect::<Vec<String>>());
 
         // Filter out log entries that are in the excluded entries vector
-        log_entries = log_entries.iter()
-            .filter(| (commit, _) | !log_entries_excluded.iter().any(|(key, _)| key == commit))
+        log_entries = log_entries
+            .iter()
+            .filter(|(commit, _)| !log_entries_excluded.iter().any(|(key, _)| key == commit))
             .cloned()
             .collect::<Vec<(String, String)>>();
 
         // Display the resulting log entries
         for (commit, message) in &log_entries {
-            println!("{}commit {}{}\n{}", COLOR_YELLOW_CODE, commit, COLOR_RESET_CODE, message);
+            println!(
+                "{}commit {}{}\n{}",
+                COLOR_YELLOW_CODE, commit, COLOR_RESET_CODE, message
+            );
         }
         let result: String = log_entries
             .into_iter()
@@ -1685,7 +1706,8 @@ impl Command for Log {
         // Return a successful result (an empty string in this case)
         Ok(result)
     }
-}pub struct LsTree;
+}
+pub struct LsTree;
 
 impl LsTree {
     /// Creates a new `Log` instance.
@@ -1693,16 +1715,28 @@ impl LsTree {
         LsTree {}
     }
 
-    pub fn generate_tree_entries(&self, entries: &mut Vec<String>, tree_hash: String, direct_flag: bool, recurse_flag: bool, long_flag: bool) -> Result<(), Box<dyn Error>> {
-        let current_hash = if tree_hash == HEAD { helpers::get_commit_tree(Head::get_head_commit()?.as_str())? } else { tree_hash };
-        println!("current hash: {}", current_hash);
+    pub fn generate_tree_entries(
+        &self,
+        entries: &mut Vec<String>,
+        tree_hash: String,
+        direct_flag: bool,
+        recurse_flag: bool,
+        long_flag: bool,
+    ) -> Result<(), Box<dyn Error>> {
+        let current_hash = if tree_hash == HEAD {
+            helpers::get_commit_tree(Head::get_head_commit()?.as_str())?
+        } else {
+            tree_hash
+        };
+        // println!("current hash: {}", current_hash);
         let mut tree_content = helpers::read_tree_content(&current_hash)?;
-        println!("content: {:?}", tree_content);
+        // println!("content: {:?}", tree_content);
 
         // let (tree_type, tree_content, tree_size) = helpers::read_object(current_hash)?;
-        if tree_content.is_empty() { // VER saque esta condicion: || tree_type != ObjectType::Tree
+        if tree_content.is_empty() {
+            // VER saque esta condicion: || tree_type != ObjectType::Tree
             // no proceso tree vacio
-            return Ok(())
+            return Ok(());
         }
 
         // let mut tree_content_lines: Vec<String> = tree_content.lines().map(|s| s.to_string()).collect();
@@ -1719,13 +1753,14 @@ impl LsTree {
 
             if file_mode == TREE_FILE_MODE && direct_flag {
                 // don't add files to the entries if direct flag is on
-                //println!("skip file because direct flag is on");                
+                //println!("skip file because direct flag is on");
                 continue;
             }
 
             if long_flag {
                 // add size to the line
-                let (_, object_content, object_size) = helpers::read_object_to_string(object_hash.clone())?;
+                let (_, _object_content, object_size) =
+                    helpers::read_object_to_string(object_hash.clone())?;
                 line.push_str(" ");
                 line.push_str(object_size.as_str());
             }
@@ -1743,7 +1778,13 @@ impl LsTree {
                 }
                 // if recursive loop
                 if recurse_flag {
-                    return self.generate_tree_entries(entries, object_hash.clone(), direct_flag, recurse_flag, long_flag);
+                    return self.generate_tree_entries(
+                        entries,
+                        object_hash.clone(),
+                        direct_flag,
+                        recurse_flag,
+                        long_flag,
+                    );
                 }
             }
         }
@@ -1753,11 +1794,11 @@ impl LsTree {
 
 impl Command for LsTree {
     /// Executes the "git ls-tree" command.    
-    fn execute(&self,  args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let mut direct_flag = false;
         let mut recurse_flag = false;
         let mut long_flag = false;
-        let mut tree_entries: Vec<String> = Vec::new();        
+        let mut tree_entries: Vec<String> = Vec::new();
         let mut tree_hash: Option<String> = None;
         let arg_slice = args.unwrap_or(Vec::new());
 
@@ -1779,7 +1820,13 @@ impl Command for LsTree {
         }
 
         if let Some(tree) = tree_hash {
-            self.generate_tree_entries(&mut tree_entries, tree, direct_flag, recurse_flag, long_flag)?;
+            self.generate_tree_entries(
+                &mut tree_entries,
+                tree,
+                direct_flag,
+                recurse_flag,
+                long_flag,
+            )?;
         } else {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
@@ -1796,14 +1843,14 @@ impl Command for LsTree {
     }
 }
 
-pub struct LsFiles {    
+pub struct LsFiles {
     stg_area: StagingArea,
 }
 
 impl LsFiles {
     /// Creates a new `LsFiles` instance.
     pub fn new() -> Self {
-        LsFiles {            
+        LsFiles {
             stg_area: StagingArea::new(),
         }
     }
@@ -1836,7 +1883,7 @@ impl Command for LsFiles {
     /// let result = lsfiles_command.execute(&mut head, Some(vec!["-c"]));
     /// assert!(result.is_ok());
     /// ```
-    fn execute(&self,  args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let mut file_entries: HashSet<String> = HashSet::new();
         let whole_index_flag = args.is_none();
         let arg_slice = args.unwrap_or(Vec::new());
@@ -1865,12 +1912,14 @@ impl Command for LsFiles {
                         file_entries.insert(line);
                     }
                 }
-                _ => {/* ignore invalid flags */}
+                _ => { /* ignore invalid flags */ }
             }
         }
 
         if whole_index_flag {
-            let entries = self.stg_area.get_entries_index_file(IndexFileEntryState::Cached)?;
+            let entries = self
+                .stg_area
+                .get_entries_index_file(IndexFileEntryState::Cached)?;
             for entry in entries {
                 file_entries.insert(entry);
             }
@@ -1897,7 +1946,7 @@ impl Command for CheckIgnore {
     /// Returns a `Result` containing a string. If the file path is found in the .gitignore file,
     /// the path is returned; otherwise, an empty string is returned. Errors are wrapped
     /// in the `Result` type.
-    fn execute(&self,  args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         //Checking if a .gitignore file exists
         if !fs::metadata(".gitignore.txt").is_ok() {
             return Ok(String::new());
@@ -1972,7 +2021,7 @@ impl Tag {
 }
 
 impl Command for Tag {
-    fn execute(&self,  args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         if args.is_none() {
             self.list_all_tags()?;
             return Ok(String::new());
@@ -2031,11 +2080,7 @@ impl ShowRef {
 }
 
 impl Command for ShowRef {
-    fn execute(
-        &self,
-        
-        _args: Option<Vec<&str>>,
-    ) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         // Read the contents of the directory
         let branch_entries = fs::read_dir(R_HEADS)?;
         self.show_refs_in_directory(branch_entries, "refs/heads/")?;
@@ -2055,28 +2100,29 @@ impl Merge {
     }
 }
 
-impl Command for Merge { //ver que pasa cuando uno commit ancestro es commit root
-    fn execute(&self,  args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+impl Command for Merge {
+    //ver que pasa cuando uno commit ancestro es commit root
+    fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let arg_slice = args.unwrap_or(Vec::new()); //aca tendria que chequear que sea valido el branch que recibo por parametro
 
         let branch_to_merge = arg_slice[0];
-        println!("branch to merge: {}", branch_to_merge);
+        // println!("branch to merge: {}", branch_to_merge);
         let mut branch_to_merge_path = helpers::get_branch_path(branch_to_merge);
         if !helpers::check_if_file_exists(&branch_to_merge_path) {
             // This means the branch is a remote branch
-            branch_to_merge_path = format!("{}/{}", R_REMOTES, branch_to_merge); 
+            branch_to_merge_path = format!("{}/{}", R_REMOTES, branch_to_merge);
         }
-        
+
         let merging_commit_hash = helpers::get_branch_last_commit(&branch_to_merge_path)?;
 
         let current_commit_hash = Head::get_head_commit()?;
 
-        println!("merging {} -> {}", branch_to_merge, Head::get_current_branch_name()?);
+        // println!("merging {} -> {}", branch_to_merge, Head::get_current_branch_name()?);
         if helpers::ancestor_commit_exists(&current_commit_hash, &merging_commit_hash)? {
             helpers::update_branch_hash(&Head::get_current_branch_name()?, &merging_commit_hash)?;
-            println!("updating branch last commit in current branch... to commit: {}", merging_commit_hash);
+            // println!("updating branch last commit in current branch... to commit: {}", merging_commit_hash);
             WorkingDirectory::clean_working_directory()?;
-            println!("cleaning working directory...");
+            // println!("cleaning working directory...");
             let commit_tree = helpers::get_commit_tree(&merging_commit_hash)?;
             WorkingDirectory::update_working_directory_to(&commit_tree)?;
             StagingArea::new().change_index_file(commit_tree)?;
@@ -2155,7 +2201,7 @@ mod tests {
 
     #[test]
     fn test_branch_command() {
-        let (_temp_dir,_temp_pathh) = common_setup();
+        let (_temp_dir, _temp_pathh) = common_setup();
         // Execute the Branch command with various scenarios
         // Example 1: List branches
         let args1 = None;
@@ -2163,7 +2209,7 @@ mod tests {
         assert!(result1.is_ok());
 
         // Example 2: Delete a branch
-        let branch_to_delete = Some(vec!["branch_to_delete"]);;
+        let branch_to_delete = Some(vec!["branch_to_delete"]);
         let _ = Branch.execute(branch_to_delete);
         let args2 = Some(vec!["-d", "branch_to_delete"]);
         let result2 = Branch.execute(args2);
@@ -2184,7 +2230,7 @@ mod tests {
 
     #[test]
     fn test_checkout_command() {
-        let (_temp_dir,_temp_pathh) = common_setup();
+        let (_temp_dir, _temp_pathh) = common_setup();
 
         // Execute the Checkout command with various scenarios
         // Example 1: Successful checkout
@@ -2207,11 +2253,11 @@ mod tests {
         let args4 = None;
         let result4 = Checkout.execute(args4);
         assert!(result4.is_err());
-    }    
+    }
 
     #[test]
     fn test_hashobject_command() {
-        let (_temp_dir,_temp_pathh) = common_setup();
+        let (_temp_dir, _temp_pathh) = common_setup();
 
         // Execute the HashObject command with various scenarios
         // Example 1: Calculate hash and print (no write flag)
@@ -2240,7 +2286,7 @@ mod tests {
 
     #[test]
     fn test_catfile_command() {
-        let (_temp_dir,_temp_pathh) = common_setup();
+        let (_temp_dir, _temp_pathh) = common_setup();
 
         let _file = fs::File::create("file.txt");
         let args1 = Some(vec![WRITE_FLAG, "file.txt"]);
@@ -2272,52 +2318,55 @@ mod tests {
     fn test_add_command() {
         // Common setup
         let (_temp_dir, temp_path) = common_setup();
-    
+
         // Create a sample file to be added
         let file_path = temp_path.clone() + "/sample.txt";
         fs::write(&file_path, "Sample file content").expect("Failed to create a sample file");
 
-        let add_command = Add::new();        
-    
+        let add_command = Add::new();
+
         // Convert &str to String before creating the args vector
         let args: Option<Vec<&str>> = Some(vec![&file_path]);
-    
+
         let result = add_command.execute(args);
-    
+
         // Assert that the command executed successfully
         assert!(result.is_ok(), "Add command failed: {:?}", result);
-    
+
         // Cleanup: The temporary directory will be automatically deleted when temp_dir goes out of scope
     }
-    
+
     #[test]
     fn test_commit_command() {
         // Common setup
         let (_temp_dir, temp_path) = common_setup();
-    
+
         // Create a sample file to be added
         let file_path = temp_path.clone() + "/sample.txt";
         fs::write(&file_path, "Sample file content").expect("Failed to create a sample file");
-    
+
         // Execute the Add command
         let add_command = Add::new();
         let args_add: Option<Vec<&str>> = Some(vec![&file_path]);
         let _result_add = add_command.execute(args_add);
-    
+
         // Execute the Commit command
         let commit_command = Commit::new();
         let args_commit: Option<Vec<&str>> = Some(vec!["-m", "Initial commit"]);
         let result_commit = commit_command.execute(args_commit);
-    
+
         // Assert that the command executed successfully
-        assert!(result_commit.is_ok(), "Commit command failed: {:?}", result_commit);
-    
+        assert!(
+            result_commit.is_ok(),
+            "Commit command failed: {:?}",
+            result_commit
+        );
+
         // Cleanup: The temporary directory will be automatically deleted when temp_dir goes out of scope
     }
 
     #[test]
     fn test_remove_file_from_staging_area() {
-
         // Common setup
         let (_temp_dir, temp_path) = common_setup();
 
@@ -2327,19 +2376,18 @@ mod tests {
 
         // Execute the Add command
         let add_command = Add::new();
-        let args_add: Option<Vec<&str>>  = Some(vec![&file_path]);
+        let args_add: Option<Vec<&str>> = Some(vec![&file_path]);
         add_command.execute(args_add).expect("Add command failed");
 
         // Execute the Rm command
         let rm_command = Rm::new();
-        let args_rm: Option<Vec<&str>>  = Some(vec![&file_path]);
+        let args_rm: Option<Vec<&str>> = Some(vec![&file_path]);
         let result = rm_command.execute(args_rm);
 
         // Assert that the command executed successfully
         assert!(result.is_ok(), "Rm command failed: {:?}", result);
 
         // TODO: Add assertions for the expected state after removal
-
     }
 
     #[test]
@@ -2360,29 +2408,33 @@ mod tests {
 
         // Assert that the command executed successfully
         assert!(result.is_ok(), "Status command failed: {:?}", result);
-        
-         // Execute the Add command to stage changes
-         let add_command = Add::new();
-         let args: Option<Vec<&str>> = Some(vec![&working_dir_file_path]);
-         let _ = add_command.execute(args);
- 
-         // Execute the Commit command to make a commit
-         let commit_command = Commit::new();
-         let args = Some(vec!["-m", "Test commit message"]);
-         let _ = commit_command.execute(args);
- 
-         // Execute the Status command
-         let args = None; // You might adjust this based on how your Status command is designed
-         let result = status_command.execute(args);
- 
-         // Assert that the command executed successfully
-         assert!(result.is_ok(), "Status command (With previous commit) failed: {:?}", result);
+
+        // Execute the Add command to stage changes
+        let add_command = Add::new();
+        let args: Option<Vec<&str>> = Some(vec![&working_dir_file_path]);
+        let _ = add_command.execute(args);
+
+        // Execute the Commit command to make a commit
+        let commit_command = Commit::new();
+        let args = Some(vec!["-m", "Test commit message"]);
+        let _ = commit_command.execute(args);
+
+        // Execute the Status command
+        let args = None; // You might adjust this based on how your Status command is designed
+        let result = status_command.execute(args);
+
+        // Assert that the command executed successfully
+        assert!(
+            result.is_ok(),
+            "Status command (With previous commit) failed: {:?}",
+            result
+        );
         // Clean up: The temporary directory will be automatically deleted when temp_dir goes out of scope
     }
 
     const REMOTE_NAME: &str = "origin";
     const REMOTE_URL: &str = "127.0.0.1:9418";
-    
+
     #[test]
     fn test_add_remote() {
         // Common setup
@@ -2397,7 +2449,7 @@ mod tests {
         // Assert that the command executed successfully
         assert!(result.is_ok(), "Add remote command failed: {:?}", result);
 
-    // Clean up: The temporary directory will be automatically deleted when temp_dir goes out of scope
+        // Clean up: The temporary directory will be automatically deleted when temp_dir goes out of scope
     }
 
     #[test]
@@ -2409,7 +2461,9 @@ mod tests {
         let remote = Remote::new();
 
         // Add a remote for testing
-        remote.add_new_remote(REMOTE_NAME.to_string(), REMOTE_URL.to_string()).unwrap();
+        remote
+            .add_new_remote(REMOTE_NAME.to_string(), REMOTE_URL.to_string())
+            .unwrap();
 
         // Execute the remove remote command
         let result = remote.remove_remote(REMOTE_NAME.to_string());
@@ -2418,7 +2472,7 @@ mod tests {
         assert!(result.is_ok(), "Remove remote command failed: {:?}", result);
 
         // Clean up: The temporary directory will be automatically deleted when temp_dir goes out of scope
-    } 
+    }
 
     #[test]
     fn test_add_new_lightweight_tag() {
@@ -2428,23 +2482,25 @@ mod tests {
         // Create a sample file to be added
         let file_path = temp_path.clone() + "/sample.txt";
         fs::write(&file_path, "Sample file content").expect("Failed to create a sample file");
-    
+
         // Execute the Add command
         let add_command = Add::new();
         let args_add: Option<Vec<&str>> = Some(vec![&file_path]);
         let _result_add = add_command.execute(args_add);
-    
+
         // Execute the Commit command
         let commit_command = Commit::new();
         let args_commit: Option<Vec<&str>> = Some(vec!["-m", "Initial commit"]);
         let _result_commit = commit_command.execute(args_commit);
-        
+
         let last_commit = helpers::read_file_content(&(temp_path.clone() + ".git/refs/heads/main"));
         // Create a Tag instance
         let tag = Tag::new();
 
         // Execute add_new_lightweight_tag
-        let _result = tag.add_new_lightweight_tag("new_tag").expect("Failed to add new tag");
+        let _result = tag
+            .add_new_lightweight_tag("new_tag")
+            .expect("Failed to add new tag");
 
         // Read the content of the created tag file
         let tag_content = fs::read_to_string(temp_path + ".git/refs/tags/new_tag")
@@ -2462,24 +2518,26 @@ mod tests {
         // Create a sample file to be added
         let file_path = temp_path.clone() + "/sample.txt";
         fs::write(&file_path, "Sample file content").expect("Failed to create a sample file");
-    
+
         // Execute the Add command
         let add_command = Add::new();
         let args_add: Option<Vec<&str>> = Some(vec![&file_path]);
         let _result_add = add_command.execute(args_add);
-    
+
         // Execute the Commit command
         let commit_command = Commit::new();
         let args_commit: Option<Vec<&str>> = Some(vec!["-m", "Initial commit"]);
         let _result_commit = commit_command.execute(args_commit);
-        
-        let _last_commit = helpers::read_file_content(&(temp_path.clone() + ".git/refs/heads/main"));
+
+        let _last_commit =
+            helpers::read_file_content(&(temp_path.clone() + ".git/refs/heads/main"));
         // Create a Tag instance
         let tag = Tag::new();
 
         // Execute add_new_lightweight_tag
-        let _result = tag.add_new_lightweight_tag("new_tag").expect("Failed to add new tag");
-
+        let _result = tag
+            .add_new_lightweight_tag("new_tag")
+            .expect("Failed to add new tag");
 
         // Execute delete_tag
         tag.delete_tag("new_tag").expect("Failed to delete tag");
@@ -2495,14 +2553,15 @@ mod tests {
 
         // Create a .gitignore.txt file in the temporary directory
         let gitignore_path = (".gitignore.txt");
-        fs::write(&gitignore_path, "ignored_file.txt").expect("Failed to create .gitignore.txt file");
+        fs::write(&gitignore_path, "ignored_file.txt")
+            .expect("Failed to create .gitignore.txt file");
 
         // Create a CheckIgnore instance
         let check_ignore = CheckIgnore::new();
 
         // Execute the check_ignore command
         let result = check_ignore.execute(Some(vec!["ignored_file.txt"]));
-        
+
         // Assert that the result is the provided file path
         assert_eq!(result.unwrap(), "ignored_file.txt");
         fs::remove_file("ignored_file.txt");
@@ -2518,7 +2577,7 @@ mod tests {
 
         // Execute the check_ignore command with a file that does not exist in .gitignore.txt
         let result = check_ignore.execute(Some(vec!["non_existent_file.txt"]));
-        
+
         // Assert that the result is an empty string
         assert_eq!(result.unwrap(), "");
     }
@@ -2533,9 +2592,8 @@ mod tests {
 
         // Execute the check_ignore command without a .gitignore.txt file
         let result = check_ignore.execute(Some(vec!["some_file.txt"]));
-        
+
         // Assert that the result is an empty string
         assert_eq!(result.unwrap(), "");
     }
 }
-    

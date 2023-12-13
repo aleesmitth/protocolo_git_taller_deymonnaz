@@ -1,11 +1,6 @@
-use rusty::commands::commands::Command;
-use rusty::commands::commands::Init;
-use rusty::commands::commands::Commit;
-use rusty::commands::commands::Add;
 use rusty::commands::commands::RELATIVE_PATH;
 use rusty::server::server_protocol::ServerProtocol;
 use std::env;
-use std::io::prelude::*;
 use std::thread;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -14,9 +9,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = ServerProtocol::bind("127.0.0.1:9418")?; // Default Git port
     println!("bind complete");
 
-    //Init::new().execute(None)?;
-    //Add::new().execute(Some(vec!["invincible.txt"]))?;
-    //Commit::new().execute(Some(vec!["-m", "test"]))?;
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
