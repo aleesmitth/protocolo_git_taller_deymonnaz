@@ -213,7 +213,7 @@ pub fn get_remote_url(name: &str) -> Result<String, Box<dyn Error>> {
     )))
 }
 
-pub fn generate_sha1_string_from_bytes(data: &Vec<u8>) -> String {
+pub fn generate_sha1_string_from_bytes(data: &[u8]) -> String {
     let mut hasher = Sha1::new();
     hasher.input(data);
     hasher.result_str()
