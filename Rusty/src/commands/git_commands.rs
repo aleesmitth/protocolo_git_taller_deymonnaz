@@ -1,4 +1,5 @@
 use chrono::{DateTime, Local};
+use std::fmt::Write as Write_FMT;
 use std::fs::ReadDir;
 use std::{
     collections::HashSet, env, error::Error, fs, io, io::BufRead, io::ErrorKind, io::Read,
@@ -87,7 +88,7 @@ impl PathHandler {
             // Concatenate with a const string
             return format!("{}{}", relative_path, original_path);
         }
-        return original_path.to_string();
+        original_path.to_string()
     }
 
     pub fn remove_relative_path(original_path: &str) -> String {
@@ -106,6 +107,12 @@ pub trait Command {
 }
 
 pub struct Init;
+
+impl Default for Init {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Init {
     pub fn new() -> Self {
@@ -126,10 +133,10 @@ impl Command for Init {
             )));
         }
         let _refs_heads = fs::create_dir_all(PathHandler::get_relative_path(R_HEADS));
-        let _refs_tags = fs::create_dir_all(PathHandler::get_relative_path(R_TAGS))?;
-        let _obj = fs::create_dir(PathHandler::get_relative_path(OBJECT))?;
-        let _pack = fs::create_dir(PathHandler::get_relative_path(PACK))?;
-        let _remotes_dir = fs::create_dir(PathHandler::get_relative_path(R_REMOTES))?;
+        fs::create_dir_all(PathHandler::get_relative_path(R_TAGS))?;
+        fs::create_dir(PathHandler::get_relative_path(OBJECT))?;
+        fs::create_dir(PathHandler::get_relative_path(PACK))?;
+        fs::create_dir(PathHandler::get_relative_path(R_REMOTES))?;
 
         let mut _config_file = fs::File::create(PathHandler::get_relative_path(CONFIG_FILE))?;
         Branch::new().create_new_branch(DEFAULT_BRANCH_NAME)?;
@@ -142,6 +149,12 @@ impl Command for Init {
 }
 
 pub struct Branch;
+
+impl Default for Branch {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Branch {
     pub fn new() -> Self {
@@ -159,7 +172,7 @@ impl Branch {
             )));
         }
 
-        let mut branch_file = fs::File::create(&PathHandler::get_relative_path(&branch_path))?;
+        let mut branch_file = fs::File::create(PathHandler::get_relative_path(&branch_path))?;
 
         if branch_name == DEFAULT_BRANCH_NAME {
             write!(branch_file, "")?;
@@ -220,10 +233,11 @@ impl Branch {
             }
         }
 
-        let branches_in_string: String = branches
-            .into_iter()
-            .map(|branch| format!("{}\n", branch))
-            .collect();
+        let branches_in_string: String =
+            branches.into_iter().fold(String::new(), |mut acc, branch| {
+                writeln!(acc, "{}\n", branch).expect("Error writing to String");
+                acc
+            });
 
         Ok(branches_in_string)
     }
@@ -242,7 +256,7 @@ impl Branch {
 
         fs::rename(
             PathHandler::get_relative_path(&previous_branch_path),
-            &new_branch_path,
+            new_branch_path,
         )?;
 
         if Head::get_current_branch_name()? == previous_name {
@@ -297,7 +311,7 @@ impl Command for Branch {
         let mut rename_flag = false;
         let mut first_branch_name: Option<String> = None;
         let mut second_branch_name: Option<String> = None;
-        let arg_slice = args.unwrap_or(Vec::new());
+        let arg_slice = args.unwrap_or_default();
 
         for arg in arg_slice {
             // Note the & in for &arg
@@ -343,6 +357,12 @@ impl Command for Branch {
 }
 
 pub struct Checkout;
+
+impl Default for Checkout {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Checkout {
     pub fn new() -> Self {
@@ -394,6 +414,12 @@ impl Command for Checkout {
 
 pub struct CatFile;
 
+impl Default for CatFile {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CatFile {
     pub fn new() -> Self {
         CatFile {}
@@ -405,7 +431,7 @@ impl Command for CatFile {
     fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         match args {
             Some(args) => {
-                let file = fs::File::open(&PathHandler::get_relative_path(
+                let file = fs::File::open(PathHandler::get_relative_path(
                     &helpers::get_object_path(args[1]),
                 ))?;
 
@@ -446,6 +472,12 @@ impl Command for CatFile {
 
 pub struct HashObject;
 
+impl Default for HashObject {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HashObject {
     pub fn new() -> Self {
         HashObject {}
@@ -463,28 +495,28 @@ impl Command for HashObject {
                 "No path provided",
             )));
         }
-        let arg_slice = args.unwrap_or(Vec::new());
+        let arg_slice = args.unwrap_or_default();
         let mut path: &str = "";
         let mut obj_type = ObjectType::Blob;
         let mut write = false;
         let mut awaiting_type = false;
-        for i in 0..arg_slice.len() {
-            match arg_slice[i] {
+        for &item in &arg_slice {
+            match item {
                 TYPE_FLAG => {
                     awaiting_type = true;
                 }
                 WRITE_FLAG => write = true,
                 _ => {
                     if awaiting_type {
-                        if let Some(new_obj_type) = ObjectType::new(arg_slice[i]) {
+                        if let Some(new_obj_type) = ObjectType::new(item) {
                             obj_type = new_obj_type;
                         } else {
-                            eprintln!("Unknown object type for input: {}", arg_slice[i]);
+                            eprintln!("Unknown object type for input: {}", item);
                             return Ok(String::new());
                         }
                         awaiting_type = false;
                     } else {
-                        path = arg_slice[i]
+                        path = item
                     }
                 }
             }
@@ -508,6 +540,12 @@ impl Command for HashObject {
 
 pub struct Commit {
     stg_area: StagingArea,
+}
+
+impl Default for Commit {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Commit {
@@ -573,7 +611,7 @@ impl Command for Commit {
 
         let mut message: Option<&str> = None;
         let mut message_flag = false;
-        let arg_slice = args.unwrap_or(Vec::new());
+        let arg_slice = args.unwrap_or_default();
 
         for arg in arg_slice {
             match arg {
@@ -609,6 +647,12 @@ pub struct Rm {
     stg_area: StagingArea,
 }
 
+impl Default for Rm {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Rm {
     pub fn new() -> Self {
         Rm {
@@ -637,6 +681,12 @@ impl Command for Rm {
 
 pub struct Add {
     stg_area: StagingArea,
+}
+
+impl Default for Add {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Add {
@@ -673,6 +723,12 @@ impl Command for Add {
 }
 
 pub struct Status;
+
+impl Default for Status {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Status {
     pub fn new() -> Self {
@@ -731,12 +787,12 @@ impl Command for Status {
             }
             println!("{}", line);
             line_result.push_str(&line);
-            line_result.push_str("\n");
+            line_result.push('\n');
         }
         if no_changes {
-            line = format!("nothing to commit, working tree clean");
+            line = "nothing to commit, working tree clean".to_string();
             line_result.push_str(&line);
-            line_result.push_str("\n");
+            line_result.push('\n');
             println!("{}", line);
         }
         Ok(line_result)
@@ -744,6 +800,12 @@ impl Command for Status {
 }
 
 pub struct Remote;
+
+impl Default for Remote {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Remote {
     pub fn new() -> Self {
@@ -770,7 +832,7 @@ impl Remote {
         config_file.write_all(new_config_content.as_bytes())?;
 
         let remote_dir_path = format!("{}/{}", R_REMOTES, remote_name);
-        let _create_dir = fs::create_dir(PathHandler::get_relative_path(&remote_dir_path))?;
+        fs::create_dir(PathHandler::get_relative_path(&remote_dir_path))?;
 
         Ok(())
     }
@@ -787,7 +849,7 @@ impl Remote {
         for line in config_content.lines() {
             if line == remote_header {
                 is_inside_remote_section = true;
-            } else if line.starts_with("[") {
+            } else if line.starts_with('[') {
                 is_inside_remote_section = false;
             }
             if !is_inside_remote_section {
@@ -833,7 +895,7 @@ impl Command for Remote {
         let mut remove_flag = false;
         let mut name = None;
         let mut url = None;
-        let arg_slice = args.unwrap_or(Vec::new());
+        let arg_slice = args.unwrap_or_default();
 
         for arg in arg_slice {
             match arg {
@@ -859,13 +921,18 @@ impl Command for Remote {
 
 pub struct PackObjects;
 
+impl Default for PackObjects {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PackObjects {
     pub fn new() -> Self {
         PackObjects {}
     }
 
     fn get_tree_objects(
-        &self,
         object_set: &mut HashSet<String>,
         tree_hash: &str,
     ) -> Result<(), Box<dyn Error>> {
@@ -879,7 +946,7 @@ impl PackObjects {
                 }
                 TREE_SUBTREE_MODE => {
                     // object_set.insert(object_hash.clone());
-                    self.get_tree_objects(object_set, &object_hash)?;
+                    PackObjects::get_tree_objects(object_set, &object_hash)?;
                 }
                 _ => {}
             }
@@ -943,15 +1010,15 @@ impl Command for PackObjects {
     /// The pack file format is used to efficiently store objects and their history.
     /// It also creates an index file that helps locate objects in the pack file.
     fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
-        let commit_list = args.unwrap_or(Vec::new()); //aca recibo hashes de commits
-                                                      //por cada hash de commit busco su hash de tree
+        let commit_list = args.unwrap_or_default(); //aca recibo hashes de commits
+                                                    //por cada hash de commit busco su hash de tree
         let mut object_set: HashSet<String> = HashSet::new();
         for commit_hash in commit_list {
             // println!("looping first commit {}", commit_hash);
             object_set.insert(commit_hash.to_string());
             let tree_hash = helpers::get_commit_tree(commit_hash)?;
             // println!("tree_hash {}", tree_hash);
-            self.get_tree_objects(&mut object_set, &tree_hash)?;
+            PackObjects::get_tree_objects(&mut object_set, &tree_hash)?;
         }
         // println!("object_set: {:?}", object_set);
         // por cada hash de tree agrego objetos necesarios a una lista o hasta a un diccionario para chequear rapido que no este ya, pero sin ningun value
@@ -1004,7 +1071,7 @@ impl Command for PackObjects {
             // let header = self.calculate_object_header(object_size_usize, object_type);;
             // println!("header: {:?}", header);
             pack_file_content.extend_from_slice(&header);
-            pack_file_content.extend_from_slice(&compressed_content);
+            pack_file_content.extend_from_slice(compressed_content);
         }
 
         let mut pack_file_final = Vec::new();
@@ -1077,6 +1144,12 @@ fn calculate_sha1_hash(data: &[u8]) -> [u8; 20] {
 }
 
 pub struct UnpackObjects;
+
+impl Default for UnpackObjects {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl UnpackObjects {
     pub fn new() -> Self {
@@ -1292,7 +1365,7 @@ impl UnpackObjects {
                     )));
                 }
 
-                return Ok((object_type, contents, size));
+                Ok((object_type, contents, size))
             }
             PackObjectType::OffsetDelta => {
                 let delta_offset = Self::read_offset_encoding(pack_file)?;
@@ -1305,7 +1378,7 @@ impl UnpackObjects {
                 let (base_object_type, base_object_content, _size) =
                     Self::read_pack_object(pack_file, base_offset)?;
                 Self::seek(pack_file, offset)?;
-                return Self::apply_delta(pack_file, &base_object_content, base_object_type);
+                Self::apply_delta(pack_file, &base_object_content, base_object_type)
             }
             PackObjectType::HashDelta => {
                 let hash = Self::read_hash(pack_file)?; // esto lo tengo que ver como implementar yo. seria la lectura del hash del delta object
@@ -1319,7 +1392,7 @@ impl UnpackObjects {
 
 impl Command for UnpackObjects {
     fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
-        let arg_slice = args.unwrap_or(Vec::new());
+        let arg_slice = args.unwrap_or_default();
         let mut pack_file = fs::File::open(arg_slice[0])?;
         // println!("opened pack file");
         let _pack_file_size = helpers::get_file_length(arg_slice[0])?;
@@ -1349,6 +1422,12 @@ impl Command for UnpackObjects {
 }
 
 pub struct Fetch;
+
+impl Default for Fetch {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Fetch {
     /// Creates a new `Push` instance.
@@ -1430,6 +1509,12 @@ impl Command for Fetch {
 
 pub struct Push;
 
+impl Default for Push {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Push {
     /// Creates a new `Push` instance.
     pub fn new() -> Self {
@@ -1443,8 +1528,8 @@ impl Command for Push {
         // let remote_url = args.unwrap()[0];
         let mut _remote_name = DEFAULT_REMOTE_REPOSITORY;
         let _branch = Head::get_current_branch_name()?;
-        match args {
-            Some(args) => match helpers::get_remote_url(args[0]) {
+        if let Some(args) = args {
+            match helpers::get_remote_url(args[0]) {
                 Ok(url) => {
                     remote_url = url;
                     _remote_name = args[0];
@@ -1456,8 +1541,7 @@ impl Command for Push {
                         "Error: Name is not a remote",
                     )))
                 }
-            },
-            None => {}
+            }
         }
 
         // me parece mejor asumir que siempre va a ser desde la rama actual, solo si esta bueno
@@ -1470,6 +1554,12 @@ impl Command for Push {
 }
 
 pub struct Pull;
+
+impl Default for Pull {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Pull {
     /// Creates a new `Push` instance.
@@ -1510,6 +1600,12 @@ impl Command for Pull {
 
 pub struct Clone;
 
+impl Default for Clone {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Clone {
     /// Creates a new `Clone` instance.
     pub fn new() -> Self {
@@ -1545,6 +1641,12 @@ impl Command for Clone {
 
 pub struct Log;
 
+impl Default for Log {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Log {
     /// Creates a new `Log` instance.
     pub fn new() -> Self {
@@ -1561,7 +1663,6 @@ impl Log {
     ///
     /// A `Result` containing the execution result or an error message.    
     pub fn generate_log_entries(
-        &self,
         entries: &mut Vec<(String, String)>,
         base_commit: String,
     ) -> Result<String, Box<dyn Error>> {
@@ -1602,7 +1703,7 @@ impl Log {
         // let commit_file_lines: Vec<String> = commit_file_content[1].lines().map(|s| s.to_string()).collect();
 
         let commit_lines: Vec<String> = commit_file_content
-            .split("\n")
+            .split('\n')
             .map(|s| s.to_string())
             .collect();
 
@@ -1632,7 +1733,7 @@ impl Log {
         // }
 
         // println!("parent commit {:?}", parent_commit_trimmed.clone());
-        self.generate_log_entries(entries, parent_commit_trimmed.clone())?;
+        Log::generate_log_entries(entries, parent_commit_trimmed.clone())?;
         Ok(String::new())
     }
 }
@@ -1651,7 +1752,7 @@ impl Command for Log {
     fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         // Extract the arguments from the provided slice or use an empty slice if none is provided
         let empty_args = args.is_none();
-        let arg_slice = args.unwrap_or(Vec::new());
+        let arg_slice = args.unwrap_or_default();
 
         // Initialize vectors to store log entries (included and excluded)
         let mut log_entries = Vec::new();
@@ -1665,12 +1766,12 @@ impl Command for Log {
                 match first_char {
                     EXCLUDE_LOG_ENTRY => {
                         // Generate log entries for exclusion and store them in the excluded entries vector
-                        self.generate_log_entries(&mut log_entries_excluded, arg[1..].to_string())?;
+                        Log::generate_log_entries(&mut log_entries_excluded, arg[1..].to_string())?;
                         //println!("exclude {:?}", log_entries_excluded);
                     }
                     _ => {
                         // Generate log entries for inclusion and store them in the included entries vector
-                        self.generate_log_entries(&mut log_entries, arg.to_string())?;
+                        Log::generate_log_entries(&mut log_entries, arg.to_string())?;
                         //println!("include {:?}", log_entries);
                     }
                 }
@@ -1678,7 +1779,7 @@ impl Command for Log {
         }
 
         if empty_args {
-            self.generate_log_entries(&mut log_entries, HEAD.to_string())?;
+            Log::generate_log_entries(&mut log_entries, HEAD.to_string())?;
         }
         // println!("result {:?}", log_entries.iter()
         //     .filter(| entry | !log_entries_excluded.contains(entry))
@@ -1699,15 +1800,24 @@ impl Command for Log {
                 COLOR_YELLOW_CODE, commit, COLOR_RESET_CODE, message
             );
         }
-        let result: String = log_entries
-            .into_iter()
-            .map(|(key, value)| format!("{} {}\n", key, value))
-            .collect();
+        let result: String =
+            log_entries
+                .into_iter()
+                .fold(String::new(), |mut acc, (key, value)| {
+                    writeln!(acc, "{} {}\n", key, value).expect("Error writing to String");
+                    acc
+                });
         // Return a successful result (an empty string in this case)
         Ok(result)
     }
 }
 pub struct LsTree;
+
+impl Default for LsTree {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl LsTree {
     /// Creates a new `Log` instance.
@@ -1716,7 +1826,6 @@ impl LsTree {
     }
 
     pub fn generate_tree_entries(
-        &self,
         entries: &mut Vec<String>,
         tree_hash: String,
         direct_flag: bool,
@@ -1761,7 +1870,7 @@ impl LsTree {
                 // add size to the line
                 let (_, _object_content, object_size) =
                     helpers::read_object_to_string(object_hash.clone())?;
-                line.push_str(" ");
+                line.push(' ');
                 line.push_str(object_size.as_str());
             }
 
@@ -1778,7 +1887,7 @@ impl LsTree {
                 }
                 // if recursive loop
                 if recurse_flag {
-                    return self.generate_tree_entries(
+                    return LsTree::generate_tree_entries(
                         entries,
                         object_hash.clone(),
                         direct_flag,
@@ -1800,7 +1909,7 @@ impl Command for LsTree {
         let mut long_flag = false;
         let mut tree_entries: Vec<String> = Vec::new();
         let mut tree_hash: Option<String> = None;
-        let arg_slice = args.unwrap_or(Vec::new());
+        let arg_slice = args.unwrap_or_default();
 
         for arg in arg_slice {
             // Note the & in for &arg
@@ -1820,7 +1929,7 @@ impl Command for LsTree {
         }
 
         if let Some(tree) = tree_hash {
-            self.generate_tree_entries(
+            LsTree::generate_tree_entries(
                 &mut tree_entries,
                 tree,
                 direct_flag,
@@ -1845,6 +1954,12 @@ impl Command for LsTree {
 
 pub struct LsFiles {
     stg_area: StagingArea,
+}
+
+impl Default for LsFiles {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl LsFiles {
@@ -1886,7 +2001,7 @@ impl Command for LsFiles {
     fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let mut file_entries: HashSet<String> = HashSet::new();
         let whole_index_flag = args.is_none();
-        let arg_slice = args.unwrap_or(Vec::new());
+        let arg_slice = args.unwrap_or_default();
 
         for arg in arg_slice {
             match arg {
@@ -1935,6 +2050,12 @@ impl Command for LsFiles {
 
 pub struct CheckIgnore;
 
+impl Default for CheckIgnore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CheckIgnore {
     pub fn new() -> Self {
         CheckIgnore {}
@@ -1948,12 +2069,12 @@ impl Command for CheckIgnore {
     /// in the `Result` type.
     fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         //Checking if a .gitignore file exists
-        if !fs::metadata(".gitignore.txt").is_ok() {
+        if fs::metadata(".gitignore.txt").is_err() {
             return Ok(String::new());
         }
 
         // Extract the arguments from the provided slice or use an empty slice if none is provided
-        let arg_slice = args.unwrap_or(Vec::new());
+        let arg_slice = args.unwrap_or_default();
         let file_path = arg_slice[0];
 
         let file = fs::File::open(".gitignore.txt")?;
@@ -1972,6 +2093,12 @@ impl Command for CheckIgnore {
 }
 
 pub struct Tag;
+
+impl Default for Tag {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Tag {
     pub fn new() -> Self {
@@ -2031,7 +2158,7 @@ impl Command for Tag {
         let mut delete_flag = false;
         let mut list_flag = false;
         let mut name = None;
-        let arg_slice = args.unwrap_or(Vec::new());
+        let arg_slice = args.unwrap_or_default();
 
         for arg in arg_slice {
             match arg {
@@ -2055,6 +2182,12 @@ impl Command for Tag {
 }
 
 pub struct ShowRef;
+
+impl Default for ShowRef {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl ShowRef {
     pub fn new() -> Self {
@@ -2094,6 +2227,12 @@ impl Command for ShowRef {
 
 pub struct Merge;
 
+impl Default for Merge {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Merge {
     pub fn new() -> Self {
         Merge {}
@@ -2103,7 +2242,7 @@ impl Merge {
 impl Command for Merge {
     //ver que pasa cuando uno commit ancestro es commit root
     fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
-        let arg_slice = args.unwrap_or(Vec::new()); //aca tendria que chequear que sea valido el branch que recibo por parametro
+        let arg_slice = args.unwrap_or_default(); //aca tendria que chequear que sea valido el branch que recibo por parametro
 
         let branch_to_merge = arg_slice[0];
         // println!("branch to merge: {}", branch_to_merge);

@@ -1,4 +1,4 @@
-use rusty::commands::commands::RELATIVE_PATH;
+use rusty::commands::git_commands::RELATIVE_PATH;
 use rusty::server::server_protocol::ServerProtocol;
 use std::env;
 use std::thread;

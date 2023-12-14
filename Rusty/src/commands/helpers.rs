@@ -4,13 +4,13 @@ extern crate libflate;
 
 use crate::{
     client::client_protocol,
-    commands::{commands::Log, structs::Head},
+    commands::{git_commands::Log, structs::Head},
 };
 use crypto::digest::Digest;
 use crypto::sha1::Sha1;
 use libflate::zlib::{Decoder, Encoder};
 
-use super::{commands::PathHandler, structs::ObjectType};
+use super::{git_commands::PathHandler, structs::ObjectType};
 
 const OBJECT: &str = ".git/objects";
 const R_HEADS: &str = ".git/refs/heads";
@@ -165,9 +165,7 @@ pub fn get_all_branches() -> Result<Vec<String>, Box<dyn Error>> {
         .parent()
         .ok_or("Failed to get parent directory")?;
 
-    let entries = fs::read_dir(PathHandler::get_relative_path(
-        &dir_path.to_string_lossy(),
-    ))?;
+    let entries = fs::read_dir(PathHandler::get_relative_path(&dir_path.to_string_lossy()))?;
 
     // Iterate over the entries
     let mut branches: Vec<String> = Vec::new();
@@ -361,12 +359,12 @@ pub fn find_common_ancestor_commit(
 ) -> Result<String, Box<dyn Error>> {
     let mut current_branch_log = Vec::new();
     let current_branch_commit = Head::get_head_commit()?;
-    let _ = Log::new().generate_log_entries(&mut current_branch_log, current_branch_commit);
+    let _ = Log::generate_log_entries(&mut current_branch_log, current_branch_commit);
     // println!("current branch log: {:?}", current_branch_log);
 
     let mut merging_branch_log = Vec::new();
     let merging_branch_commit = get_branch_last_commit(&get_branch_path(merging_branch))?;
-    let _ = Log::new().generate_log_entries(&mut merging_branch_log, merging_branch_commit);
+    let _ = Log::generate_log_entries(&mut merging_branch_log, merging_branch_commit);
     // println!("merging branch log: {:?}", merging_branch_log);
     // tal vez eso parametrizarlo en una funcion
 
@@ -396,8 +394,7 @@ pub fn ancestor_commit_exists(
     }
 
     // println!("generating log...");
-    let _ =
-        Log::new().generate_log_entries(&mut merging_branch_log, merging_commit_hash.to_string());
+    let _ = Log::generate_log_entries(&mut merging_branch_log, merging_commit_hash.to_string());
     // println!("log: {:?}", merging_branch_log);
     for (commit, _message) in merging_branch_log {
         // println!("commit: {} == current commit: {} ", commit, current_commit_hash);
@@ -471,7 +468,9 @@ pub fn hex_string_to_bytes(bytes: &[u8]) -> String {
     hash
 }
 
-pub fn read_tree_content(tree_hash: &str) -> Result<Vec<(String, String, String)>, Box<dyn Error>> {
+type TreeContent = (String, String, String);
+
+pub fn read_tree_content(tree_hash: &str) -> Result<Vec<TreeContent>, Box<dyn Error>> {
     let compressed_content =
         read_file_content_to_bytes(&PathHandler::get_relative_path(&get_object_path(tree_hash)))?;
     let tree_content = decompress_file_content_to_bytes(compressed_content)?;
@@ -578,13 +577,11 @@ pub fn validate_ref_update_request(
                 "Error: New hash is different from ref's current hash",
             )));
         }
-    } else {
-        if prev_remote_hash != client_protocol::ZERO_HASH {
-            return Err(Box::new(io::Error::new(
-                io::ErrorKind::Other,
-                "Error: Ref was not found",
-            )));
-        }
+    } else if prev_remote_hash != client_protocol::ZERO_HASH {
+        return Err(Box::new(io::Error::new(
+            io::ErrorKind::Other,
+            "Error: Ref was not found",
+        )));
     }
 
     Ok(())

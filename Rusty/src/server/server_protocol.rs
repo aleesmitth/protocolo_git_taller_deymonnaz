@@ -1,7 +1,7 @@
-use crate::commands::commands::Command;
-use crate::commands::commands::PackObjects;
-use crate::commands::commands::PathHandler;
-use crate::commands::commands::UnpackObjects;
+use crate::commands::git_commands::Command;
+use crate::commands::git_commands::PackObjects;
+use crate::commands::git_commands::PathHandler;
+use crate::commands::git_commands::UnpackObjects;
 use crate::commands::helpers;
 use crate::commands::protocol_utils;
 
@@ -208,11 +208,14 @@ impl ServerProtocol {
 
         file.write_all(&buffer)?;
 
-        if UnpackObjects::new().execute(Some(vec![&PathHandler::get_relative_path(
-           ".git/pack/received_pack_file.pack",
-        )])).is_ok() {
-           println!("packfile unpacked");
-           let unpack_confirmation = protocol_utils::format_line_to_send(
+        if UnpackObjects::new()
+            .execute(Some(vec![&PathHandler::get_relative_path(
+                ".git/pack/received_pack_file.pack",
+            )]))
+            .is_ok()
+        {
+            println!("packfile unpacked");
+            let unpack_confirmation = protocol_utils::format_line_to_send(
                 protocol_utils::UNPACK_CONFIRMATION.to_string(),
             );
             println!("{}", unpack_confirmation);

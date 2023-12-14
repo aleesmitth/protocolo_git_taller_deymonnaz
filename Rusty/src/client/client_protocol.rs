@@ -1,6 +1,6 @@
-use crate::commands::commands::Command;
-use crate::commands::commands::PackObjects;
-use crate::commands::commands::PathHandler;
+use crate::commands::git_commands::Command;
+use crate::commands::git_commands::PackObjects;
+use crate::commands::git_commands::PathHandler;
 use crate::commands::protocol_utils;
 use crate::commands::structs::Head;
 
@@ -11,6 +11,12 @@ use std::{
     time::Duration,
 };
 pub struct ClientProtocol;
+
+impl Default for ClientProtocol {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl ClientProtocol {
     pub fn new() -> Self {
@@ -52,7 +58,7 @@ impl ClientProtocol {
         }
 
         let current_branch_ref = Head::get_current_branch_ref()?;
-        let last_commit_hash: String = Head::get_head_commit()?.replace("\n", &String::new());
+        let last_commit_hash: String = Head::get_head_commit()?.replace('\n', "");
         // println!("last_commit: {}", last_commit_hash);
         // println!("refs in remote: {:?}", refs_in_remote);
         let mut push_line = String::new();
@@ -60,7 +66,7 @@ impl ClientProtocol {
             // let want_request = protocol_utils::format_line_to_send(format!("{} {}\n", protocol_utils::WANT_REQUEST, ref_hash));
             // println!("want_request sent: {}", want_request.clone());
             // println!("{} == {}", ref_name, current_branch_ref);
-            if ref_name.to_string() == current_branch_ref {
+            if *ref_name == current_branch_ref {
                 push_line = protocol_utils::format_line_to_send(format!(
                     "{} {} {}\n",
                     ref_hash, last_commit_hash, ref_name
@@ -91,7 +97,7 @@ impl ClientProtocol {
         // println!("buffer: {:?}", buffer);
 
         thread::sleep(Duration::from_millis(500));
-        stream.write_all(&mut buffer)?;
+        stream.write_all(&buffer)?;
 
         // println!("sending pack file");
         stream.flush()?;
@@ -129,7 +135,7 @@ impl ClientProtocol {
                 line.split_whitespace().collect::<Vec<&str>>().as_slice()
             {
                 let split_branch_name: Vec<String> =
-                    branch_name.split("\0").map(String::from).collect();
+                    branch_name.split('\0').map(String::from).collect();
                 refs_in_remote.push((remote_hash.to_string(), split_branch_name[0].to_string()));
             }
         }

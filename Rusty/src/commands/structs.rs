@@ -11,7 +11,7 @@ const HEAD_FILE: &str = ".git/HEAD";
 
 use crate::commands::helpers;
 
-use super::{commands::PathHandler, helpers::get_file_length};
+use super::{git_commands::PathHandler, helpers::get_file_length};
 
 /// Struct to interact with the HEAD file in the .git directory.
 /// Allows access to information about current branch and last commit in current branch.
@@ -191,7 +191,7 @@ impl HashObjectCreator {
             if let Some(_parent) = current_dir {
                 subdirectories
                     .entry(file_directory)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(final_entry);
             }
 
@@ -204,7 +204,7 @@ impl HashObjectCreator {
                     subdirectory_entry = directory.to_string_lossy().to_string();
                     subdirectories
                         .entry(subdirectory_entry)
-                        .or_insert_with(Vec::new)
+                        .or_default()
                         .push(parent.to_string_lossy().as_bytes().to_vec());
                 }
             }
@@ -234,7 +234,9 @@ impl HashObjectCreator {
         let mut sub_tree_content = Vec::new();
         for entry in entries {
             if !entry.starts_with(TREE_FILE_MODE.as_bytes()) {
-                if let Some(value) = subdirectories.remove(&String::from_utf8_lossy(entry).to_string()) {
+                if let Some(value) =
+                    subdirectories.remove(&String::from_utf8_lossy(entry).to_string())
+                {
                     let mut directory_name = String::new();
                     if let Some(file_name) = String::from_utf8_lossy(entry)
                         .to_string()
@@ -442,14 +444,13 @@ impl StagingArea {
         // let tree_split_line: Vec<String> = commit_file_lines[0].split_whitespace().map(String::from).collect();
 
         // let tree_hash_trimmed = &tree_split_line[1];
-        self.create_index_content(&mut new_index_content, &tree_content, "")?;
+        StagingArea::create_index_content(&mut new_index_content, &tree_content, "")?;
         // println!("new content: {}", new_index_content);
         index_file.write_all(new_index_content.as_bytes())?;
         Ok(())
     }
 
     fn create_index_content(
-        &self,
         index_content: &mut String,
         tree_data: &Vec<(String, String, String)>,
         partial_path: &str,
@@ -460,7 +461,11 @@ impl StagingArea {
                 // println!("dir path: {}", directory_path);
                 let sub_tree_content = helpers::read_tree_content(file_hash)?;
                 // let sub_tree_lines: Vec<String> = sub_tree_content.lines().map(|s| s.to_string()).collect();
-                self.create_index_content(index_content, &sub_tree_content, &directory_path)?
+                StagingArea::create_index_content(
+                    index_content,
+                    &sub_tree_content,
+                    &directory_path,
+                )?
             } else {
                 let index_line = format!(
                     "{}{};{};{}\n",
