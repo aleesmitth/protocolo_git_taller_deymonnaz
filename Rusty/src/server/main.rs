@@ -7,13 +7,27 @@ use std::env;
 use rocket::tokio::task::spawn_blocking;
 use std::thread;
 
+use dotenv::dotenv;
+use diesel::prelude::*;
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env::set_var(RELATIVE_PATH, "src/server/");
 
+    dotenv().ok();
+    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL not set");
+
+    println!("database_url: {:?}", database_url);
+    let connection = PgConnection::establish(&database_url);
+    match connection {
+        Ok(_) => println!("Connected to the database"),
+        Err(err) => eprintln!("Error connecting to the database: {}", err),
+    }
+
+
     // Spawn a new Tokio task to run the Rocket application
 
-    tokio::spawn(async {
+    /*tokio::spawn(async {
         if let Err(e) = run_rocket().await {
             eprintln!("Rocket error: {}", e);
         }
@@ -37,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-
+*/
     Ok(())
 }
 
