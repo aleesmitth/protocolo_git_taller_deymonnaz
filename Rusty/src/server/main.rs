@@ -9,15 +9,43 @@ use std::env;
 
 use dotenv::dotenv;
 use sqlx::Connection;
+use rusty::server::models::PullRequest;
+use rusty::server::models;
+use std::process::Command;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env::set_var(RELATIVE_PATH, "src/server/");
+
+    //TODO MOVE THIS TO DATABASE SCRIPT
     dotenv().ok();
+    // Command to run the shell script
+    let script_path = "create_database.sh";
+
+    // Execute the shell script to create the database if it doesn't exist
+    let status = Command::new("sh")
+        .arg(script_path)
+        .status()
+        .expect("Failed to execute the script");
+
+    if status.success() {
+        println!("Script executed successfully");
+    } else {
+        println!("Script execution failed");
+    }
+
     let url = env::var("DATABASE_URL").expect("DATABASE_URL not set");
     println!("url: {}", url);
-    let pool = sqlx::postgres::PgPool::connect(&url);
+    let pool = sqlx::postgres::PgPool::connect(&url).await?;
     sqlx::migrate!("./migrations").run(&pool).await?;
+    println!("migrated");
+    let pr = PullRequest {
+        id: None,
+        name: "hello_world_branch".to_string()
+    };
+
+    models::create(&pr, &pool).await?;
+    // TODO
     /*dotenv().ok();
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL not set");
 
