@@ -1,20 +1,24 @@
 #[macro_use]
 extern crate rocket;
 use rusty::commands::git_commands::RELATIVE_PATH;
-use rusty::server::server_protocol::ServerProtocol;
+//use rusty::server::server_protocol::ServerProtocol;
 use rusty::server::controller::*;
 use std::env;
-use rocket::tokio::task::spawn_blocking;
-use std::thread;
+//use rocket::tokio::task::spawn_blocking;
+//use std::thread;
 
 use dotenv::dotenv;
-use diesel::prelude::*;
+use sqlx::Connection;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env::set_var(RELATIVE_PATH, "src/server/");
-
     dotenv().ok();
+    let url = env::var("DATABASE_URL").expect("DATABASE_URL not set");
+    println!("url: {}", url);
+    let pool = sqlx::postgres::PgPool::connect(&url);
+    sqlx::migrate!("./migrations").run(&pool).await?;
+    /*dotenv().ok();
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL not set");
 
     println!("database_url: {:?}", database_url);
@@ -22,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match connection {
         Ok(_) => println!("Connected to the database"),
         Err(err) => eprintln!("Error connecting to the database: {}", err),
-    }
+    }*/
 
 
     // Spawn a new Tokio task to run the Rocket application
