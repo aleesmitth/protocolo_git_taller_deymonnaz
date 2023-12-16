@@ -45,6 +45,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     models::create(&pr, &pool).await?;
+
+    let pr = PullRequest {
+        id: Some(2),
+        name: "updated_name".to_string()
+    };
+    models::update(&pr, &pool).await?;
+    let pr = models::read(&pool).await?;
+    println!("pr fetched from database: {:?}", pr);
     // TODO
     /*dotenv().ok();
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL not set");
