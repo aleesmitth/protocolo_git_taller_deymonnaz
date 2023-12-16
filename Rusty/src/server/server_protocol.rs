@@ -2,11 +2,12 @@ use crate::commands::git_commands::Command;
 use crate::commands::git_commands::PackObjects;
 use crate::commands::git_commands::PathHandler;
 use crate::commands::git_commands::UnpackObjects;
-use crate::commands::{git_commands, helpers};
+use crate::commands::helpers;
 use crate::commands::protocol_utils;
 use crate::commands::git_commands::RELATIVE_PATH;
 use std::env;
 
+use std::fs;
 use std::{error::Error, fs::File, io, io::Read, io::Write, net::TcpListener, net::TcpStream};
 const RECEIVE_PACK: &str = "git-receive-pack";
 const UPLOAD_PACK: &str = "git-upload-pack";
@@ -88,7 +89,19 @@ impl ServerProtocol {
         // Concatenate a new string
         repo_path.push_str(trimmed_path_name);
         println!("repo_path: {:?}", repo_path);
-
+        
+        // Check if the directory exists
+    if !fs::metadata(&repo_path).is_ok() {
+        // If the directory doesn't exist, create it
+        if let Err(err) = fs::create_dir(&repo_path) {
+            eprintln!("Error creating directory: {}", err);
+        } else {
+            println!("Directory created successfully!");
+            //let _git_init = Init::new();
+        }
+    } else {
+        println!("Directory already exists.");
+    }
         // Set the modified value back to the environment variable
         env::set_var(RELATIVE_PATH, &repo_path);
 

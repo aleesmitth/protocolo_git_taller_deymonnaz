@@ -1,0 +1,57 @@
+extern crate rocket;
+//use rusty::server::server_protocol::ServerProtocol;
+use std::env;
+//use rocket::tokio::task::spawn_blocking;
+//use std::thread;
+use dotenv::dotenv;
+use std::process::Command;
+
+use crate::server::models::{PullRequest, self};
+
+pub struct Database;
+
+impl Database{
+    pub fn new() -> Self {
+        Database {}
+    }
+    
+    pub async fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
+        dotenv().ok();
+    // Command to run the shell script
+        let script_path = "create_database.sh";
+
+        // Execute the shell script to create the database if it doesn't exist
+        let status = Command::new("sh")
+            .arg(script_path)
+            .status()
+            .expect("Failed to execute the script");
+
+        if status.success() {
+            println!("Script executed successfully");
+        } else {
+            println!("Script execution failed");
+        }
+
+        let url = env::var("DATABASE_URL").expect("DATABASE_URL not set");
+        println!("url: {}", url);
+        let pool = sqlx::postgres::PgPool::connect(&url).await?;
+        sqlx::migrate!("./migrations").run(&pool).await?;
+        println!("migrated");
+        let pr = PullRequest {
+            id: None,
+            name: "hello_world_branch".to_string()
+        };
+
+        models::create(&pr, &pool).await?;
+
+        let pr = PullRequest {
+            id: Some(2),
+            name: "updated_name".to_string()
+        };
+        models::update(&pr, &pool).await?;
+        let pr = models::read(&pool).await?;
+        println!("pr fetched from database: {:?}", pr);
+
+        Ok(())
+    }
+}
