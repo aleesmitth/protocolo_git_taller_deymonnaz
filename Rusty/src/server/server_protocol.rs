@@ -92,7 +92,7 @@ impl ServerProtocol {
         println!("current_repo_path: {:?}", current_repo_path);
         
         // Check if the directory exists
-    if !fs::metadata(&current_repo_path).is_ok() {
+    /*if !fs::metadata(&current_repo_path).is_ok() {
         // If the directory doesn't exist, create it
         if let Err(err) = fs::create_dir(&current_repo_path) {
             eprintln!("Error creating directory: {}", err);
@@ -101,7 +101,7 @@ impl ServerProtocol {
         }
     } else {
         println!("Directory already exists.");
-    }
+    }*/
         // Set the modified value back to the environment variable
         env::set_var(RELATIVE_PATH, &current_repo_path);
 
