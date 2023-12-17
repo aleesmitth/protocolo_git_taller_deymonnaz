@@ -5,6 +5,7 @@ use std::{
     collections::HashSet, env, error::Error, fs, io, io::BufRead, io::ErrorKind, io::Read,
     io::Seek, io::SeekFrom, io::Write, str,
 };
+use std::clone::Clone as STDClone;
 
 extern crate libflate;
 use crypto::digest::Digest;
@@ -140,24 +141,25 @@ impl Command for Init {
                 }
             }
         }
+        let initial_repo_path = env::var(RELATIVE_PATH).unwrap_or_else(|_| String::new());
+        let mut current_repo_path = initial_repo_path.clone();
+        // Concatenate a new string
+        current_repo_path.push_str(&relative_path_prefix);
+        //println!("current_repo_path: {:?}", current_repo_path);
+        // Set the modified value back to the environment variable
+        env::set_var(RELATIVE_PATH, &current_repo_path);
 
-        if helpers::check_if_directory_exists(&PathHandler::get_relative_path(format!("{}{}", relative_path_prefix, GIT).as_str())) {
-            return Err(Box::new(io::Error::new(
-                io::ErrorKind::Other,
-                "A git repository already exists in this directory",
-            )));
-        }
-        let _refs_heads = fs::create_dir_all(PathHandler::get_relative_path(format!("{}{}", relative_path_prefix,R_HEADS).as_str()));
-        fs::create_dir_all(PathHandler::get_relative_path(format!("{}{}", relative_path_prefix,R_TAGS).as_str()))?;
-        fs::create_dir(PathHandler::get_relative_path(format!("{}{}", relative_path_prefix,OBJECT).as_str()))?;
-        fs::create_dir(PathHandler::get_relative_path(format!("{}{}", relative_path_prefix,PACK).as_str()))?;
-        fs::create_dir(PathHandler::get_relative_path(format!("{}{}", relative_path_prefix,R_REMOTES).as_str()))?;
+        let _refs_heads = fs::create_dir_all(PathHandler::get_relative_path(R_HEADS));
+        fs::create_dir_all(PathHandler::get_relative_path(R_TAGS))?;
+        fs::create_dir(PathHandler::get_relative_path(OBJECT))?;
+        fs::create_dir(PathHandler::get_relative_path(PACK))?;
+        fs::create_dir(PathHandler::get_relative_path(R_REMOTES))?;
 
-        let mut _config_file = fs::File::create(PathHandler::get_relative_path(format!("{}{}", relative_path_prefix,CONFIG_FILE).as_str()))?;
-        Branch::new().create_new_branch(DEFAULT_BRANCH_NAME)?;
-        Head::change_head_branch(DEFAULT_BRANCH_NAME)?;
 
-        let _index_file = fs::File::create(PathHandler::get_relative_path(format!("{}{}", relative_path_prefix,INDEX_FILE).as_str()))?;
+        let mut _config_file = fs::File::create(PathHandler::get_relative_path(CONFIG_FILE))?;
+        let _index_file = fs::File::create(PathHandler::get_relative_path(INDEX_FILE))?;
+        //println!("initial_repo_path: {:?}", initial_repo_path);
+        env::set_var(RELATIVE_PATH, &initial_repo_path);
 
         Ok(String::new())
     }
