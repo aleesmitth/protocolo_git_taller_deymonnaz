@@ -2,12 +2,13 @@ use rocket::tokio::task::spawn_blocking;
 use rocket::{get, post, put, routes};
 use crate::commands::git_commands;
 use crate::commands::git_commands::{Command, Pull};
-use crate::server::models::{PullRequest, AppState};
+use crate::server::models::*;
 use rocket::serde::json::Json;
 use serde::Deserialize;
 use serde::Serialize;
 use rocket::State;
 use sqlx::PgPool;
+use crate::server::models;
 
 
 use super::models::create;
@@ -34,25 +35,16 @@ pub async fn init_repo(repo_name: &str) -> String {
     format!("result: {:?}", _vec)
 }
 
-#[post("/", format = "application/json", data = "<pr>")]
-pub async fn new_pr(pr: Json<PullRequest>) -> String {
-    println!("pr received in post: {:?}", pr);
-    format!("shrug")
-}
-
-#[post("/repos/<repo>/pulls", format = "application/json", data = "<pull_request>")]
-pub async fn create_pull_request(state: &State<AppState>, repo: &str, pull_request: Json<PullRequest>) -> String {
+#[post("/repos/<repo>/pulls", format = "application/json", data = "<pr>")]
+pub async fn new_pr(state: &State<AppState>, repo: String, pr: Json<PullRequest>) -> String {
     // 1. Extract data from the Json<PullRequestData> parameter
-    let pull_request_data = pull_request.into_inner();
+    let pull_request_data = pr.into_inner();
 
     // 2. Validate the extracted data
     if pull_request_data.name.is_empty() {
-        return format!("Error: Pull request name cannot be empty.");
+        return format!("Error: Pull request name cannot be empty.{}" ,repo);
     }
-
-    // 3. Perform necessary database operations to create a new pull request
-    let pull_request = PullRequest::new(None, pull_request_data.name);
-    match create(&pull_request, &state.db_pool).await {
+    match create(&pull_request_data, &state.db_pool).await {
         Ok(pull_request_id) => {
             // 4. Return an appropriate response
             format!("Pull request created successfully with ID: {}", pull_request_id)
@@ -62,5 +54,18 @@ pub async fn create_pull_request(state: &State<AppState>, repo: &str, pull_reque
             format!("Error creating pull request: {:?}", err)
         }
     }
+}
+
+#[get("/y")]
+pub async fn your_handler_function(state: &State<AppState>) -> String {
+    // Access your database connection
+    let db = &state.db_pool;
+    let pr = PullRequest::new(None, "pushed from api".to_string());
+    let pr_id = models::create(&pr, &db).await;
+
+    // Perform database operations as needed
+    // ...
+
+    "Hello, World!".to_string()
 }
 

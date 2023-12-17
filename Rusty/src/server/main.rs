@@ -22,7 +22,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db_pool = database.run().await?;
 
     // Spawn a new Tokio task to run the Rocket application
-
     tokio::spawn(async {
         if let Err(e) = run_rocket(db_pool).await {
             eprintln!("Rocket error: {}", e);
@@ -59,7 +58,8 @@ async fn run_rocket(db_pool: PgPool) -> Result<(), rocket::Error> {
         .mount("/", routes![world, init_repo, new_pr]);
 
     // If you don't need to customize the Rocket configuration, you can use the default configuration.
-    let _rocket = _rocket.launch();
+    let _rocket = _rocket.launch().await;
+    println!("rocket:{:?}", _rocket);
     Ok(())
 }
 

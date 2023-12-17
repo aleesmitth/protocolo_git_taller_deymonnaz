@@ -45,6 +45,6 @@ impl Database{
         let pr = models::read(&pool).await?;
         println!("pr fetched from database: {:?}", pr);
 
-        Ok((pool))
+        Ok(pool)
     }
 }
