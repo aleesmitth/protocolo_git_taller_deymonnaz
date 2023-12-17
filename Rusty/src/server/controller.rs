@@ -14,7 +14,7 @@ use crate::server::models;
 use super::models::create;
 
 #[get("/repos/<repo>/pulls")]
-pub async fn get_pull_request(state: &State<AppState>, repo: String) -> String {
+pub async fn get_repo_pull_request(state: &State<AppState>, repo: String) -> String {
     /*let repo_name_clone = repo_name.to_string(); // Clone the string
     let _vec = spawn_blocking(move || {
         if let Err(e) = git_commands::Init::new().execute(Some(vec![&repo_name_clone])) {
@@ -23,6 +23,23 @@ pub async fn get_pull_request(state: &State<AppState>, repo: String) -> String {
     }).await;*/
     let mut options = PullRequestOptions::default();
     options.repo = Some(repo);
+    match read(&options, &state.db_pool).await {
+        Ok(pull_requests) => {
+            // 4. Return an appropriate response
+            format!("Pull request created successfully with ID: {:?}", pull_requests)
+        }
+        Err(err) => {
+            // Handle the error appropriately (log it, return an error response, etc.)
+            format!("Error creating pull request: {:?}", err)
+        }
+    }
+}
+
+#[get("/repos/<repo>/pulls/<pull_name>")]
+pub async fn get_pull_request(state: &State<AppState>, repo: String, pull_name: String) -> String {
+    let mut options = PullRequestOptions::default();
+    options.repo = Some(repo);
+    options.name = Some(pull_name);
     match read(&options, &state.db_pool).await {
         Ok(pull_requests) => {
             // 4. Return an appropriate response
