@@ -2,25 +2,35 @@ use chrono::{ NaiveDate, NaiveDateTime, Utc };
 use std::error::Error;
 use sqlx::Row;
 use sqlx::FromRow;
+use serde::{Serialize, Deserialize};
 
 // TODO make a constructor for this, so it validates data or whatever, is it cleaner?
 // TODO we should use traits to support more than 1 model.
 // TODO refactor to use macros so that queries are verified at compile time
-#[derive(Debug,FromRow)]
+#[derive(Debug,FromRow,Serialize,Deserialize)]
 pub struct PullRequest {
     pub id: Option<i32>,
     pub name: String
 }
+
+impl PullRequest {
+    pub fn new(id: Option<i32>, name: String) -> Self {
+        PullRequest {
+            id: id,
+            name: name
+        }
+    }
+}
 // TODO check for errors, refactor this and use table name in a .env var or constant
 // TODO refactor to use transactions instead of the pool directly
-pub async fn create(pull_request: &PullRequest, pool: &sqlx::PgPool) -> Result<(), Box<dyn Error>> {
-    let query = "INSERT INTO pull_requests (name) VALUES ($1)";
-    sqlx::query(query)
+pub async fn create(pull_request: &PullRequest, pool: &sqlx::PgPool) -> Result<i32, Box<dyn Error>> {
+    let query = "INSERT INTO pull_requests (name) VALUES ($1) RETURNING id";
+    let row = sqlx::query(query)
         .bind(&pull_request.name)
-        .execute(pool)
+        .fetch_one(pool)
         .await?;
 
-    Ok(())
+    Ok(row.get("id"))
 }
 
 pub async fn update(pull_request: &PullRequest, pool: &sqlx::PgPool) -> Result<(), Box<dyn Error>> {

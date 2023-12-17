@@ -37,17 +37,10 @@ impl Database{
         let pool = sqlx::postgres::PgPool::connect(&url).await?;
         sqlx::migrate!("./migrations").run(&pool).await?;
         println!("migrated");
-        let pr = PullRequest {
-            id: None,
-            name: "hello_world_branch".to_string()
-        };
+        let pr = PullRequest::new(None, "hello_world_branch".to_string());
 
-        models::create(&pr, &pool).await?;
-
-        let pr = PullRequest {
-            id: Some(2),
-            name: "updated_name".to_string()
-        };
+        let pr_id = models::create(&pr, &pool).await?;
+        let pr = PullRequest::new(Some(pr_id), "updated_branch".to_string());
         models::update(&pr, &pool).await?;
         let pr = models::read(&pool).await?;
         println!("pr fetched from database: {:?}", pr);

@@ -9,13 +9,13 @@ edition = "2021"
 rust-crypto = "0.2.36"
 libflate = "2"
 tempfile = "3.2"
-rocket = "^0.5.0"
+rocket = { version = "^0.5.0", features = ["json"] }
 serde = "1.0"
 serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 tokio = { version = "1.35.0", features = ["full"] }
 dotenv = "0.15.0"
-sqlx = { version = "0.7", features = ["postgres", "runtime-tokio-rustls"] }
+sqlx = { version = "0.7", features = ["postgres", "runtime-tokio-rustls", "chrono"] }
 
 [[bin]]
 name = "main"
