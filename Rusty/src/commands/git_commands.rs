@@ -154,10 +154,11 @@ impl Command for Init {
         fs::create_dir_all(PathHandler::get_relative_path(OBJECT))?;
         fs::create_dir_all(PathHandler::get_relative_path(PACK))?;
         fs::create_dir_all(PathHandler::get_relative_path(R_REMOTES))?;
-
-
-        let mut _config_file = fs::File::create(PathHandler::get_relative_path(CONFIG_FILE))?;
-        let _index_file = fs::File::create(PathHandler::get_relative_path(INDEX_FILE))?;
+        fs::File::create(PathHandler::get_relative_path(INDEX_FILE))?;
+        fs::File::create(PathHandler::get_relative_path(CONFIG_FILE))?;
+        if let Ok(e) = Branch::new().create_new_branch(DEFAULT_BRANCH_NAME) {
+            Head::change_head_branch(DEFAULT_BRANCH_NAME)?;
+        }
         //println!("initial_repo_path: {:?}", initial_repo_path);
         env::set_var(RELATIVE_PATH, &initial_repo_path);
 
