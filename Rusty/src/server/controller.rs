@@ -52,6 +52,22 @@ pub async fn get_pull_request(state: &State<AppState>, repo: String, pull_name: 
     }
 }
 
+#[get("/repos/<repo>/pulls/<pull_name>/commits")]
+pub async fn get_pull_request_commits(state: &State<AppState>, repo: String, pull_name: String) -> String {
+    let mut options = PullRequestOptions::default();
+    options.repo = Some(repo);
+    options.name = Some(pull_name);
+    "TODO implement end point".to_string()
+}
+
+#[put("/repos/<repo>/pulls/<pull_name>/merge", format = "application/json")]
+pub async fn put_merge(state: &State<AppState>, repo: String, pull_name: String) -> String {
+    let mut options = PullRequestOptions::default();
+    options.repo = Some(repo);
+    options.name = Some(pull_name);
+    "TODO implement end point".to_string()
+}
+
 #[put("/repos/init/<repo_name>")]
 pub async fn init_repo(repo_name: &str) -> String {
     let repo_name_clone = repo_name.to_string(); // Clone the string
@@ -64,7 +80,7 @@ pub async fn init_repo(repo_name: &str) -> String {
 }
 
 #[post("/repos/<repo>/pulls", format = "application/json", data = "<pr>")]
-pub async fn new_pr(state: &State<AppState>, repo: String, pr: Json<PullRequest>) -> String {
+pub async fn post_pull_request(state: &State<AppState>, repo: String, pr: Json<PullRequest>) -> String {
     // 1. Extract data from the Json<PullRequestData> parameter
     let pull_request_data = pr.into_inner();
 
