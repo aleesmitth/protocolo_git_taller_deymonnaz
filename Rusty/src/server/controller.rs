@@ -13,15 +13,26 @@ use crate::server::models;
 
 use super::models::create;
 
-#[get("/get/<repo_name>")]
-pub async fn world(repo_name: &str) -> String {
+#[get("/repos/<repo>/pulls")]
+pub async fn get_pull_request(state: &State<AppState>, repo: String) -> String {
     /*let repo_name_clone = repo_name.to_string(); // Clone the string
     let _vec = spawn_blocking(move || {
         if let Err(e) = git_commands::Init::new().execute(Some(vec![&repo_name_clone])) {
             println!("e {}",e);
         }
     }).await;*/
-    format!("repo name: {}", repo_name)
+    let mut options = PullRequestOptions::default();
+    options.repo = Some(repo);
+    match read(&options, &state.db_pool).await {
+        Ok(pull_requests) => {
+            // 4. Return an appropriate response
+            format!("Pull request created successfully with ID: {:?}", pull_requests)
+        }
+        Err(err) => {
+            // Handle the error appropriately (log it, return an error response, etc.)
+            format!("Error creating pull request: {:?}", err)
+        }
+    }
 }
 
 #[put("/repos/init/<repo_name>")]

@@ -13,6 +13,13 @@ pub struct AppState {
     pub db_pool: PgPool,
 }
 
+#[derive(Debug, Default)]
+pub struct PullRequestOptions {
+    pub _id: Option<i32>,
+    pub name: Option<String>,
+    pub repo: Option<String>,
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+}
 #[derive(Debug,FromRow,Serialize,Deserialize)]
 pub struct PullRequest {
     pub _id: Option<i32>,
@@ -56,11 +63,24 @@ pub async fn update(pull_request: &PullRequest, pool: &sqlx::PgPool) -> Result<(
     Ok(())
 }
 
-pub async fn read(pool: &sqlx::PgPool) -> Result<Vec<PullRequest>, Box<dyn Error>> {
-    let encoded_query = "SELECT _id, name, repo, created_at FROM pull_requests";
-    let query = sqlx::query_as::<_, PullRequest>(encoded_query);
+pub async fn read(options: &PullRequestOptions, pool: &sqlx::PgPool) -> Result<Vec<PullRequest>, Box<dyn Error>> {
+    let mut query = sqlx::query_as::<_, PullRequest>("SELECT * FROM pull_requests");
+
+    if let Some(repo) = &options.repo {
+        if let Some(name) = &options.name {
+            query = sqlx::query_as::<_, PullRequest>("SELECT * FROM pull_requests WHERE name = $1 AND repo = $2")
+                .bind(name)
+                .bind(repo);
+        } else {
+            query = sqlx::query_as::<_, PullRequest>("SELECT * FROM pull_requests WHERE repo = $1")
+                .bind(repo);
+        }
+    } else if let Some(_id) = &options._id {
+        query = sqlx::query_as::<_, PullRequest>("SELECT * FROM pull_requests WHERE _id = $1").bind(_id);
+    }
 
     let prs = query.fetch_all(pool).await?;
+
 
     Ok(prs)
 }
