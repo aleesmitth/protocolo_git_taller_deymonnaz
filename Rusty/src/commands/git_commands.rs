@@ -151,9 +151,9 @@ impl Command for Init {
 
         let _refs_heads = fs::create_dir_all(PathHandler::get_relative_path(R_HEADS));
         fs::create_dir_all(PathHandler::get_relative_path(R_TAGS))?;
-        fs::create_dir(PathHandler::get_relative_path(OBJECT))?;
-        fs::create_dir(PathHandler::get_relative_path(PACK))?;
-        fs::create_dir(PathHandler::get_relative_path(R_REMOTES))?;
+        fs::create_dir_all(PathHandler::get_relative_path(OBJECT))?;
+        fs::create_dir_all(PathHandler::get_relative_path(PACK))?;
+        fs::create_dir_all(PathHandler::get_relative_path(R_REMOTES))?;
 
 
         let mut _config_file = fs::File::create(PathHandler::get_relative_path(CONFIG_FILE))?;

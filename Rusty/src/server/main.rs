@@ -1,6 +1,6 @@
 #[macro_use]
 extern crate rocket;
-use rusty::commands::git_commands::RELATIVE_PATH;
+use rusty::{commands::git_commands::RELATIVE_PATH, server::models::AppState};
 //use rusty::server::server_protocol::ServerProtocol;
 use rusty::server::controller::*;
 use rusty::server::database::Database;
@@ -8,6 +8,10 @@ use rusty::server::server_protocol::ServerProtocol;
 use std::{env, thread};
 //use rocket::tokio::task::spawn_blocking;
 //use std::thread;
+use rocket::State;
+use sqlx::PgPool;
+
+
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -15,12 +19,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let database = Database::new();
 
-    database.run().await?;
+    let db_pool = database.run().await?;
 
     // Spawn a new Tokio task to run the Rocket application
 
     tokio::spawn(async {
-        if let Err(e) = run_rocket().await {
+        if let Err(e) = run_rocket(db_pool).await {
             eprintln!("Rocket error: {}", e);
         }
     });
@@ -47,10 +51,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn run_rocket() -> Result<(), rocket::Error> {
+async fn run_rocket(db_pool: PgPool) -> Result<(), rocket::Error> {
+    let state = AppState { db_pool };
+
     let _rocket = rocket::build()
-        .mount("/", routes![world, init_repo, new_pr])
-        .launch()
-        .await?;
+        .manage(state)
+        .mount("/", routes![world, init_repo, new_pr]);
+
+    // If you don't need to customize the Rocket configuration, you can use the default configuration.
+    let _rocket = _rocket.launch();
     Ok(())
 }
+

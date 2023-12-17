@@ -1,0 +1,13 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug",
+            "program": "${workspaceFolder}/target/debug", // Adjust the binary path based on your project structure
+            "args": ["init"], // Command-line arguments for your program
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

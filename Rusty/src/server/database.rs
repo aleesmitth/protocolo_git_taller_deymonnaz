@@ -15,7 +15,7 @@ impl Database{
         Database {}
     }
     
-    pub async fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn run(&self) -> Result<sqlx::PgPool, Box<dyn std::error::Error>> {
         dotenv().ok();
     // Command to run the shell script
         let script_path = "create_database.sh";
@@ -45,6 +45,6 @@ impl Database{
         let pr = models::read(&pool).await?;
         println!("pr fetched from database: {:?}", pr);
 
-        Ok(())
+        Ok((pool))
     }
 }

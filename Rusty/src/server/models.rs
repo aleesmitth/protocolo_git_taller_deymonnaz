@@ -1,4 +1,5 @@
 use chrono::{ NaiveDate, NaiveDateTime, Utc };
+use sqlx::PgPool;
 use std::error::Error;
 use sqlx::Row;
 use sqlx::FromRow;
@@ -7,6 +8,11 @@ use serde::{Serialize, Deserialize};
 // TODO make a constructor for this, so it validates data or whatever, is it cleaner?
 // TODO we should use traits to support more than 1 model.
 // TODO refactor to use macros so that queries are verified at compile time
+
+pub struct AppState {
+    pub db_pool: PgPool,
+}
+
 #[derive(Debug,FromRow,Serialize,Deserialize)]
 pub struct PullRequest {
     pub id: Option<i32>,
