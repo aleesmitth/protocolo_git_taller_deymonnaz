@@ -3,5 +3,5 @@ CREATE SEQUENCE IF NOT EXISTS pull_request_surrogate;
 CREATE TABLE pull_requests (
                        id INT DEFAULT nextval('pull_request_surrogate') PRIMARY KEY,
                        name VARCHAR(255) NOT NULL,
-                       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                       created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

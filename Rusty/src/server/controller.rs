@@ -1,10 +1,11 @@
 use rocket::tokio::task::spawn_blocking;
 use rocket::{get, post, put, routes};
 use crate::commands::git_commands;
-use crate::commands::git_commands::Command;
+use crate::commands::git_commands::{Command, Pull};
 use crate::server::models::PullRequest;
-use serde::Deserialize;
 use rocket::serde::json::Json;
+use serde::Deserialize;
+use serde::Serialize;
 
 
 #[get("/get/<repo_name>")]
@@ -29,7 +30,8 @@ pub async fn init_repo(repo_name: &str) -> String {
     format!("result: {:?}", _vec)
 }
 
-/*#[post("/post", format = "application/json", data = "<pr>")]
-fn new_pr(pr: Json<PullRequest>) {
-    println!("pr received in post: {:?}", pr.into_inner());
-}*/
+#[post("/", format = "application/json", data = "<pr>")]
+pub async fn new_pr(pr: Json<PullRequest>) -> String {
+    println!("pr received in post: {:?}", pr);
+    format!("shrug")
+}

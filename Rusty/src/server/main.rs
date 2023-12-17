@@ -49,7 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn run_rocket() -> Result<(), rocket::Error> {
     let _rocket = rocket::build()
-        .mount("/", routes![world, init_repo])
+        .mount("/", routes![world, init_repo, new_pr])
         .launch()
         .await?;
     Ok(())

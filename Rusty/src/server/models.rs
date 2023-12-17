@@ -10,14 +10,16 @@ use serde::{Serialize, Deserialize};
 #[derive(Debug,FromRow,Serialize,Deserialize)]
 pub struct PullRequest {
     pub id: Option<i32>,
-    pub name: String
+    pub name: String,
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>
 }
 
 impl PullRequest {
     pub fn new(id: Option<i32>, name: String) -> Self {
         PullRequest {
             id: id,
-            name: name
+            name: name,
+            created_at: None
         }
     }
 }
