@@ -56,16 +56,4 @@ pub async fn new_pr(state: &State<AppState>, repo: String, pr: Json<PullRequest>
     }
 }
 
-#[get("/y")]
-pub async fn your_handler_function(state: &State<AppState>) -> String {
-    // Access your database connection
-    let db = &state.db_pool;
-    let pr = PullRequest::new(None, "pushed from api".to_string());
-    let pr_id = models::create(&pr, &db).await;
-
-    // Perform database operations as needed
-    // ...
-
-    "Hello, World!".to_string()
-}
 
