@@ -84,26 +84,26 @@ impl ServerProtocol {
         let trimmed_path_name = result_string.strip_suffix(".git").unwrap_or(result_string.as_str());
 
         // Retrieve the current value
-        let mut repo_path = env::var(RELATIVE_PATH).unwrap_or_else(|_| String::new());
+        let base_repo_path = env::var(RELATIVE_PATH).unwrap_or_else(|_| String::new());
+        let mut current_repo_path = base_repo_path.clone();
 
         // Concatenate a new string
-        repo_path.push_str(trimmed_path_name);
-        println!("repo_path: {:?}", repo_path);
+        current_repo_path.push_str(trimmed_path_name);
+        println!("current_repo_path: {:?}", current_repo_path);
         
         // Check if the directory exists
-    if !fs::metadata(&repo_path).is_ok() {
+    if !fs::metadata(&current_repo_path).is_ok() {
         // If the directory doesn't exist, create it
-        if let Err(err) = fs::create_dir(&repo_path) {
+        if let Err(err) = fs::create_dir(&current_repo_path) {
             eprintln!("Error creating directory: {}", err);
         } else {
             println!("Directory created successfully!");
-            //let _git_init = Init::new();
         }
     } else {
         println!("Directory already exists.");
     }
         // Set the modified value back to the environment variable
-        env::set_var(RELATIVE_PATH, &repo_path);
+        env::set_var(RELATIVE_PATH, &current_repo_path);
 
 
 
@@ -120,6 +120,7 @@ impl ServerProtocol {
             _ => {}
         }
 
+        env::set_var(RELATIVE_PATH, &base_repo_path);
         println!("end handling connection");
         Ok(())
     }

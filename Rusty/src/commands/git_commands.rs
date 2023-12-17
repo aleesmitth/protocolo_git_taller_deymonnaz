@@ -141,8 +141,8 @@ impl Command for Init {
                 }
             }
         }
-        let initial_repo_path = env::var(RELATIVE_PATH).unwrap_or_else(|_| String::new());
-        let mut current_repo_path = initial_repo_path.clone();
+        let base_repo_path = env::var(RELATIVE_PATH).unwrap_or_else(|_| String::new());
+        let mut current_repo_path = base_repo_path.clone();
         // Concatenate a new string
         current_repo_path.push_str(&relative_path_prefix);
         //println!("current_repo_path: {:?}", current_repo_path);
@@ -160,7 +160,7 @@ impl Command for Init {
             Head::change_head_branch(DEFAULT_BRANCH_NAME)?;
         }
         //println!("initial_repo_path: {:?}", initial_repo_path);
-        env::set_var(RELATIVE_PATH, &initial_repo_path);
+        env::set_var(RELATIVE_PATH, &base_repo_path);
 
         Ok(String::new())
     }
