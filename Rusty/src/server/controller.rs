@@ -48,6 +48,10 @@ pub async fn get_pull_request_commits(_state: &State<AppState>, repo: String, pu
     let mut options = PullRequestOptions::default();
     options.repo = Some(repo);
     options.name = Some(pull_name);
+    // TODO ir a la db pedir head y base
+    // columna hash dsp del  merge, si ya se mergeo o no 0000 o un hash
+    // si no, lista por separado head y base
+    // si si, lista el log del ultimo commit
     "TODO implement end point".to_string()
 }
 
@@ -59,7 +63,7 @@ pub fn put_merge(_state: &State<AppState>, repo: String, pull_name: String) -> S
     "TODO implement end point".to_string()
 }
 
-#[put("/repos/init/<repo_name>")]
+#[get("/repos/init/<repo_name>")]
 pub async fn init_repo(repo_name: &str) -> String {
     let repo_name_clone = repo_name.to_string(); // Clone the string
     let _vec = spawn_blocking(move || {
