@@ -12,12 +12,6 @@ use super::models::create;
 
 #[get("/repos/<repo>/pulls")]
 pub async fn get_repo_pull_request(state: &State<AppState>, repo: String) -> String {
-    /*let repo_name_clone = repo_name.to_string(); // Clone the string
-    let _vec = spawn_blocking(move || {
-        if let Err(e) = git_commands::Init::new().execute(Some(vec![&repo_name_clone])) {
-            println!("e {}",e);
-        }
-    }).await;*/
     let mut options = PullRequestOptions::default();
     options.repo = Some(repo);
     match read(&options, &state.db_pool).await {
