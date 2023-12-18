@@ -762,12 +762,11 @@ impl Command for Status {
     fn execute(&self, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let last_commit_hash: String = Head::get_head_commit()?;
         let mut no_changes = true;
-        let tree_content: Vec<(String, String, String)> = Vec::new();
+        let mut tree_content: Vec<(String, String, String)> = Vec::new();
         if !last_commit_hash.is_empty() {
             let last_commit = Head::get_head_commit()?;
             let tree_hash = helpers::get_commit_tree(&last_commit)?;
-            let _tree_content: Vec<(String, String, String)> =
-                helpers::read_tree_content(&tree_hash)?;
+            tree_content = helpers::read_tree_content(&tree_hash)?;
         }
 
         let index_file_content =
@@ -792,19 +791,22 @@ impl Command for Status {
                 let current_object_content = helpers::read_file_content(index_file_line[0])?;
                 let current_object_hash = HashObjectCreator::generate_object_hash(
                     ObjectType::Blob,
-                    get_file_length(index_file_line[0])?,
+                    current_object_content.bytes().len() as u64,
                     &current_object_content,
                 );
                 if current_object_hash != hash_string && index_file_line[2] == "0" {
                     no_changes = false;
                     line = format!("modified: {} (Unstaged)", index_file_line[0]);
+                    println!("{}", line);
+                    line_result.push_str(&line);
                 }
             } else {
                 no_changes = false;
                 line = format!("new file: {} (Staged)", index_file_line[0]);
+                println!("{}", line);
+                line_result.push_str(&line);    
             }
-            println!("{}", line);
-            line_result.push_str(&line);
+            
             line_result.push('\n');
         }
         if no_changes {
@@ -2273,6 +2275,23 @@ impl Command for Merge {
         let merging_commit_hash = helpers::get_branch_last_commit(&branch_to_merge_path)?;
 
         let current_commit_hash = Head::get_head_commit()?;
+
+        // conseguir commit ancestro
+        // let ancestor_commit = helpers::find_common_ancestor_commit(current_branch, merging_branch)?;
+
+        // buscar cambios realizados en ambas branches
+        // en cada branch, abrir archivo de commit maestro y archivo de commit actual
+        // tengo que acceder a sus arboles. comparar primero si los hash son iguales,
+        // si no lo son, compararlos linea a linea
+        // get_changes_in_branch(ancestor_commit, branch_last_commit);
+
+
+
+
+        // si es ff seguir con lo actual
+
+        // sino buscar conflictos, si los hay marcar, si no directamente completar el merge
+        // y hacer commit
 
         // println!("merging {} -> {}", branch_to_merge, Head::get_current_branch_name()?);
         if helpers::ancestor_commit_exists(&current_commit_hash, &merging_commit_hash)? {
