@@ -18,8 +18,9 @@ pub struct PullRequestOptions {
     pub _id: Option<i32>,
     pub name: Option<String>,
     pub repo: Option<String>,
-    pub head: Option<String>,  // Add the "head" field
-    pub base: Option<String>,  // Add the "base" field
+    pub head: Option<String>,
+    pub base: Option<String>,
+    pub commit_after_merge: Option<String>,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>
 }
 #[derive(Debug,FromRow,Serialize,Deserialize)]
@@ -27,8 +28,9 @@ pub struct PullRequest {
     pub _id: Option<i32>,
     pub name: String,
     pub repo: String,
-    pub head: String,  // Add the "head" field
-    pub base: String,  // Add the "base" field
+    pub head: String,
+    pub base: String,
+    pub commit_after_merge: Option<String>,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>
 }
 
@@ -40,6 +42,7 @@ impl PullRequest {
             repo,
             head,
             base,
+            commit_after_merge: None,
             created_at: None
         }
     }
@@ -47,12 +50,13 @@ impl PullRequest {
 // TODO check for errors, refactor this and use table name in a .env var or constant
 // TODO refactor to use transactions instead of the pool directly
 pub async fn create(pull_request: &PullRequest, pool: &sqlx::PgPool) -> Result<i32, Box<dyn Error>> {
-    let query = "INSERT INTO pull_requests (name, repo, head, base) VALUES ($1, $2, $3, $4) RETURNING _id";
+    let query = "INSERT INTO pull_requests (name, repo, head, base, commit_after_merge) VALUES ($1, $2, $3, $4, $5) RETURNING _id";
     let row = sqlx::query(query)
         .bind(&pull_request.name)
         .bind(&pull_request.repo)
         .bind(&pull_request.head)
         .bind(&pull_request.base)
+        .bind(&pull_request.commit_after_merge)
         .fetch_one(pool)
         .await?;
 
@@ -60,12 +64,13 @@ pub async fn create(pull_request: &PullRequest, pool: &sqlx::PgPool) -> Result<i
 }
 
 pub async fn update(pull_request: &PullRequest, pool: &sqlx::PgPool) -> Result<(), Box<dyn Error>> {
-    let query = "UPDATE pull_requests SET name = $1, repo = $2, head = $3, base = $4 WHERE _id = $3";
+    let query = "UPDATE pull_requests SET name = $1, repo = $2, head = $3, base = $4, commit_after_merge = $5 WHERE _id = $6";
     sqlx::query(query)
         .bind(&pull_request.name)
         .bind(&pull_request.repo)
         .bind(&pull_request.head)
         .bind(&pull_request.base)
+        .bind(&pull_request.commit_after_merge)
         .bind(pull_request._id.unwrap_or(1))
         .execute(pool)
         .await?;

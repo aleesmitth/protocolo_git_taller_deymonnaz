@@ -54,7 +54,14 @@ async fn run_rocket(db_pool: PgPool) -> Result<(), rocket::Error> {
 
     let _rocket = rocket::build()
         .manage(state)
-        .mount("/", routes![get_pull_request_commits, get_repo_pull_request, get_pull_request, init_repo, post_pull_request, put_merge]);
+        .mount("/", routes![
+            get_pull_request_commits,
+            get_repo_pull_request,
+            get_pull_request,
+            init_repo,
+            post_pull_request,
+            put_merge
+        ]);
 
     // If you don't need to customize the Rocket configuration, you can use the default configuration.
     let _rocket = _rocket.launch().await;
