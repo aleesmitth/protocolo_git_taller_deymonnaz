@@ -354,19 +354,17 @@ pub fn get_object_path(object_hash: &str) -> String {
 }
 
 pub fn find_common_ancestor_commit(
-    _current_branch: &str,
-    merging_branch: &str,
+    current_branch_commit: &str,
+    merging_branch_commit: &str,
 ) -> Result<String, Box<dyn Error>> {
+
     let mut current_branch_log = Vec::new();
-    let current_branch_commit = Head::get_head_commit()?;
-    let _ = Log::generate_log_entries(&mut current_branch_log, current_branch_commit);
-    // println!("current branch log: {:?}", current_branch_log);
+    let _ = Log::generate_log_entries(&mut current_branch_log, current_branch_commit.to_string());
+    println!("current branch log: {:?}", current_branch_log);
 
     let mut merging_branch_log = Vec::new();
-    let merging_branch_commit = get_branch_last_commit(&get_branch_path(merging_branch))?;
-    let _ = Log::generate_log_entries(&mut merging_branch_log, merging_branch_commit);
-    // println!("merging branch log: {:?}", merging_branch_log);
-    // tal vez eso parametrizarlo en una funcion
+    let _ = Log::generate_log_entries(&mut merging_branch_log, merging_branch_commit.to_string());
+    println!("merging branch log: {:?}", merging_branch_log);
 
     for (commit, _message) in merging_branch_log {
         if current_branch_log.contains(&(commit.clone(), _message)) {
@@ -403,6 +401,43 @@ pub fn ancestor_commit_exists(
         }
     }
     Ok(false)
+}
+
+pub fn get_changes_in_branch(ancestor_commit_hash: &str, current_commit_hash: &str) -> Result<(Vec<String>, Vec<String>), Box<dyn Error>> {
+
+    let mut modified_objects = Vec::new();
+    let mut added_object = Vec::new();
+
+    let ancestor_commit_tree = get_commit_tree(ancestor_commit_hash)?;
+    let ancestor_tree_content = read_tree_content(&ancestor_commit_tree)?;
+
+    let current_commit_tree = get_commit_tree(current_commit_hash)?;
+    let current_tree_content = read_tree_content(&current_commit_tree)?;
+
+    let mut counter = 0;
+
+    loop {
+        if counter == current_tree_content.len() {
+            break
+        }
+
+        let current_commit_line_name = &current_tree_content[counter].1;
+        let current_commit_line_hash = &current_tree_content[counter].2;
+
+        if counter < ancestor_tree_content.len() {
+            let ancestor_commit_line_name = &ancestor_tree_content[counter].1;
+            let ancestor_commit_line_hash = &ancestor_tree_content[counter].2;
+            if ancestor_commit_line_name == current_commit_line_name && ancestor_commit_line_hash != current_commit_line_hash {
+                // agregar aca el objecto cambiado
+                modified_objects.push(current_commit_line_hash.to_string())
+            }
+        } else {
+            added_object.push(current_commit_line_hash.to_string())
+        }
+        counter += 1
+    }
+
+    Ok((added_object, modified_objects))
 }
 
 /// Given a commit's hash it accesses its file and returns the hash of its associated

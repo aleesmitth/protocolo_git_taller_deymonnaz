@@ -2266,6 +2266,7 @@ impl Command for Merge {
 
         let branch_to_merge = arg_slice[0];
         // println!("branch to merge: {}", branch_to_merge);
+        println!("merging {} -> {}", branch_to_merge, Head::get_current_branch_name()?);
         let mut branch_to_merge_path = helpers::get_branch_path(branch_to_merge);
         if !helpers::check_if_file_exists(&branch_to_merge_path) {
             // This means the branch is a remote branch
@@ -2276,33 +2277,43 @@ impl Command for Merge {
 
         let current_commit_hash = Head::get_head_commit()?;
 
-        // conseguir commit ancestro
-        // let ancestor_commit = helpers::find_common_ancestor_commit(current_branch, merging_branch)?;
+        println!("merging commits: {} => {}", merging_commit_hash, current_commit_hash);
 
+        // conseguir commit ancestroq
+        let ancestor_commit = helpers::find_common_ancestor_commit(&current_commit_hash, &merging_commit_hash)?;
+        println!("ancestor commit: {}", ancestor_commit);
         // buscar cambios realizados en ambas branches
-        // en cada branch, abrir archivo de commit maestro y archivo de commit actual
-        // tengo que acceder a sus arboles. comparar primero si los hash son iguales,
+        // en cada branch, abrir archivo de commit ancestro y archivo de commit actual
+        // tengo que acceder a sus arboles. comparar primero si los hash son iguales
+        // de aca determino si puedo hacer un ff o si hay conflictos
         // si no lo son, compararlos linea a linea
-        // get_changes_in_branch(ancestor_commit, branch_last_commit);
 
+        //aca deberia chequear si es ff merge
+        if ancestor_commit == current_commit_hash {
+            //hacer ff merge
+            // return Ok(String::new())
+        }
 
+        let (added_current_branch, modified_current_branch) = helpers::get_changes_in_branch(&ancestor_commit, &current_commit_hash)?;
+        let (added_merging_branch, modified_merging_branch) = helpers::get_changes_in_branch(&ancestor_commit, &merging_commit_hash)?;
 
-
-        // si es ff seguir con lo actual
+        println!("added_merging_branch: {:?} modified_merging_branch: {:?}", added_merging_branch, modified_merging_branch);
+        println!("added_current_branch: {:?} modified_current_branch: {:?}", added_current_branch, modified_current_branch);
 
         // sino buscar conflictos, si los hay marcar, si no directamente completar el merge
         // y hacer commit
 
-        // println!("merging {} -> {}", branch_to_merge, Head::get_current_branch_name()?);
-        if helpers::ancestor_commit_exists(&current_commit_hash, &merging_commit_hash)? {
-            helpers::update_branch_hash(&Head::get_current_branch_name()?, &merging_commit_hash)?;
-            // println!("updating branch last commit in current branch... to commit: {}", merging_commit_hash);
-            WorkingDirectory::clean_working_directory()?;
-            // println!("cleaning working directory...");
-            let commit_tree = helpers::get_commit_tree(&merging_commit_hash)?;
-            WorkingDirectory::update_working_directory_to(&commit_tree)?;
-            StagingArea::new().change_index_file(commit_tree)?;
-        }
+        // si tengo solo added, hago un neuvo commit combinando los dos working trees
+
+        // if helpers::ancestor_commit_exists(&current_commit_hash, &merging_commit_hash)? {
+        //     helpers::update_branch_hash(&Head::get_current_branch_name()?, &merging_commit_hash)?;
+        //     // println!("updating branch last commit in current branch... to commit: {}", merging_commit_hash);
+        //     WorkingDirectory::clean_working_directory()?;
+        //     // println!("cleaning working directory...");
+        //     let commit_tree = helpers::get_commit_tree(&merging_commit_hash)?;
+        //     WorkingDirectory::update_working_directory_to(&commit_tree)?;
+        //     StagingArea::new().change_index_file(commit_tree)?;
+        // }
 
         Ok(String::new())
     }
