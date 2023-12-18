@@ -25,16 +25,20 @@ pub struct PullRequest {
     pub _id: Option<i32>,
     pub name: String,
     pub repo: String,
-    pub created_at: Option<chrono::DateTime<chrono::Utc>>
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub head: Option<String>,  // Add the "head" field
+    pub base: Option<String>,  // Add the "base" field
 }
 
 impl PullRequest {
-    pub fn new(id: Option<i32>, name: String, repo: String) -> Self {
+    pub fn new(id: Option<i32>, name: String, repo: String, head: Option<String>, base: Option<String>) -> Self {
         PullRequest {
             _id: id,
             name,
             repo,
-            created_at: None
+            created_at: None,
+            head,
+            base
         }
     }
 }
