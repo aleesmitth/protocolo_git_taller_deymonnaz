@@ -1,3 +1,4 @@
+use chrono::format;
 use rocket::tokio::task::spawn_blocking;
 use rocket::{get, post, put};
 use crate::commands::git_commands;
@@ -57,12 +58,24 @@ pub async fn get_pull_request_commits(_state: &State<AppState>, repo: String, pu
             let commit_after_merge = pull_requests[0].commit_after_merge.clone();
             if let Some(commit) = commit_after_merge {
                 match git_commands::Log::new().execute(Some(vec![&commit])) {
-                    Ok(log) => format!("{}", log),
+                    Ok(log) => format!("Commit log: {}", log),
                     Err(err) => format!("Error fetching logs: {:?}", err)
                 }
             } else {
                 // TODO return los logs de head y base por separado
-                format!("TODO")
+                let log_head: Vec<&str> = head.split(':').collect();
+                if let Ok(hash_log_head) = git_commands::Log::new().execute(Some(vec![&log_head[1]])){
+                    if let Ok(log_base) =  git_commands::Log::new().execute(Some(vec![&base])){
+                        format!("Head log: {:?}\n Base log: {}", hash_log_head, log_base)
+                    }
+                    else {
+                            format!("Error fetching logs")
+                    }
+                }
+                else {
+                    format!("Error fetching logs")
+                }
+                
             }
         }
         Err(err) => {
@@ -73,7 +86,7 @@ pub async fn get_pull_request_commits(_state: &State<AppState>, repo: String, pu
 }
 
 #[put("/repos/<repo>/pulls/<pull_name>/merge", format = "application/json")]
-pub async fn put_merge(_state: &State<AppState>, repo: String, pull_name: String) -> String {
+pub fn put_merge(_state: &State<AppState>, repo: String, pull_name: String) -> String {
     let mut options = PullRequestOptions::default();
     options.repo = Some(repo);
     options.name = Some(pull_name);
