@@ -17,7 +17,7 @@ pub async fn get_repo_pull_request(state: &State<AppState>, repo: String) -> Str
     match read(&options, &state.db_pool).await {
         Ok(pull_requests) => {
             // 4. Return an appropriate response
-            format!("Pull request created successfully with ID: {:?}", pull_requests)
+            format!("Pull request created successfully with Id: {:?}", pull_requests)
         }
         Err(err) => {
             // Handle the error appropriately (log it, return an error response, etc.)
@@ -34,7 +34,7 @@ pub async fn get_pull_request(state: &State<AppState>, repo: String, pull_name: 
     match read(&options, &state.db_pool).await {
         Ok(pull_requests) => {
             // 4. Return an appropriate response
-            format!("Pull request created successfully with ID: {:?}", pull_requests)
+            format!("Pull request created successfully with Id: {:?}", pull_requests)
         }
         Err(err) => {
             // Handle the error appropriately (log it, return an error response, etc.)
@@ -52,18 +52,27 @@ pub async fn get_pull_request_commits(_state: &State<AppState>, repo: String, pu
     // columna hash dsp del  merge, si ya se mergeo o no 0000 o un hash
     // si no, lista por separado head y base
     // si si, lista el log del ultimo commit
-    "TODO implement end point".to_string()
+    match read(&options, &_state.db_pool).await {
+        Ok(pull_requests) => {
+            // 4. Return an appropriate response
+            format!("Pull request created successfully with Id: {:?}", pull_requests)
+        }
+        Err(err) => {
+            // Handle the error appropriately (log it, return an error response, etc.)
+            format!("Error creating pull request: {:?}", err)
+        }
+    }
 }
 
 #[put("/repos/<repo>/pulls/<pull_name>/merge", format = "application/json")]
-pub fn put_merge(_state: &State<AppState>, repo: String, pull_name: String) -> String {
+pub async fn put_merge(_state: &State<AppState>, repo: String, pull_name: String) -> String {
     let mut options = PullRequestOptions::default();
     options.repo = Some(repo);
     options.name = Some(pull_name);
     "TODO implement end point".to_string()
 }
 
-#[get("/repos/init/<repo_name>")]
+#[get("/init/<repo_name>")]
 pub async fn init_repo(repo_name: &str) -> String {
     let repo_name_clone = repo_name.to_string(); // Clone the string
     let _vec = spawn_blocking(move || {
@@ -86,7 +95,7 @@ pub async fn post_pull_request(state: &State<AppState>, repo: String, pr: Json<P
     match create(&pull_request_data, &state.db_pool).await {
         Ok(pull_request_id) => {
             // 4. Return an appropriate response
-            format!("Pull request created successfully with ID: {}", pull_request_id)
+            format!("Pull request created successfully with Id: {}", pull_request_id)
         }
         Err(err) => {
             // Handle the error appropriately (log it, return an error response, etc.)

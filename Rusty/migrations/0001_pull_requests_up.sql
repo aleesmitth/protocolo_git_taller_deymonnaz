@@ -5,8 +5,9 @@ CREATE TABLE pull_requests (
     _id INT DEFAULT nextval('pull_request_surrogate'),
     name VARCHAR(255) NOT NULL,
     repo VARCHAR(255) NOT NULL,
-    head VARCHAR(255),  -- Add the "head" column
-    base VARCHAR(255),  -- Add the "base" column
+    head VARCHAR(255),
+    base VARCHAR(255),
+    commit_after_merge VARCHAR(255),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     PRIMARY KEY (_id),
     UNIQUE(name, repo)
