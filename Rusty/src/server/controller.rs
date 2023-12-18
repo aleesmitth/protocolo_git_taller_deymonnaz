@@ -1,14 +1,11 @@
 use rocket::tokio::task::spawn_blocking;
-use rocket::{get, post, put, routes};
+use rocket::{get, post, put};
 use crate::commands::git_commands;
-use crate::commands::git_commands::{Command, Pull};
+use crate::commands::git_commands::Command;
 use crate::server::models::*;
 use rocket::serde::json::Json;
-use serde::Deserialize;
-use serde::Serialize;
+
 use rocket::State;
-use sqlx::PgPool;
-use crate::server::models;
 
 
 use super::models::create;
@@ -53,7 +50,7 @@ pub async fn get_pull_request(state: &State<AppState>, repo: String, pull_name: 
 }
 
 #[get("/repos/<repo>/pulls/<pull_name>/commits")]
-pub async fn get_pull_request_commits(state: &State<AppState>, repo: String, pull_name: String) -> String {
+pub async fn get_pull_request_commits(_state: &State<AppState>, repo: String, pull_name: String) -> String {
     let mut options = PullRequestOptions::default();
     options.repo = Some(repo);
     options.name = Some(pull_name);
@@ -61,7 +58,7 @@ pub async fn get_pull_request_commits(state: &State<AppState>, repo: String, pul
 }
 
 #[put("/repos/<repo>/pulls/<pull_name>/merge", format = "application/json")]
-pub async fn put_merge(state: &State<AppState>, repo: String, pull_name: String) -> String {
+pub fn put_merge(_state: &State<AppState>, repo: String, pull_name: String) -> String {
     let mut options = PullRequestOptions::default();
     options.repo = Some(repo);
     options.name = Some(pull_name);

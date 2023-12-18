@@ -1,4 +1,4 @@
-use chrono::{ NaiveDate, NaiveDateTime, Utc };
+use chrono;
 use sqlx::PgPool;
 use std::error::Error;
 use sqlx::Row;
@@ -56,7 +56,7 @@ pub async fn update(pull_request: &PullRequest, pool: &sqlx::PgPool) -> Result<(
     sqlx::query(query)
         .bind(&pull_request.name)
         .bind(&pull_request.repo)
-        .bind(&pull_request._id.unwrap_or(1))
+        .bind(pull_request._id.unwrap_or(1))
         .execute(pool)
         .await?;
 

@@ -8,7 +8,6 @@ use rusty::server::server_protocol::ServerProtocol;
 use std::{env, thread};
 //use rocket::tokio::task::spawn_blocking;
 //use std::thread;
-use rocket::State;
 use sqlx::PgPool;
 
 

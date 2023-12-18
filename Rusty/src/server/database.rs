@@ -6,7 +6,7 @@ use std::env;
 use dotenv::dotenv;
 use std::process::Command;
 
-use crate::server::models::{PullRequest, self, PullRequestOptions};
+use crate::server::models::{self, PullRequestOptions};
 
 pub struct Database;
 

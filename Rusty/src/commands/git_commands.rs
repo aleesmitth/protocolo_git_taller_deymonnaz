@@ -11,7 +11,7 @@ extern crate libflate;
 use crypto::digest::Digest;
 use crypto::sha1::Sha1;
 use libflate::zlib::Decoder;
-const GIT: &str = ".git";
+//const GIT: &str = ".git";
 const OBJECT: &str = ".git/objects";
 const PACK: &str = ".git/pack";
 const PARENT: &str = "parent";
@@ -156,7 +156,7 @@ impl Command for Init {
         fs::create_dir_all(PathHandler::get_relative_path(R_REMOTES))?;
         fs::File::create(PathHandler::get_relative_path(INDEX_FILE))?;
         fs::File::create(PathHandler::get_relative_path(CONFIG_FILE))?;
-        if let Ok(e) = Branch::new().create_new_branch(DEFAULT_BRANCH_NAME) {
+        if let Ok(_e) = Branch::new().create_new_branch(DEFAULT_BRANCH_NAME) {
             Head::change_head_branch(DEFAULT_BRANCH_NAME)?;
         }
         //println!("initial_repo_path: {:?}", initial_repo_path);

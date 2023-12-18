@@ -7,7 +7,6 @@ use crate::commands::protocol_utils;
 use crate::commands::git_commands::RELATIVE_PATH;
 use std::env;
 
-use std::fs;
 use std::{error::Error, fs::File, io, io::Read, io::Write, net::TcpListener, net::TcpStream};
 const RECEIVE_PACK: &str = "git-receive-pack";
 const UPLOAD_PACK: &str = "git-upload-pack";
