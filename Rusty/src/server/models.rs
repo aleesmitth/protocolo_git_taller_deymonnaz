@@ -50,7 +50,7 @@ impl PullRequest {
 // TODO check for errors, refactor this and use table name in a .env var or constant
 // TODO refactor to use transactions instead of the pool directly
 pub async fn create(pull_request: &PullRequest, pool: &sqlx::PgPool) -> Result<i32, Box<dyn Error>> {
-    let query = "INSERT INTO pull_requests (name, repo, head, base) VALUES ($1, $2, $3, $4) RETURNING _id";
+    let query = "INSERT INTO pull_requests (name, repo, head, base, commit_after_merge) VALUES ($1, $2, $3, $4, $5) RETURNING _id";
     let row = sqlx::query(query)
         .bind(&pull_request.name)
         .bind(&pull_request.repo)
@@ -64,7 +64,7 @@ pub async fn create(pull_request: &PullRequest, pool: &sqlx::PgPool) -> Result<i
 }
 
 pub async fn update(pull_request: &PullRequest, pool: &sqlx::PgPool) -> Result<(), Box<dyn Error>> {
-    let query = "UPDATE pull_requests SET name = $1, repo = $2, head = $3, base = $4, commit_after_merge = $5 WHERE _id = $3";
+    let query = "UPDATE pull_requests SET name = $1, repo = $2, head = $3, base = $4, commit_after_merge = $5 WHERE _id = $6";
     sqlx::query(query)
         .bind(&pull_request.name)
         .bind(&pull_request.repo)

@@ -17,11 +17,11 @@ pub async fn get_repo_pull_request(state: &State<AppState>, repo: String) -> Str
     match read(&options, &state.db_pool).await {
         Ok(pull_requests) => {
             // 4. Return an appropriate response
-            format!("Pull request created successfully with Id: {:?}", pull_requests)
+            format!("Pull request: {:?}", pull_requests)
         }
         Err(err) => {
             // Handle the error appropriately (log it, return an error response, etc.)
-            format!("Error creating pull request: {:?}", err)
+            format!("Error fetching pull request: {:?}", err)
         }
     }
 }
@@ -34,11 +34,11 @@ pub async fn get_pull_request(state: &State<AppState>, repo: String, pull_name: 
     match read(&options, &state.db_pool).await {
         Ok(pull_requests) => {
             // 4. Return an appropriate response
-            format!("Pull request created successfully with Id: {:?}", pull_requests)
+            format!("Pull request: {:?}", pull_requests)
         }
         Err(err) => {
             // Handle the error appropriately (log it, return an error response, etc.)
-            format!("Error creating pull request: {:?}", err)
+            format!("Error fetching pull request: {:?}", err)
         }
     }
 }
@@ -48,18 +48,26 @@ pub async fn get_pull_request_commits(_state: &State<AppState>, repo: String, pu
     let mut options = PullRequestOptions::default();
     options.repo = Some(repo);
     options.name = Some(pull_name);
-    // TODO ir a la db pedir head y base
-    // columna hash dsp del  merge, si ya se mergeo o no 0000 o un hash
-    // si no, lista por separado head y base
-    // si si, lista el log del ultimo commit
     match read(&options, &_state.db_pool).await {
         Ok(pull_requests) => {
-            // 4. Return an appropriate response
-            format!("Pull request created successfully with Id: {:?}", pull_requests)
+            // only one pull request should've been returned
+            // assuming that only the first pull request is the valid one
+            let head = pull_requests[0].head.clone();
+            let base = pull_requests[0].base.clone();
+            let commit_after_merge = pull_requests[0].commit_after_merge.clone();
+            if let Some(commit) = commit_after_merge {
+                match git_commands::Log::new().execute(Some(vec![&commit])) {
+                    Ok(log) => format!("{}", log),
+                    Err(err) => format!("Error fetching logs: {:?}", err)
+                }
+            } else {
+                // TODO return los logs de head y base por separado
+                format!("TODO")
+            }
         }
         Err(err) => {
             // Handle the error appropriately (log it, return an error response, etc.)
-            format!("Error creating pull request: {:?}", err)
+            format!("Error fetching pull request: {:?}", err)
         }
     }
 }
