@@ -70,7 +70,7 @@ const COLOR_RESET_CODE: &str = "\x1b[0m";
 
 use crate::client;
 use crate::client::client_protocol::ClientProtocol;
-use crate::commands::helpers::get_file_length;
+use crate::commands::helpers::{get_file_length, get_commit_tree};
 use crate::commands::structs::HashObjectCreator;
 use crate::commands::structs::Head;
 use crate::commands::structs::ObjectType;
@@ -2257,6 +2257,15 @@ impl Merge {
     pub fn new() -> Self {
         Merge {}
     }
+
+    fn merge_branch(&self, branch_name: &str, tree_hash: &str, new_commit_hash: &str) -> Result<(), Box<dyn Error>> {
+        helpers::update_branch_hash(&Head::get_current_branch_name()?, &new_commit_hash)?;
+        WorkingDirectory::clean_working_directory()?;
+        // let commit_tree = helpers::get_commit_tree(&new_commit_hash)?;
+        WorkingDirectory::update_working_directory_to(tree_hash)?;
+        StagingArea::new().change_index_file(tree_hash.to_string())?;
+        Ok(())
+    }
 }
 
 impl Command for Merge {
@@ -2279,19 +2288,14 @@ impl Command for Merge {
 
         println!("merging commits: {} => {}", merging_commit_hash, current_commit_hash);
 
-        // conseguir commit ancestroq
         let ancestor_commit = helpers::find_common_ancestor_commit(&current_commit_hash, &merging_commit_hash)?;
         println!("ancestor commit: {}", ancestor_commit);
-        // buscar cambios realizados en ambas branches
-        // en cada branch, abrir archivo de commit ancestro y archivo de commit actual
-        // tengo que acceder a sus arboles. comparar primero si los hash son iguales
-        // de aca determino si puedo hacer un ff o si hay conflictos
-        // si no lo son, compararlos linea a linea
 
-        //aca deberia chequear si es ff merge
         if ancestor_commit == current_commit_hash {
             //hacer ff merge
-            // return Ok(String::new())
+            let commit_tree = helpers::get_commit_tree(&merging_commit_hash)?;
+            self.merge_branch(&Head::get_current_branch_name()?, &commit_tree, &merging_commit_hash)?;
+            return Ok(String::new())
         }
 
         let (added_current_branch, modified_current_branch) = helpers::get_changes_in_branch(&ancestor_commit, &current_commit_hash)?;
@@ -2300,22 +2304,39 @@ impl Command for Merge {
         println!("added_merging_branch: {:?} modified_merging_branch: {:?}", added_merging_branch, modified_merging_branch);
         println!("added_current_branch: {:?} modified_current_branch: {:?}", added_current_branch, modified_current_branch);
 
-        // sino buscar conflictos, si los hay marcar, si no directamente completar el merge
-        // y hacer commit
+        let (modified_objects, objects_with_conflict) = helpers::get_modified_objects(modified_current_branch, modified_merging_branch)?;
 
-        // si tengo solo added, hago un neuvo commit combinando los dos working trees
+        if !objects_with_conflict.is_empty() {
+            for (object_name, _) in objects_with_conflict {
+                println!("conflict when merging {}", object_name)
+            }
+            return Ok(String::new())
+        } 
+        let ancestor_tree = helpers::get_commit_tree(&ancestor_commit)?;
+        let ancestor_tree_content = helpers::read_tree_content(&ancestor_tree)?;
 
-        // if helpers::ancestor_commit_exists(&current_commit_hash, &merging_commit_hash)? {
-        //     helpers::update_branch_hash(&Head::get_current_branch_name()?, &merging_commit_hash)?;
-        //     // println!("updating branch last commit in current branch... to commit: {}", merging_commit_hash);
-        //     WorkingDirectory::clean_working_directory()?;
-        //     // println!("cleaning working directory...");
-        //     let commit_tree = helpers::get_commit_tree(&merging_commit_hash)?;
-        //     WorkingDirectory::update_working_directory_to(&commit_tree)?;
-        //     StagingArea::new().change_index_file(commit_tree)?;
-        // }
+        let mut new_working_tree_content = Vec::new();
 
-        Ok(String::new())
+        for (_, file_name, hash) in ancestor_tree_content {
+            if let Some(modified_object_hash) = modified_objects.get(&file_name) {
+                new_working_tree_content.push((file_name, modified_object_hash.to_string()))
+            } else {
+                new_working_tree_content.push((file_name, hash.clone()))
+            }
+        } 
+
+        // como lo estaba haceindo antes estaba mal
+        // hacer que create_tree_object() reciba un un Vec<(String, String)> con hash y file name para guardar en el tree
+        // asi sirve en otro contextos y no solo para index
+        // crear funcion en StagingArea que devuelva el index que esta Staged en forma de Vec<(String, String)>
+        // usar esto cuando creo commit objects
+        let tree_hash = HashObjectCreator::create_tree_object()?;
+        // create new commit con tree hash y dos parents
+        let new_commit_hash = String::new();
+
+        self.merge_branch(&Head::get_current_branch_name()?, &tree_hash, &new_commit_hash)?;
+
+        Ok(new_commit_hash) // return hash of new commit
     }
 }
 

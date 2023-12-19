@@ -1,4 +1,4 @@
-use std::{collections::HashMap, error::Error, fs, io, io::Read, io::Write, path::Path};
+use std::{collections::HashMap, error::Error, fs, io, io::Read, io::Write, path::Path, thread::current};
 extern crate crypto;
 extern crate libflate;
 
@@ -403,10 +403,12 @@ pub fn ancestor_commit_exists(
     Ok(false)
 }
 
-pub fn get_changes_in_branch(ancestor_commit_hash: &str, current_commit_hash: &str) -> Result<(Vec<String>, Vec<String>), Box<dyn Error>> {
-
-    let mut modified_objects = Vec::new();
-    let mut added_object = Vec::new();
+pub fn get_changes_in_branch(
+    ancestor_commit_hash: &str,
+    current_commit_hash: &str,
+) -> Result<(HashMap<String, String>, HashMap<String, String>), Box<dyn Error>> {
+    let mut modified_objects = HashMap::new();
+    let mut added_objects = HashMap::new();
 
     let ancestor_commit_tree = get_commit_tree(ancestor_commit_hash)?;
     let ancestor_tree_content = read_tree_content(&ancestor_commit_tree)?;
@@ -416,30 +418,68 @@ pub fn get_changes_in_branch(ancestor_commit_hash: &str, current_commit_hash: &s
 
     let mut counter = 0;
 
-    loop {
-        if counter == current_tree_content.len() {
-            break
-        }
-
+    while counter < current_tree_content.len() {
         let current_commit_line_name = &current_tree_content[counter].1;
         let current_commit_line_hash = &current_tree_content[counter].2;
 
         if counter < ancestor_tree_content.len() {
             let ancestor_commit_line_name = &ancestor_tree_content[counter].1;
             let ancestor_commit_line_hash = &ancestor_tree_content[counter].2;
-            if ancestor_commit_line_name == current_commit_line_name && ancestor_commit_line_hash != current_commit_line_hash {
-                // agregar aca el objecto cambiado
-                modified_objects.push(current_commit_line_hash.to_string())
+            if ancestor_commit_line_name == current_commit_line_name
+                && ancestor_commit_line_hash != current_commit_line_hash
+            {
+                modified_objects.insert(
+                    current_commit_line_name.to_string(),
+                    current_commit_line_hash.to_string(),
+                );
             }
         } else {
-            added_object.push(current_commit_line_hash.to_string())
+            added_objects
+                .insert(current_commit_line_name.to_string(), current_commit_line_hash.to_string());
         }
-        counter += 1
+
+        counter += 1;
     }
 
-    Ok((added_object, modified_objects))
+    Ok((added_objects, modified_objects))
 }
 
+pub fn get_modified_objects(
+    modified_current_branch: HashMap<String, String>,
+    modified_merging_branch: HashMap<String, String>,
+) -> Result<(HashMap<String, String>, HashMap<String, String>), Box<dyn Error>> {
+    let mut modified_objects = HashMap::new();
+    let mut objects_with_conflict = HashMap::new();
+
+    for (object_name, object_hash) in modified_merging_branch {
+        if let Some(current_branch_object_hash) = modified_current_branch.get(&object_name) {
+            objects_with_conflict.insert(object_name, object_hash);
+        } else {
+            modified_objects.insert(object_name, object_hash);
+        }
+    }
+
+    Ok((modified_objects, objects_with_conflict))
+}
+
+fn generate_conflict(file_name: String, merging_hash: String, current_hash: String) -> Result<bool, Box<dyn Error>> {
+    let (_, merging_content, _) = read_object_to_string(merging_hash)?;
+    let (_, current_content, _) = read_object_to_string(current_hash)?;
+
+    let merging_content_lines: Vec<String> = merging_content.split('\n').map(String::from).collect();
+    let current_content_lines: Vec<String> = current_content.split('\n').map(String::from).collect();
+
+    let mut counter = 0;
+
+    loop {
+        if merging_content_lines[counter] != current_content_lines[counter] {
+            // aca tengo una diferencia que plantear 
+        }
+
+        counter += 1
+    }
+}
+ 
 /// Given a commit's hash it accesses its file and returns the hash of its associated
 /// tree object.
 pub fn get_commit_tree(commit_hash: &str) -> Result<String, Box<dyn Error>> {
