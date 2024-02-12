@@ -1,14 +1,70 @@
-use std::{error::Error, fmt, fs, io::BufRead, io::Write, net::TcpStream, io, path::PathBuf, path::Path, collections::HashMap};
+use std::{collections::HashMap, error::Error, fmt, fs, io, io::Write, path::Path, path::PathBuf};
 const OBJECT: &str = ".git/objects";
 const INDEX_FILE: &str = ".git/index";
 const TREE_SUBTREE_MODE: &str = "040000";
 const TREE_FILE_MODE: &str = "100644";
+const DEFAULT_HEAD_LINE: &str = "ref: refs/heads/";
+const HEAD_FILE: &str = ".git/HEAD";
 //const DEFAULT_REMOTE: &str = "origin";
+
+//use gtk::gdk::keys::constants::L;
 
 use crate::commands::helpers;
 
+use super::{git_commands::PathHandler, helpers::get_file_length};
 
-use super::{commands::PathHandler, helpers::get_file_length};
+/// Struct to interact with the HEAD file in the .git directory.
+/// Allows access to information about current branch and last commit in current branch.
+pub struct Head;
+
+impl Head {
+    /// Changes the branch the HEAD file points to
+    pub fn change_head_branch(branch_name: &str) -> Result<(), Box<dyn Error>> {
+        let mut head_file = fs::File::create(PathHandler::get_relative_path(HEAD_FILE))?;
+        let new_line = format!("{}{}", DEFAULT_HEAD_LINE, branch_name);
+        head_file.write_all(new_line.as_bytes())?;
+        Ok(())
+    }
+
+    /// Returns the ref the HEAD points to
+    pub fn get_current_branch_ref() -> Result<String, Box<dyn Error>> {
+        let head_file_content =
+            helpers::read_file_content(&PathHandler::get_relative_path(HEAD_FILE))?;
+        let split_head_content: Vec<String> = head_file_content
+            .split_whitespace()
+            .map(String::from)
+            .collect();
+
+        let current_ref = split_head_content[1].clone();
+
+        Ok(current_ref)
+    }
+
+    /// Returns the name of the current branch
+    pub fn get_current_branch_name() -> Result<String, Box<dyn Error>> {
+        let current_branch_ref = Self::get_current_branch_ref()?;
+        let split_ref_content: Vec<String> =
+            current_branch_ref.split('/').map(String::from).collect();
+
+        let branch_name = split_ref_content[2].clone();
+
+        Ok(branch_name)
+    }
+
+    /// Returns the path of the current branch
+    pub fn get_current_branch_path() -> Result<String, Box<dyn Error>> {
+        let current_branch_name = Self::get_current_branch_name()?;
+        Ok(helpers::get_branch_path(&current_branch_name))
+    }
+
+    /// Returns the last commit of the current branch
+    pub fn get_head_commit() -> Result<String, Box<dyn Error>> {
+        let current_branch_path = Self::get_current_branch_path()?;
+        let commit_hash =
+            helpers::read_file_content(&PathHandler::get_relative_path(&current_branch_path))?;
+        Ok(commit_hash)
+    }
+}
 
 /// Abstract struct for creating new objects in git repository
 pub struct HashObjectCreator;
@@ -25,10 +81,12 @@ impl HashObjectCreator {
         obj_type: ObjectType,
         file_len: u64,
     ) -> Result<String, Box<dyn Error>> {
-        println!("content: {}", content);
-        let data = format!("{} {}\0{}", obj_type, content.len(), content);
-        let hashed_data = Self::generate_object_hash(obj_type, content.len() as u64, &content);
-        let compressed_data = helpers::compress_content(data.as_str())?;
+        let data = format!("{} {}\0{}", obj_type, file_len, content);
+        // println!("data: {:?}", data);
+        let hashed_data =
+            Self::generate_object_hash(obj_type, content.as_bytes().len() as u64, &content);
+        // println!("hash for: {} ; {}", obj_type, hashed_data);
+        let compressed_content = helpers::compress_content(&data)?;
         let obj_directory_path = format!("{}/{}", OBJECT, &hashed_data[0..2]);
         let _ = fs::create_dir(PathHandler::get_relative_path(&obj_directory_path));
 
@@ -41,7 +99,46 @@ impl HashObjectCreator {
             return Ok(hashed_data);
         }
 
-        let mut object_file = fs::File::create(PathHandler::get_relative_path(&helpers::get_object_path(&hashed_data)))?;
+        let mut object_file = fs::File::create(object_file_path)?;
+        object_file.write_all(&compressed_content)?;
+
+        Ok(hashed_data)
+    }
+
+    pub fn write_object_file_bytes(
+        content: &[u8],
+        object_type: ObjectType,
+        size: usize,
+    ) -> Result<String, Box<dyn Error>> {
+        let mut object_content = Vec::new();
+        let header = format!("{} {}\0", object_type, size);
+
+        object_content.extend_from_slice(header.as_bytes());
+        object_content.extend_from_slice(content);
+
+        let hashed_data = helpers::generate_sha1_string_from_bytes(&object_content);
+
+        // println!("hash: {}", hashed_data);
+
+        let obj_directory_path = format!("{}/{}", OBJECT, &hashed_data[0..2]);
+        let _ = fs::create_dir(PathHandler::get_relative_path(&obj_directory_path));
+
+        let object_file_path = format!(
+            "{}/{}",
+            PathHandler::get_relative_path(&obj_directory_path),
+            &hashed_data[2..]
+        );
+
+        // println!("obj content: {}", String::from_utf8(object_content.clone())?);
+
+        let compressed_data = helpers::compress_bytes(&object_content)?;
+
+        // let decompressed = helpers::decompress_file_content(compressed_data.clone())?;
+
+        // println!("test decompress: {}", decompressed);
+        // let test_hash = helpers::hex_string_to_bytes(&decompressed[16..]);
+
+        let mut object_file = fs::File::create(object_file_path)?;
         object_file.write_all(&compressed_data)?;
 
         Ok(hashed_data)
@@ -49,85 +146,122 @@ impl HashObjectCreator {
 
     pub fn generate_object_hash(obj_type: ObjectType, file_len: u64, content: &str) -> String {
         let data = format!("{} {}\0{}", obj_type, file_len, content);
+        // println!("data when generating object hash: {}", data);
         helpers::generate_sha1_string(data.as_str())
     }
 
     pub fn create_tree_object() -> Result<String, Box<dyn Error>> {
-        let index_file_content = helpers::read_file_content(&PathHandler::get_relative_path(INDEX_FILE))?;
-        let mut subdirectories: HashMap<String, Vec<String>> = HashMap::new();
-    
-        let index_file_lines: Vec<&str> = index_file_content.split("\n").collect();
-    
-        for line in index_file_lines {
-            let split_line: Vec<&str> = line.split(";").collect();
+        let index_file_content =
+            helpers::read_file_content(&PathHandler::get_relative_path(INDEX_FILE))?;
+        let mut subdirectories: HashMap<String, Vec<Vec<u8>>> = HashMap::new();
 
+        let index_file_lines: Vec<&str> = index_file_content.split('\n').collect();
+        //println!("index_file_lines: {:?}", index_file_lines);
+
+        for line in index_file_lines {
+            let split_line: Vec<&str> = line.split(';').collect();
+            // println!("split line: {:?}", split_line);
             let path = Path::new(split_line[0]);
             let hash = split_line[1];
-            
+
             let mut current_dir = path.parent();
             let mut file_directory = String::new();
+            //println!("current_dir: {:?}", current_dir);
             if let Some(directory) = current_dir {
                 file_directory = directory.to_string_lossy().to_string();
             }
 
-            let _split_path: Vec<&str> = index_file_content.split("/").collect();
+            let _split_path: Vec<&str> = index_file_content.split('/').collect();
             let mut file_name = String::new();
+
+            // println!("_split_path: {:?}", _split_path);
             if let Some(name) = path.file_name().and_then(|name| name.to_str()) {
-                println!("File name: {}", name);
+                // println!("File name: {}", name);
+                // println!("File path: {:?}", path);
                 file_name = name.to_string();
             }
-            // let file_entry = format!("{} {} {}\t{}\n", TREE_FILE_MODE, ObjectType::Blob, hash, file_name);
-            let file_entry = format!("{} {}\0{}", TREE_FILE_MODE, file_name, hash);
+            let hash = helpers::convert_hash_to_decimal_bytes(hash)?;
+            // let hash_string = String::from_utf8_lossy(&helpers::convert_hash_to_decimal_bytes(hash)?);
+            let file_entry = format!("{} {}\0", TREE_FILE_MODE, file_name);
+            let mut final_entry = Vec::new();
+            final_entry.extend_from_slice(file_entry.as_bytes());
+            final_entry.extend_from_slice(&hash);
+            // println!("tree entry: {}", file_entry);
+            //println!("file_entry: {:?}", file_entry);
             if let Some(_parent) = current_dir {
                 subdirectories
-                            .entry(file_directory)
-                            .or_insert_with(Vec::new)
-                            .push(file_entry);
+                    .entry(file_directory)
+                    .or_default()
+                    .push(final_entry);
             }
 
             while let Some(parent) = current_dir {
                 current_dir = parent.parent();
-                let mut subdirectory_entry = String::new();
+                //println!("current_dir adentro del while: {:?}", current_dir);
+                let subdirectory_entry;
                 if let Some(directory) = current_dir {
+                    //println!("current_dir adentro del while , adentro del iflet: {:?}", directory);
+                    subdirectory_entry = directory.to_string_lossy().to_string();
                     subdirectories
-                        .entry(directory.to_string_lossy().to_string())
-                        .or_insert_with(Vec::new)
-                        .push(parent.to_string_lossy().to_string());
+                        .entry(subdirectory_entry)
+                        .or_default()
+                        .push(parent.to_string_lossy().as_bytes().to_vec());
                 }
             }
         }
         let mut super_tree_hash = String::new();
         for (parent_directory, entries) in &subdirectories {
-            let sub_tree_content = Self::process_files_and_subdirectories(&mut subdirectories.clone(), &entries)?;
-            let tree_hash = Self::write_object_file(sub_tree_content.clone(), ObjectType::Tree, sub_tree_content.len() as u64)?;
+            // println!("[create_tree_object]parent_directory: {:?}", parent_directory);
+            let sub_tree_content =
+                Self::process_files_and_subdirectories(&mut subdirectories.clone(), entries)?;
+            let tree_hash = Self::write_object_file_bytes(
+                &sub_tree_content,
+                ObjectType::Tree,
+                sub_tree_content.len(),
+            )?;
             if parent_directory == "/" || parent_directory.is_empty() {
+                // println!("[create_tree_object]inside if: {:?}", parent_directory);
                 super_tree_hash = tree_hash;
             }
         }
         Ok(super_tree_hash)
     }
 
-    fn process_files_and_subdirectories(subdirectories: &mut HashMap<String, Vec<String>>, entries: &Vec<String>) -> Result<String, Box<dyn Error>> {
-        let mut sub_tree_content = String::new();
+    fn process_files_and_subdirectories(
+        subdirectories: &mut HashMap<String, Vec<Vec<u8>>>,
+        entries: &Vec<Vec<u8>>,
+    ) -> Result<Vec<u8>, Box<dyn Error>> {
+        let mut sub_tree_content = Vec::new();
         for entry in entries {
-            if !entry.starts_with(TREE_FILE_MODE) {
-                match subdirectories.remove(&entry.clone()) {
-                    Some(value) => {
-                        let mut directory_name = String::new();
-                        if let Some(file_name) = entry.rsplit('/').next() {
-                            println!("File name: {}", file_name);
-                            directory_name = file_name.to_string();
-                        }
-                        let tree_content = Self::process_files_and_subdirectories(subdirectories, &value)?;
-                        let tree_hash = Self::write_object_file(tree_content.clone(), ObjectType::Tree, tree_content.len() as u64)?;
-                        // let tree_entry = format!("{} {} {}\t{}\n", TREE_SUBTREE_MODE, ObjectType::Tree, tree_hash, directory_name);
-                        let tree_entry = format!("{} {}\0{}", TREE_SUBTREE_MODE, directory_name, tree_hash);
-                        sub_tree_content.push_str(&tree_entry);
+            if !entry.starts_with(TREE_FILE_MODE.as_bytes()) {
+                if let Some(value) =
+                    subdirectories.remove(&String::from_utf8_lossy(entry).to_string())
+                {
+                    let mut directory_name = String::new();
+                    if let Some(file_name) = String::from_utf8_lossy(entry)
+                        .to_string()
+                        .rsplit('/')
+                        .next()
+                    {
+                        // println!("File name: {}", file_name);
+                        directory_name = file_name.to_string();
                     }
-                    None => {}
+                    let tree_content =
+                        Self::process_files_and_subdirectories(subdirectories, &value)?;
+                    let tree_hash = Self::write_object_file_bytes(
+                        &tree_content,
+                        ObjectType::Tree,
+                        tree_content.len(),
+                    )?;
+                    let hash_decimal = helpers::convert_hash_to_decimal_bytes(&tree_hash)?;
+                    let tree_entry = format!("{} {}\0", TREE_SUBTREE_MODE, directory_name);
+                    let mut final_entry = Vec::new();
+                    final_entry.extend_from_slice(tree_entry.as_bytes());
+                    final_entry.extend_from_slice(&hash_decimal);
+                    sub_tree_content.extend_from_slice(&final_entry);
                 }
             } else {
-                sub_tree_content.push_str(entry);
+                sub_tree_content.extend_from_slice(entry);
             }
         }
         Ok(sub_tree_content)
@@ -152,13 +286,12 @@ impl IndexFileEntryState {
         }
     }
     pub fn get_entry_state_for_file(&self) -> u8 {
-        let state = match self {
+        match self {
             IndexFileEntryState::Cached => 0,
             IndexFileEntryState::Modified => 1,
             IndexFileEntryState::Staged => 2,
             IndexFileEntryState::Deleted => 3,
-        };
-        state
+        }
     }
 }
 
@@ -179,6 +312,12 @@ impl fmt::Display for IndexFileEntryState {
 #[derive(Debug)]
 pub struct StagingArea;
 
+impl Default for StagingArea {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StagingArea {
     pub fn new() -> Self {
         StagingArea {}
@@ -186,57 +325,62 @@ impl StagingArea {
 
     /// Adds a file to the staging area. Creating a git object and saving the object's path, hash and state in the
     /// index file, following the format: file_path;hash;state.
-    pub fn add_file(&self, _head: &mut Head, path: &str) -> Result<(), Box<dyn Error>> {
-        // let hash_object = HashObject::new();
-        // let object_hash = hash_object.execute(head, Some(&["-w", path]))?;
-        let file_content = helpers::read_file_content(path)?;
+    pub fn add_file(&self, path: &str) -> Result<(), Box<dyn Error>> {
+        let relative_path = PathHandler::get_relative_path(path);
+        let file_content = helpers::read_file_content(relative_path.as_str())?;
         let object_hash = HashObjectCreator::write_object_file(
             file_content,
             ObjectType::Blob,
-            get_file_length(path)?,
+            get_file_length(relative_path.as_str())?,
         )?;
-        //no se si aca esta bien escribir directamente el objeto o seria mejor usar hash-object
-
-        helpers::update_file_with_hash(&object_hash.as_str(), IndexFileEntryState::Staged.to_string().as_str(), path)?;
+        helpers::update_file_with_hash(
+            object_hash.as_str(),
+            IndexFileEntryState::Staged.to_string().as_str(),
+            path,
+        )?;
 
         Ok(())
     }
 
     /// Removes a file from the staging area.
     pub fn remove_file(&self, path: &str) -> Result<(), Box<dyn Error>> {
-    	// Read the file into a vector of lines.
-	    let file_contents = fs::read_to_string(PathHandler::get_relative_path(INDEX_FILE))?;
+        // Read the file into a vector of lines.
+        let file_contents = fs::read_to_string(PathHandler::get_relative_path(INDEX_FILE))?;
 
-	    // Split the file contents into lines.
-	    let mut lines: Vec<String> = file_contents.lines().map(|s| s.to_string()).collect();
+        // Split the file contents into lines.
+        let mut lines: Vec<String> = file_contents.lines().map(|s| s.to_string()).collect();
 
-	    // Search for the hash in the lines.
-	    if let Some(index) = lines.iter_mut().position(|line| line.starts_with(path)) {
-	        if let Some(state_index) = lines[index].rfind(';') {
-	            // Check if there is a state digit after the last ";"
-	            if state_index + 1 < lines[index].len() {
-	                // Modify the state to "3".
-	                lines[index].replace_range(state_index + 1..state_index + 2, IndexFileEntryState::Deleted.to_string().as_str());
-	            }
-	        }
-	    } else {
-	        return Err(Box::new(io::Error::new(
-                        io::ErrorKind::Other,
-                        "Error: Branch name did not match any file known.",
-                    )));
-	    }
+        // Search for the hash in the lines.
+        if let Some(index) = lines.iter_mut().position(|line| line.starts_with(path)) {
+            if let Some(state_index) = lines[index].rfind(';') {
+                // Check if there is a state digit after the last ";"
+                if state_index + 1 < lines[index].len() {
+                    // Modify the state to "3".
+                    lines[index].replace_range(
+                        state_index + 1..state_index + 2,
+                        IndexFileEntryState::Deleted.to_string().as_str(),
+                    );
+                }
+            }
+        } else {
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "Error: Branch name did not match any file known.",
+            )));
+        }
 
-	    // Join the lines back into a single string.
-	    let updated_contents = lines.join("\n");
+        // Join the lines back into a single string.
+        let updated_contents = lines.join("\n");
 
-	    // Write the updated contents back to the file.
-	    fs::write(PathHandler::get_relative_path(INDEX_FILE), updated_contents)?;
+        // Write the updated contents back to the file.
+        fs::write(PathHandler::get_relative_path(INDEX_FILE), updated_contents)?;
 
-	    Ok(())
+        Ok(())
     }
 
     pub fn unstage_index_file(&self) -> Result<(), Box<dyn Error>> {
-        let index_file_content = helpers::read_file_content(&PathHandler::get_relative_path(INDEX_FILE))?;
+        let index_file_content =
+            helpers::read_file_content(&PathHandler::get_relative_path(INDEX_FILE))?;
         let mut lines: Vec<String> = index_file_content.lines().map(|s| s.to_string()).collect();
         let mut new_index_file_content = String::new();
 
@@ -252,159 +396,89 @@ impl StagingArea {
         Ok(())
     }
 
-	pub fn get_entries_index_file(&self, state: IndexFileEntryState) -> Result<Vec<String>, Box<dyn Error>> {
-	    let index_file_content = helpers::read_file_content(&PathHandler::get_relative_path(INDEX_FILE))?;
-	    let lines: Vec<String> = index_file_content.lines().map(|s| s.to_string()).collect();
+    pub fn get_entries_index_file(
+        &self,
+        state: IndexFileEntryState,
+    ) -> Result<Vec<String>, Box<dyn Error>> {
+        let index_file_content = helpers::read_file_content(INDEX_FILE)?;
+        let lines: Vec<String> = index_file_content.lines().map(|s| s.to_string()).collect();
 
-	    let mut result: Vec<String> = Vec::new();
+        let mut result: Vec<String> = Vec::new();
 
-	    for line in lines {
-	        let parts: Vec<&str> = line.split(';').map(|s| s.trim()).collect();
+        for line in lines {
+            let parts: Vec<&str> = line.split(';').map(|s| s.trim()).collect();
 
-	        // Assuming each line in the index file has at least two parts: state and file path
-	        if parts.len() >= 3 {
-	            let file_name = parts[0];
-	            let file_state = parts[2];
+            // Assuming each line in the index file has at least two parts: state and file path
+            if parts.len() >= 3 {
+                let file_name = parts[0];
+                let file_state = parts[2];
 
-	            match state {
-	            	IndexFileEntryState::Cached => {
-	            		result.push(file_name.to_string());
-	            		continue;
-	            	},
-	            	_ => {}
-	            }
+                if let IndexFileEntryState::Cached = state {
+                    result.push(file_name.to_string());
+                    continue;
+                }
 
-	            if file_state == state.to_string() {	            	
-	            	result.push(file_name.to_string());
-	            }
-	        }
-	    }
-	    println!("state: {:?}, result: {:?}", state.to_string(), result);
+                if file_state == state.to_string() {
+                    result.push(file_name.to_string());
+                }
+            }
+        }
+        // println!("state: {:?}, result: {:?}", state.to_string(), result);
 
-	    Ok(result)
-	}
+        Ok(result)
+    }
 
-    pub fn change_index_file(&self, mut commit_tree: String) -> Result<(), Box<dyn Error>> {
-        // let (_, content1) = helpers::read_object("16ca186248002351ebea7fb11a7c191409554fa7".to_string())?;
-        // println!("content 1: {}", content1);
-        
-        // let (_, content2) = helpers::read_object("833053b1231fbe4bd0b8efc5ca31975a36a91625".to_string())?;
-        // println!("content 2: {}", content2);
-        
-        println!("change index file for tree: {}", commit_tree);
+    pub fn change_index_file(&self, commit_tree: String) -> Result<(), Box<dyn Error>> {
+        // println!("change index file for tree: {}", commit_tree);
         let mut index_file = fs::File::create(PathHandler::get_relative_path(INDEX_FILE))?;
         let mut new_index_content = String::new();
 
-        println!("antes del tree content");
+        // println!("antes del tree content");
 
-        let (_, tree_content, _) = helpers::read_object(commit_tree)?;
-        println!("tree content");
-        
-        let tree_lines: Vec<String> = tree_content.lines().map(|s| s.to_string()).collect();
-        println!("tree lines: {:?}", tree_lines);
+        // el pull no lee bien el objeto. el tree se esta guardando con un hash distinto
+        let tree_content: Vec<(String, String, String)> = helpers::read_tree_content(&commit_tree)?;
+        // println!("tree content");
+
+        // let tree_lines: Vec<String> = tree_content.lines().map(|s| s.to_string()).collect();
+        // println!("tree lines: {:?}", tree_lines);
         // let tree_split_line: Vec<String> = commit_file_lines[0].split_whitespace().map(String::from).collect();
-        
+
         // let tree_hash_trimmed = &tree_split_line[1];
-        self.create_index_content(&mut new_index_content, &tree_lines, &String::new())?;
-        println!("new content: {}", new_index_content);
-        index_file.write_all(&new_index_content.as_bytes());
+        StagingArea::create_index_content(&mut new_index_content, &tree_content, "")?;
+        // println!("new content: {}", new_index_content);
+        index_file.write_all(new_index_content.as_bytes())?;
         Ok(())
     }
 
-    fn create_index_content(&self, index_content: &mut String, tree_lines: &Vec<String>, partial_path: &str)  -> Result<(), Box<dyn Error>> {
-        for line in tree_lines {
-            println!("line: {}", line);
-            let split_line: Vec<String> = line.split_whitespace().map(String::from).collect();
-            let file_mode = split_line[0].as_str();
-            let file_hash = split_line[2].as_str();
-            let file_name = split_line[3].as_str();
+    fn create_index_content(
+        index_content: &mut String,
+        tree_data: &Vec<(String, String, String)>,
+        partial_path: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        for (file_mode, file_name, file_hash) in tree_data {
             if file_mode == TREE_SUBTREE_MODE {
-                let directory_path = format!("{}/{}", partial_path, file_name);
-                let (_, sub_tree_content, _) = helpers::read_object(file_hash.to_string())?;
-                let sub_tree_lines: Vec<String> = sub_tree_content.lines().map(|s| s.to_string()).collect();
-                self.create_index_content(index_content, &sub_tree_lines, &directory_path)?
+                let directory_path = format!("{}{}/", partial_path, file_name);
+                // println!("dir path: {}", directory_path);
+                let sub_tree_content = helpers::read_tree_content(file_hash)?;
+                // let sub_tree_lines: Vec<String> = sub_tree_content.lines().map(|s| s.to_string()).collect();
+                StagingArea::create_index_content(
+                    index_content,
+                    &sub_tree_content,
+                    &directory_path,
+                )?
             } else {
-                let index_line = format!("{};{};{}\n", file_name, file_hash, IndexFileEntryState::Cached);
-                println!("index line: {}", index_line);
+                let index_line = format!(
+                    "{}{};{};{}\n",
+                    partial_path,
+                    file_name,
+                    file_hash,
+                    IndexFileEntryState::Cached
+                );
+                // println!("index line: {}", index_line);
                 index_content.push_str(index_line.as_str());
             }
-        }  
+        }
         Ok(())
-    }
-
-
-    // fn unstage_file(&mut self, path: &str) {
-    //     if let Some(status) = self.files.get_mut(path) {
-    //         *status = FileStatus::Modified;
-    //     }
-    // }
-
-    // fn list_stagedfiles(&self) -> Vec<&str> {
-    //     self.files
-    //         .iter()
-    //         .filter(|&(, status)|status == FileStatus::Staged)
-    //         .map(|(path, _)| path.as_str())
-    //         .collect()
-    // }
-}
-
-pub struct Head {
-    branches: Vec<String>,
-    current_branch: Option<String>,
-}
-
-impl Head {
-    pub fn new() -> Self {
-        Head {
-            branches: Vec::new(),
-            current_branch: None,
-        }
-    }
-
-    pub fn add_branch(&mut self, name: &str) {
-        // Check if the branch name is not already in the vector
-        if !self.branches.iter().any(|branch| branch == name) {
-            self.branches.push(name.to_string());
-
-            // Set current_branch to the newly added branch
-            self.current_branch = Some(name.to_string());
-        }
-    }
-
-    pub fn delete_branch(&mut self, name: &str) -> Result<(), Box<dyn Error>> {
-        // Use the retain method to remove branches with the specified name
-        self.branches.retain(|branch| branch != name);
-
-        // If the deleted branch was the current branch, set current_branch to None
-        if self.current_branch == Some(name.to_string()) {
-            self.current_branch = None;
-        }
-
-        Ok(())
-    }
-
-    pub fn rename_branch(&mut self, old_name: &str, new_name: &str) -> Result<(), Box<dyn Error>> {
-        // Find the branch with the old name and rename it to the new name
-        if let Some(branch) = self.branches.iter_mut().find(|branch| *branch == old_name) {
-            *branch = new_name.to_string();
-
-            // If the renamed branch was the current branch, update current_branch
-            if self.current_branch == Some(old_name.to_string()) {
-                self.current_branch = Some(new_name.to_string());
-            }
-        }
-
-        Ok(())
-    }
-
-    pub fn get_current_branch(&self) -> Option<&str> {
-        self.current_branch.as_deref()
-    }
-
-    pub fn print_all(&self) {
-        for s in self.branches.iter() {
-            println!("branch: {}", s);
-        }
     }
 }
 
@@ -427,14 +501,13 @@ impl ObjectType {
             _ => None,
         }
     }
-    pub fn get_object_for_pack_file(&self) -> u8 {
-        let object_type = match self {
-            ObjectType::Commit => 1,
-            ObjectType::Tree => 2,
-            ObjectType::Blob => 3,
-            ObjectType::Tag => 4,
-        };
-        object_type
+    pub fn get_object_for_pack_file(&self) -> Vec<u8> {
+        match self {
+            ObjectType::Commit => vec![0, 0, 1],
+            ObjectType::Tree => vec![0, 1, 0],
+            ObjectType::Blob => vec![0, 1, 1],
+            ObjectType::Tag => vec![1, 0, 0],
+        }
     }
 }
 
@@ -461,9 +534,9 @@ pub struct WorkingDirectory;
 impl WorkingDirectory {
     fn remove_file_and_empty_parent_directories(file_path: &Path) -> Result<(), Box<dyn Error>> {
         fs::remove_file(file_path)?;
-    
+
         let mut current_dir = file_path.parent();
-    
+
         while let Some(parent) = current_dir {
             println!("{:?}", parent);
             if parent == Path::new("") {
@@ -478,65 +551,67 @@ impl WorkingDirectory {
         }
         Ok(())
     }
-    
+
     pub fn clean_working_directory() -> Result<(), Box<dyn Error>> {
-        println!("cleaning working directory");
-        let index_file_content = helpers::read_file_content(INDEX_FILE)?;
-        let mut lines: Vec<String> = index_file_content.lines().map(|s| s.to_string()).collect();
-    
+        let index_file_content =
+            helpers::read_file_content(&PathHandler::get_relative_path(INDEX_FILE))?;
+        let lines: Vec<String> = index_file_content.lines().map(|s| s.to_string()).collect();
+
         for line in lines.iter() {
             let split_line: Vec<String> = line.split(';').map(String::from).collect();
             let file_path_str = split_line[0].clone();
-            println!("path to delete: {}", file_path_str);
+            // println!("path to delete: {}", file_path_str);
             let file_path = PathBuf::from(file_path_str);
             Self::remove_file_and_empty_parent_directories(&file_path)?;
         }
-    
+
         Ok(())
     }
-    
+
     pub fn update_working_directory_to(new_tree: &str) -> Result<(), Box<dyn Error>> {
-        println!("new_tree: {}", new_tree);
-    
-        let _ = Self::create_files_for_directory(new_tree, &String::new());
-    
+        let _ = Self::create_files_for_directory(new_tree, "");
+
         Ok(())
     }
-    
-    fn create_files_for_directory(tree: &str, current_directory: &str) -> Result<(), Box<dyn Error>> {
-        let (_, tree_content, _) = helpers::read_object(tree.to_string())?;
-        let tree_content_lines: Vec<String> = tree_content.lines().map(|s| s.to_string()).collect();
-        println!("tree_content: {}", tree_content);
-        for line in tree_content_lines {
-            let split_line: Vec<String> = line.split_whitespace().map(String::from).collect();
-            let file_mode = split_line[0].as_str();
-            let object_hash = split_line[2].clone();
-            let file_path = &split_line[3];
-            let relative_file_path = format!("{}/{}", current_directory, file_path);
-    
-            match file_mode {
+
+    fn create_files_for_directory(
+        tree: &str,
+        current_directory: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        let tree_content = helpers::read_tree_content(tree)?;
+        // println!("tree_content: {:?}", tree_content);
+        for (file_mode, file_name, file_hash) in tree_content {
+            // println!("line to create: {} {} {}", file_mode, file_name, file_hash);
+            // let split_line: Vec<String> = line.split_whitespace().map(String::from).collect();
+            // let file_mode = split_line[0].as_str();
+            // let object_hash = split_line[2].clone();
+            // let file_path = &split_line[3];
+            let relative_file_path = format!("{}{}", current_directory, file_name);
+
+            match file_mode.as_str() {
                 TREE_FILE_MODE => {
-                    let (_, object_content, _) = helpers::read_object(object_hash)?;
+                    let (_, object_content, _) = helpers::read_object_to_string(file_hash)?;
+                    // println!("object to write content: {} in path: {}", object_content, relative_file_path);
                     let mut object_file = fs::File::create(relative_file_path)?;
-                    object_file.write_all(&object_content.as_bytes())?;
-                } // crear archivo en dir actual
+                    object_file.write_all(object_content.as_bytes())?;
+                }
                 TREE_SUBTREE_MODE => {
-                    if let Ok(metadata) = fs::metadata(relative_file_path.clone()) {
-                        if !metadata.is_dir() {
-                            fs::create_dir(relative_file_path.clone())?;
-                        }
+                    if let Err(_error) = fs::metadata(relative_file_path.clone()) {
+                        // println!("creating dir: {}", relative_file_path);
+                        fs::create_dir(relative_file_path.clone())?;
                     }
-                    return Self::create_files_for_directory(&object_hash, &relative_file_path);
-                } // crear directorio y moverse recursivamente dentro para seguir creando
+                    let dir_path = format!("{}/", relative_file_path);
+                    return Self::create_files_for_directory(&file_hash, &dir_path);
+                }
                 _ => {}
             }
         }
-    
+
         Ok(())
     }
 }
 
-pub const RELATIVE_PATH: &str = "RELATIVE_PATH";
+/* pub const RELATIVE_PATH: &str = "RELATIVE_PATH";
 #[cfg(test)]
 mod tests {
     use std::{env, fs::File};
@@ -558,7 +633,7 @@ mod tests {
 
         // Create and execute the Init command
         let init_command = Init::new();
-        let result = init_command.execute(&mut Head::new(), None);
+        let result = init_command.execute(None);
 
         // Check if the Init command was successful
         assert!(result.is_ok(), "Init command failed: {:?}", result);
@@ -605,7 +680,7 @@ mod tests {
         fs::write(&file_path, TEST_FILE_CONTENT).expect("Failed to create test file");
 
         let mut head = Head::new();
-        let result = staging_area.add_file(&mut head, &file_path);
+        let result = staging_area.add_file(&file_path);
 
         // Assert that the command executed successfully
         assert!(result.is_ok(), "Add file to staging area failed: {:?}", result);
@@ -622,15 +697,15 @@ mod tests {
     fn test_clean_working_directory() {
         let (temp_dir, _temp_path) = common_setup();
         // Create a temporary directory and some files
-        let mut head = Head::new() ; 
+        let mut head = Head::new() ;
         let file_paths = create_temp_files(&temp_dir, &["file1.txt", "file2.txt"]);
 
         // Modify the index file to include these files
         let add = Add::new();
         let args1: Option<Vec<&str>> = Some(vec![&file_paths[0]]);
         let args: Option<Vec<&str>> = Some(vec![&file_paths[1]]);
-        let _ = add.execute(&mut head, args1);
-        let _ = add.execute(&mut head, args);
+        let _ = add.execute(args1);
+        let _ = add.execute( args);
 
         // Perform clean_working_directory
         WorkingDirectory::clean_working_directory().expect("Failed to clean working directory");
@@ -648,15 +723,15 @@ mod tests {
         // Create a temporary directory
         let (temp_dir, _temp_path) = common_setup();
 
-        let mut head = Head::new() ; 
+        let mut head = Head::new() ;
         let file_paths = create_temp_files(&temp_dir, &["file1.txt", "file2.txt"]);
 
         // Modify the index file to include these files
         let add = Add::new();
         let args1: Option<Vec<&str>> = Some(vec![&file_paths[0]]);
         let args: Option<Vec<&str>> = Some(vec![&file_paths[1]]);
-        let _ = add.execute(&mut head, args1);
-        let _ = add.execute(&mut head, args);
+        let _ = add.execute(args1);
+        let _ = add.execute(args);
 
         let tree_hash = HashObjectCreator::create_tree_object().unwrap();
 
@@ -701,3 +776,4 @@ mod tests {
         dir_path.exists() && dir_path.is_dir()
     }
 }
+ */

@@ -1,22 +1,5 @@
-use rusty::commands::commands::CheckIgnore;
-use rusty::commands::commands::RELATIVE_PATH;
-use rusty::commands::commands::Init;
-use rusty::commands::commands::Add;
-use rusty::commands::commands::Commit;
-use rusty::commands::commands::Push;
-use rusty::commands::commands::Clone;
-use rusty::commands::commands::ShowRef;
-use rusty::commands::commands::UnpackObjects;
-use rusty::commands::structs::Head;
-use rusty::commands::commands::Checkout;
-use rusty::commands::commands::Branch;
-use rusty::commands::commands::Tag;
-use rusty::commands::commands::Command;
-use rusty::commands::commands::Remote;
-use rusty::commands::commands::Fetch;
-use rusty::commands::commands::Log;
-use rusty::commands::commands::Merge;
-use rusty::commands::commands::LsTree;
+use rusty::commands::git_commands;
+use rusty::commands::git_commands::Command;
 use std::{env, io};
 
 /// This function takes a slice of strings and converts it into a vector of string slices.
@@ -31,65 +14,57 @@ fn parse_arguments(args: &[String]) -> Option<Vec<&str>> {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     //env::set_var(RELATIVE_PATH, "src/client/");
-     // Set an environment variable
-     // Retrieve the value of an environment variable
-     /*if let Ok(value) = env::var(commands::commands::RELATIVE_PATH) {
-         println!("MY_VARIABLE is set to: {}", value);
-         println!("relative path: {}",commands::commands::PathHandler::get_relative_path(commands::commands::R_HEADS));
-     } else {
-         println!("MY_VARIABLE is not set.");
-     }*/
-    let mut head = Head::new();
-    // let args: Vec<String> = env::args().collect();
-    // if args.len() >= 2 {
-    //     let command = &args[1];
-    //     match command.as_str() {
-    //         "init" => commands::Init::new().execute(&mut head, None)?,
-    //         "branch" => commands::Branch::new().execute(&mut head, parse_arguments(&args[2..]))?,
-    //         "checkout" => commands::Checkout::new().execute(&mut head, parse_arguments(&args[2..]))?,
-    //         "cat-file" => commands::CatFile::new().execute(&mut head, parse_arguments(&args[2..]))?,
-    //         "hash-object" => commands::HashObject::new().execute(&mut head, parse_arguments(&args[2..]))?,
-    //         "add" => commands::Add::new().execute(&mut head, parse_arguments(&args[2..]))?,
-    //         "rm" => commands::Rm::new().execute(&mut head, parse_arguments(&args[2..]))?,
-    //         "commit" => commands::Commit::new().execute(&mut head, parse_arguments(&args[2..]))?,
-    //         "status" => commands::Status::new().execute(&mut head, None)?,
-    //         "log" => commands::Log::new().execute(&mut head, parse_arguments(&args[2..]))?,
-    //         "remote" => commands::Remote::new().execute(&mut head, parse_arguments(&args[2..]))?,
-    //         "pack-objects" => commands::PackObjects::new().execute(&mut head, None)?,
-    //         _ => return Err(Box::new(io::Error::new(io::ErrorKind::Other,"Error: Invalid command."))),
-    //     };
-    // };
-    // Init::new().execute(&mut head, None)?;
-    // Branch::new().execute(&mut head, Some(vec!["new"]))?;
-    // Checkout::new().execute(&mut head, Some(vec!["main"]))?;
-    // Add::new().execute(&mut head, Some(vec!["ejemplo.txt"]))?;
-    // Add::new().execute(&mut head, Some(vec!["b/c/2.txt"]))?;
-    // Add::new().execute(&mut head, Some(vec!["d/c/3.txt"]))?;
-    // Commit::new().execute(&mut head, Some(vec!["-m", "test"]))?;
-    // if let Err(error) = Clone::new().execute(&mut head, None) {
-    //     println!("{}", error);
-    //     return Ok(())
-    // }
-    /*if let Err(error) = Init::new().execute(&mut head, None) {
-        println!("{}", error);
-        return Ok(())
-    }
-    if let Err(error) = Add::new().execute(&mut head, Some(vec!["file.txt"])) {
-        println!("{}", error);
-        return Ok(())
-    }
-    if let Err(error) = Commit::new().execute(&mut head, Some(vec!["-m", "un mensaje de commit file.txt"])) {
-        println!("{}", error);
-        return Ok(())
+    // Set an environment variable
+    // Retrieve the value of an environment variable
+    /*if let Ok(value) = env::var(commands::commands::RELATIVE_PATH) {
+        println!("MY_VARIABLE is set to: {}", value);
+        println!("relative path: {}",commands::commands::PathHandler::get_relative_path(commands::commands::R_HEADS));
+    } else {
+        println!("MY_VARIABLE is not set.");
     }*/
-    if let Err(error) = LsTree::new().execute(&mut head, Some(vec!["-d", "HEAD"])) {
-        println!("{}", error);
-        return Ok(())
-    }
-    // Remote::new().execute(&mut head, Some(vec!["add", "origin", "127.0.0.1:9418"]))?;
-    // if let Err(error) = Fetch::new().execute(&mut head, None) {
-    //     println!("{}", error);
-    //     return Ok(())
-    // }
+    let args: Vec<String> = env::args().collect();
+    if args.len() >= 2 {
+        let command = &args[1];
+        match command.as_str() {
+            "init" => git_commands::Init::new().execute(None)?,
+            "branch" => git_commands::Branch::new().execute(parse_arguments(&args[2..]))?,
+            "checkout" => git_commands::Checkout::new().execute(parse_arguments(&args[2..]))?,
+            "cat-file" => git_commands::CatFile::new().execute(parse_arguments(&args[2..]))?,
+            "hash-object" => {
+                git_commands::HashObject::new().execute(parse_arguments(&args[2..]))?
+            }
+            "add" => git_commands::Add::new().execute(parse_arguments(&args[2..]))?,
+            "rm" => git_commands::Rm::new().execute(parse_arguments(&args[2..]))?,
+            "commit" => git_commands::Commit::new().execute(parse_arguments(&args[2..]))?,
+            "status" => git_commands::Status::new().execute(None)?,
+            "log" => git_commands::Log::new().execute(parse_arguments(&args[2..]))?,
+            "remote" => git_commands::Remote::new().execute(parse_arguments(&args[2..]))?,
+            "pack-objects" => {
+                git_commands::PackObjects::new().execute(parse_arguments(&args[2..]))?
+            }
+            "fetch" => git_commands::Fetch::new().execute(parse_arguments(&args[2..]))?,
+            "merge" => git_commands::Merge::new().execute(parse_arguments(&args[2..]))?,
+            "clone" => git_commands::Clone::new().execute(parse_arguments(&args[2..]))?,
+            "pull" => git_commands::Pull::new().execute(parse_arguments(&args[2..]))?,
+            "push" => git_commands::Push::new().execute(parse_arguments(&args[2..]))?,
+            "ls-tree" => git_commands::LsTree::new().execute(parse_arguments(&args[2..]))?,
+            "ls-files" => git_commands::LsFiles::new().execute(parse_arguments(&args[2..]))?,
+            "tag" => git_commands::Tag::new().execute(parse_arguments(&args[2..]))?,
+            "check-ignore" => {
+                git_commands::CheckIgnore::new().execute(parse_arguments(&args[2..]))?
+            }
+            "show-ref" => git_commands::ShowRef::new().execute(parse_arguments(&args[2..]))?,
+            "unpack-objects" => {
+                git_commands::UnpackObjects::new().execute(parse_arguments(&args[2..]))?
+            }
+
+            _ => {
+                return Err(Box::new(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Error: Invalid command.",
+                )))
+            }
+        };
+    };
     Ok(())
 }
