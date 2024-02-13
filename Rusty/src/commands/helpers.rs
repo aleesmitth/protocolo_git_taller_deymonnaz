@@ -17,6 +17,7 @@ const R_HEADS: &str = ".git/refs/heads";
 // const HEAD_FILE: &str = ".git/HEAD";
 const INDEX_FILE: &str = ".git/index";
 const CONFIG_FILE: &str = ".git/config";
+const R_REMOTES: &str = ".git/refs/remotes";
 
 /// Returns length of a file's content
 pub fn get_file_length(path: &str) -> Result<u64, Box<dyn Error>> {
@@ -294,6 +295,37 @@ pub fn get_remote_tracking_branches() -> Result<HashMap<String, (String, String)
         }
     }
     Ok(branches_and_remotes)
+}
+
+/// Reads remote branches from remotes directory and returns a tuple with (branch_name, last_commit_hash)
+pub fn get_remote_branches() -> Result<Vec<(String, String)>, Box<dyn Error>> {
+    let mut branches_to_update: Vec<(String, String)> = Vec::new();
+
+    let remote_branches = fs::read_dir(R_REMOTES)?;
+
+    for branch in remote_branches {
+        let branch = branch?;
+        let branch_name = branch.file_name().to_string_lossy().to_string();
+        let mut branch_path = branch.path();
+
+        branch_path.push(branch_name.clone());
+
+        let branch_hash = read_file_content(branch_path.to_str().ok_or("")?)?;
+
+        branches_to_update.push((branch_name, branch_hash))
+    }
+
+    Ok(branches_to_update)
+}
+
+pub fn update_branches(branches: Vec<(String, String)>) -> Result<(), Box<dyn Error>>{
+    for (branch_name, hash) in branches {
+        let branch_file = format!("{}/{}", R_HEADS, branch_name);
+        let mut branch_file = fs::File::create(branch_file)?;
+        branch_file.write_all(hash.as_bytes())?;
+    }
+
+    Ok(())
 }
 
 pub fn update_local_branch_with_commit(

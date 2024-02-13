@@ -79,6 +79,8 @@ use crate::commands::structs::StagingArea;
 use crate::commands::helpers;
 use crate::commands::structs::IndexFileEntryState;
 use crate::commands::structs::WorkingDirectory;
+
+use super::helpers::get_remote_tracking_branches;
 // TODO MOVER A OTRA CARPETA. NO TIENE SENTIDO commands::commands::PathHandler
 pub struct PathHandler;
 
@@ -1622,6 +1624,9 @@ impl Command for Clone {
                 Remote::new().execute(Some(vec!["add", "origin", remote_repository[0]]))?;
                 Fetch::new().execute(None)?;
                 // aca tendria que crear las branches de remotes
+                // creo funcion que lea las brnaches que terngo en remote
+                let remote_branches = helpers::get_remote_branches()?;
+                helpers::update_branches(remote_branches)?;
                 Pull::new().execute(Some(vec!["origin"]))?;
             }
             None => {
