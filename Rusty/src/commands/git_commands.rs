@@ -2261,7 +2261,25 @@ impl Command for Merge {
 
         let current_commit_hash = Head::get_head_commit()?;
 
-        // println!("merging {} -> {}", branch_to_merge, Head::get_current_branch_name()?);
+        // three-way merge algorithm
+        // tengo que buscar commit ancestro
+       
+
+        let ancestor_commit = helpers::find_common_ancestor_commit(&current_commit_hash, &merging_commit_hash)?;
+
+        // comparar cambios de ancestro comun y las branches actual y la entrante
+        // aca solo comparo lo de aquellos archivos que vieron algun tipo de cambio
+        // por ejemplo file.txt donde el hash asociado en ancestro es distinto al de un branch
+        // si el hash es igual evito la comparacion
+        // podria crear una funcion que devuelva los archivos en los que hubo cambios
+        // de alli comparo en que archivos hubo modificaciones en ambas branches y me quedo con esos
+        // de aca tengo que ver si las modificaciones de esos archivos generan conflictos o no 
+
+        // identificar conflictos
+        // si hay se marcan conflictos a resolver
+        // si no hay se mergea y genera un nuevo commit con dos padres
+
+        // aca se hace un ff merge
         if helpers::ancestor_commit_exists(&current_commit_hash, &merging_commit_hash)? {
             helpers::update_branch_hash(&Head::get_current_branch_name()?, &merging_commit_hash)?;
             // println!("updating branch last commit in current branch... to commit: {}", merging_commit_hash);
