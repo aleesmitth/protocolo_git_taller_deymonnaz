@@ -2250,13 +2250,12 @@ impl Command for Merge {
         let arg_slice = args.unwrap_or_default(); //aca tendria que chequear que sea valido el branch que recibo por parametro
 
         let branch_to_merge = arg_slice[0];
-        // println!("branch to merge: {}", branch_to_merge);
+        println!("branch to merge: {}", branch_to_merge);
         let mut branch_to_merge_path = helpers::get_branch_path(branch_to_merge);
         if !helpers::check_if_file_exists(&branch_to_merge_path) {
             // This means the branch is a remote branch
             branch_to_merge_path = format!("{}/{}", R_REMOTES, branch_to_merge);
         }
-
         let merging_commit_hash = helpers::get_branch_last_commit(&branch_to_merge_path)?;
 
         let current_commit_hash = Head::get_head_commit()?;
@@ -2264,32 +2263,72 @@ impl Command for Merge {
         // three-way merge algorithm
         // tengo que buscar commit ancestro
        
-
         let ancestor_commit = helpers::find_common_ancestor_commit(&current_commit_hash, &merging_commit_hash)?;
+        println!("ancestor commit found");
+        // DE ACA BUSCO ARCHIVOS CON CONFLICTOS
 
         // comparar cambios de ancestro comun y las branches actual y la entrante
+        let ancestor_working_tree = helpers::generate_working_tree(ancestor_commit)?;
+        let current_working_tree = helpers::generate_working_tree(current_commit_hash.clone())?;
+        let merging_working_tree = helpers::generate_working_tree(merging_commit_hash.clone())?;
+    
+        let current_modified_files = helpers::find_modified_files(ancestor_working_tree.clone(), current_working_tree);
+        let merging_modified_files = helpers::find_modified_files(ancestor_working_tree, merging_working_tree);
+        println!("current modified: {:?}", current_modified_files);
+        println!("mergining modified: {:?}", merging_modified_files);
+        // el siguiente nombre esta mal porque todavia no hay conflicto, si no que si se hciieron cambios en
+        // las mismas lineas se generar un conflicto
+        let files_with_conflicts = helpers::find_files_with_conflict(current_modified_files, merging_modified_files);
+        println!("files with conflict: {:?}", files_with_conflicts);
         // aca solo comparo lo de aquellos archivos que vieron algun tipo de cambio
         // por ejemplo file.txt donde el hash asociado en ancestro es distinto al de un branch
         // si el hash es igual evito la comparacion
         // podria crear una funcion que devuelva los archivos en los que hubo cambios
+
         // de alli comparo en que archivos hubo modificaciones en ambas branches y me quedo con esos
         // de aca tengo que ver si las modificaciones de esos archivos generan conflictos o no 
 
+        // HASTA ACA VEO SI NO SE MODIFICAN IGUALES ARCHIVOS
+
         // identificar conflictos
         // si hay se marcan conflictos a resolver
+
+        // CONFLICTOS
+
         // si no hay se mergea y genera un nuevo commit con dos padres
 
         // aca se hace un ff merge
-        if helpers::ancestor_commit_exists(&current_commit_hash, &merging_commit_hash)? {
-            helpers::update_branch_hash(&Head::get_current_branch_name()?, &merging_commit_hash)?;
-            // println!("updating branch last commit in current branch... to commit: {}", merging_commit_hash);
-            WorkingDirectory::clean_working_directory()?;
-            // println!("cleaning working directory...");
-            let commit_tree = helpers::get_commit_tree(&merging_commit_hash)?;
-            WorkingDirectory::update_working_directory_to(&commit_tree)?;
-            StagingArea::new().change_index_file(commit_tree)?;
-        }
+        // if helpers::ancestor_commit_exists(&current_commit_hash, &merging_commit_hash)? {
+        //     helpers::update_branch_hash(&Head::get_current_branch_name()?, &merging_commit_hash)?;
+        //     // println!("updating branch last commit in current branch... to commit: {}", merging_commit_hash);
+        //     WorkingDirectory::clean_working_directory()?;
+        //     // println!("cleaning working directory...");
+        //     let commit_tree = helpers::get_commit_tree(&merging_commit_hash)?;
+        //     WorkingDirectory::update_working_directory_to(&commit_tree)?;
+        //     StagingArea::new().change_index_file(commit_tree)?;
+        // }   
 
+        Ok(String::new())
+    }
+}
+
+pub struct Rebase;
+
+impl Default for Rebase {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Rebase {
+    pub fn new() -> Self {
+        Rebase {}
+    }
+}
+
+impl Command for Rebase {
+    //ver que pasa cuando uno commit ancestro es commit root
+    fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         Ok(String::new())
     }
 }

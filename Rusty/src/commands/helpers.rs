@@ -392,12 +392,12 @@ pub fn find_common_ancestor_commit(
     let mut current_branch_log = Vec::new();
     let current_branch_commit = Head::get_head_commit()?;
     let _ = Log::generate_log_entries(&mut current_branch_log, current_branch_commit);
-    // println!("current branch log: {:?}", current_branch_log);
+    println!("current branch log: {:?}", current_branch_log);
 
     let mut merging_branch_log = Vec::new();
-    let merging_branch_commit = get_branch_last_commit(&get_branch_path(merging_branch))?;
-    let _ = Log::generate_log_entries(&mut merging_branch_log, merging_branch_commit);
-    // println!("merging branch log: {:?}", merging_branch_log);
+    // let merging_branch_commit = get_branch_last_commit(&get_branch_path(merging_branch))?;
+    let _ = Log::generate_log_entries(&mut merging_branch_log, merging_branch.to_string());
+    println!("merging branch log: {:?}", merging_branch_log);
     // tal vez eso parametrizarlo en una funcion
 
     for (commit, _message) in merging_branch_log {
@@ -628,6 +628,61 @@ pub fn update_hash_for_refs(
         file.write_all(new_remote_hash.as_bytes())?
     }
     Ok(())
+}
+
+pub fn find_modified_files(ancestor_working_tree: HashMap<String, String>, working_tree_to_compare:  HashMap<String, String>) -> HashMap<String, String> {
+    let mut modified_files: HashMap<String, String> = HashMap::new();
+    for (file_name, file_hash) in working_tree_to_compare {
+        if let Some(ancestor_hash) = ancestor_working_tree.get(&file_name) {
+            if ancestor_hash.to_string() != file_hash {
+                modified_files.insert(file_name, file_hash);
+            }
+        }
+    }
+    modified_files
+}
+
+pub fn find_files_with_conflict(current_modified_files: HashMap<String, String>, merging_modified_files:  HashMap<String, String>) -> HashMap<String, (String, String)> {
+    let mut conflicting_files: HashMap<String, (String, String)> = HashMap::new();
+    for (file_name, file_hash) in current_modified_files {
+        if let Some(merging_hash) = merging_modified_files.get(&file_name) {
+            println!("found file with conflict");
+            println!("hashes: {} {}", merging_hash, file_hash);
+            if merging_hash.to_string() != file_hash {
+                conflicting_files.insert(file_name, (file_hash, merging_hash.to_string()));
+            }
+        }
+    }
+    conflicting_files
+}
+
+// pub fn find_conflict_in_file(file_name: String, first_object_hash: String, second_object_hash: String) {
+//     let (_, first_object_content, _) = read_object_to_string(first_object_hash)?;
+//     let (_, second_object_content, _) = read_object_to_string(second_object_hash)?;
+
+
+// }
+
+/// This function goes through the tree object associated to a commit object and
+/// adds all of the files in its working tree into a HashMap, where the file name (path)
+/// is the key and its corresponding object hash is the value stored.
+pub fn generate_working_tree(commit_hash: String) -> Result<HashMap<String, String>, Box<dyn Error>> {
+    let tree_content = read_tree_content(&get_commit_tree(&commit_hash)?)?;
+    let mut working_tree: HashMap<String, String> = HashMap::new();
+
+    for (file_mode, file_name, file_hash) in tree_content {
+        match file_mode.as_str() {
+            TREE_FILE_MODE => {
+                working_tree.insert(file_name, file_hash);
+            }
+            TREE_SUBTREE_MODE => {
+                // let map = generate_working_tree(file_hash);
+                working_tree.extend(generate_working_tree(file_hash)?);
+            }
+            _ => {}
+        }
+    }
+    Ok(working_tree)
 }
 
 pub const RELATIVE_PATH: &str = "RELATIVE_PATH";
