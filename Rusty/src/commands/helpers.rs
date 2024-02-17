@@ -637,23 +637,43 @@ pub fn find_modified_files(ancestor_working_tree: HashMap<String, String>, worki
             if ancestor_hash.to_string() != file_hash {
                 modified_files.insert(file_name, file_hash);
             }
+        } else {
+            modified_files.insert(file_name, file_hash);
         }
     }
     modified_files
 }
 
-pub fn find_files_with_conflict(current_modified_files: HashMap<String, String>, merging_modified_files:  HashMap<String, String>) -> HashMap<String, (String, String)> {
-    let mut conflicting_files: HashMap<String, (String, String)> = HashMap::new();
+pub fn find_files_without_conflict(current_modified_files: HashMap<String, String>, mut merging_modified_files:  HashMap<String, String>) -> Option<HashMap<String, String>> {
+    let mut files_without_conflict: HashMap<String, String> = HashMap::new();
+    let mut files_with_conflict: Vec<String> = Vec::new(); // tal vez esto ni hace falta si los voy printeando
     for (file_name, file_hash) in current_modified_files {
-        if let Some(merging_hash) = merging_modified_files.get(&file_name) {
-            println!("found file with conflict");
-            println!("hashes: {} {}", merging_hash, file_hash);
+        if let Some(merging_hash) = merging_modified_files.remove(&file_name) {
             if merging_hash.to_string() != file_hash {
-                conflicting_files.insert(file_name, (file_hash, merging_hash.to_string()));
+                // find_conflict_in_file(file_name, file_hash, merging_hash);
+                // antes de agregarlo a files with conflict tendria que analizarlo linea a linea
+                // voy a hacer esto en la misma funcion que en la que hago lo otro
+                println!("CONFLICT: Merge conflict in {}", file_name);
+                files_with_conflict.push(file_name);
+                // function to identify conflicting lines and mark them
+            } else {
+                files_without_conflict.insert(file_name, file_hash);
             }
+        } else {
+            files_without_conflict.insert(file_name, file_hash);
         }
     }
-    conflicting_files
+
+    for (file_name, file_hash) in merging_modified_files {
+        files_without_conflict.insert(file_name, file_hash);
+    }
+
+    if files_with_conflict.is_empty() {
+        Some(files_without_conflict)
+    } else {
+        println!("Automatic merge failed; fix conflicts and then commit the result");
+        None
+    }
 }
 
 // pub fn find_conflict_in_file(file_name: String, first_object_hash: String, second_object_hash: String) {
@@ -666,7 +686,7 @@ pub fn find_files_with_conflict(current_modified_files: HashMap<String, String>,
 /// This function goes through the tree object associated to a commit object and
 /// adds all of the files in its working tree into a HashMap, where the file name (path)
 /// is the key and its corresponding object hash is the value stored.
-pub fn generate_working_tree(commit_hash: String) -> Result<HashMap<String, String>, Box<dyn Error>> {
+pub fn reconstruct_working_tree(commit_hash: String) -> Result<HashMap<String, String>, Box<dyn Error>> {
     let tree_content = read_tree_content(&get_commit_tree(&commit_hash)?)?;
     let mut working_tree: HashMap<String, String> = HashMap::new();
 
@@ -677,7 +697,7 @@ pub fn generate_working_tree(commit_hash: String) -> Result<HashMap<String, Stri
             }
             TREE_SUBTREE_MODE => {
                 // let map = generate_working_tree(file_hash);
-                working_tree.extend(generate_working_tree(file_hash)?);
+                working_tree.extend(reconstruct_working_tree(file_hash)?);
             }
             _ => {}
         }

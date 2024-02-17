@@ -1,4 +1,3 @@
-use chrono::{DateTime, Local};
 use std::fmt::Write as Write_FMT;
 use std::fs::ReadDir;
 use std::{
@@ -392,7 +391,6 @@ impl Command for Checkout {
                         "Already on specified branch",
                     )));
                 }
-                // falla aca que no chequeo que haya algun commit, si no hay commit previo rompe
                 Head::change_head_branch(branch_name)?;
                 let head_commit = Head::get_head_commit()?;
                 WorkingDirectory::clean_working_directory()?;
@@ -400,7 +398,8 @@ impl Command for Checkout {
                 if !head_commit.is_empty() {
                     let head_tree = helpers::get_commit_tree(&head_commit)?;
                     WorkingDirectory::update_working_directory_to(&head_tree)?;
-                    StagingArea::new().change_index_file(head_tree)?; //esto rompe en caso aca, pero quiero testear abtes
+                    let working_tree = helpers::reconstruct_working_tree(head_commit)?;
+                    StagingArea::new().change_index_file(working_tree)?;
                 }
             }
             None => {
@@ -557,45 +556,6 @@ impl Commit {
         }
     }
 
-    /// Generates the content for a new commit.    
-    fn generate_commit_content(
-        &self,
-        tree_hash: String,
-        message: Option<&str>,
-        _branch_path: &str,
-    ) -> Result<String, Box<dyn Error>> {
-        let head_commit = Head::get_head_commit()?;
-        let mut content;
-
-        let username = env::var("USER")?;
-        let current_time: DateTime<Local> = Local::now();
-        let timestamp = current_time.timestamp();
-
-        let offset_minutes = current_time.offset().local_minus_utc();
-        let offset_hours = (offset_minutes / 60) / 60;
-
-        let offset_string = format!("{:03}{:02}", offset_hours, (offset_minutes % 60).abs());
-
-        let author_line = format!(
-            "author {} <{}@fi.uba.ar> {} {}",
-            username, username, timestamp, offset_string
-        );
-        let commiter_line = format!(
-            "committer {} <{}@fi.uba.ar> {} {}",
-            username, username, timestamp, offset_string
-        );
-
-        if head_commit.is_empty() {
-            content = format!("tree {}", tree_hash);
-        } else {
-            content = format!("tree {}\nparent {}", tree_hash, head_commit);
-        }
-        content = format!("{}\n{}\n{}\n", content, author_line, commiter_line);
-        if let Some(message) = message {
-            content = format!("{}\n{}", content, message);
-        }
-        Ok(content)
-    }
 }
 
 impl Command for Commit {
@@ -625,23 +585,18 @@ impl Command for Commit {
                 }
             }
         }
-        let tree_hash = HashObjectCreator::create_tree_object()?;
-        //println!("tree_hash: {:?}", tree_hash);
-        let branch_path = Head::get_current_branch_path()?;
         message = if message_flag { message } else { None };
-        let commit_content = self.generate_commit_content(tree_hash, message, &branch_path)?;
-        //println!("commit content: {}", commit_content);
-        let commit_object_hash = HashObjectCreator::write_object_file(
-            commit_content.clone(),
-            ObjectType::Commit,
-            commit_content.as_bytes().len() as u64,
-        )?;
+        let head_commit = Head::get_head_commit()?;
+        let mut parent = Vec::new();
+        if !head_commit.is_empty() {
+            parent.push(head_commit)
+        }
+        let commit_object_hash = HashObjectCreator::create_commit_object(message, parent)?;
 
-        let mut branch_file = fs::File::create(PathHandler::get_relative_path(&branch_path))?;
-        branch_file.write_all(commit_object_hash.as_bytes())?;
+        helpers::update_branch_hash(&Head::get_current_branch_name()?, &commit_object_hash);
 
         self.stg_area.unstage_index_file()?;
-        Ok(commit_content)
+        Ok(String::new())
     }
 }
 
@@ -2245,7 +2200,6 @@ impl Merge {
 }
 
 impl Command for Merge {
-    //ver que pasa cuando uno commit ancestro es commit root
     fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let arg_slice = args.unwrap_or_default(); //aca tendria que chequear que sea valido el branch que recibo por parametro
 
@@ -2268,18 +2222,26 @@ impl Command for Merge {
         // DE ACA BUSCO ARCHIVOS CON CONFLICTOS
 
         // comparar cambios de ancestro comun y las branches actual y la entrante
-        let ancestor_working_tree = helpers::generate_working_tree(ancestor_commit)?;
-        let current_working_tree = helpers::generate_working_tree(current_commit_hash.clone())?;
-        let merging_working_tree = helpers::generate_working_tree(merging_commit_hash.clone())?;
-    
-        let current_modified_files = helpers::find_modified_files(ancestor_working_tree.clone(), current_working_tree);
-        let merging_modified_files = helpers::find_modified_files(ancestor_working_tree, merging_working_tree);
-        println!("current modified: {:?}", current_modified_files);
-        println!("mergining modified: {:?}", merging_modified_files);
+        let ancestor_working_tree = helpers::reconstruct_working_tree(ancestor_commit)?;
+        let current_working_tree = helpers::reconstruct_working_tree(current_commit_hash.clone())?;
+        let merging_working_tree = helpers::reconstruct_working_tree(merging_commit_hash.clone())?;
+        println!("current working tree: {:?}", current_working_tree);
+        println!("mergining working tree: {:?}", merging_working_tree);
+
+        // let current_modified_files = helpers::find_modified_files(ancestor_working_tree.clone(), current_working_tree);
+        // let merging_modified_files = helpers::find_modified_files(ancestor_working_tree, merging_working_tree);
+        // println!("current modified: {:?}", current_modified_files);
+        // println!("mergining modified: {:?}", merging_modified_files);
+
         // el siguiente nombre esta mal porque todavia no hay conflicto, si no que si se hciieron cambios en
-        // las mismas lineas se generar un conflicto
-        let files_with_conflicts = helpers::find_files_with_conflict(current_modified_files, merging_modified_files);
-        println!("files with conflict: {:?}", files_with_conflicts);
+        // las mismas lineas se generar un conflicto 
+        
+        // let files_without_conflicts = helpers::find_files_with_conflict(current_modified_files, merging_modified_files);
+        
+        // aca tendria que hacer que si encuentra conflicto te devuelve un None y printea los archivos con conflicto
+        // ademas de marcar los conflictos en estos archivos
+        // sino te tira un some con todo el working tree sin conflictos
+
         // aca solo comparo lo de aquellos archivos que vieron algun tipo de cambio
         // por ejemplo file.txt donde el hash asociado en ancestro es distinto al de un branch
         // si el hash es igual evito la comparacion
@@ -2295,7 +2257,19 @@ impl Command for Merge {
 
         // CONFLICTOS
 
-        // si no hay se mergea y genera un nuevo commit con dos padres
+        match helpers::find_files_without_conflict(current_working_tree, merging_working_tree) {
+            Some(files_without_conflict) => {
+                println!("working tree after merge: {:?}", files_without_conflict);
+                // StagingArea::new().change_index_file(files_without_conflict)?; // esto ya podria hacerlo a files without conflct
+                // let new_commit_hash = HashObjectCreator::create_commit_object(None, vec![current_commit_hash, merging_commit_hash]);
+            // helpers::update_branch_hash(&Head::get_current_branch_name()?, &new_commit_hash)?;
+        //     WorkingDirectory::clean_working_directory()?;
+        //     let commit_tree = helpers::get_commit_tree(&new_commit_hash)?; // este tiene que ser el nuevo commit 
+        //     WorkingDirectory::update_working_directory_to(&commit_tree)?;
+        //     
+            }
+            None => {}
+        }
 
         // aca se hace un ff merge
         // if helpers::ancestor_commit_exists(&current_commit_hash, &merging_commit_hash)? {
@@ -2327,7 +2301,6 @@ impl Rebase {
 }
 
 impl Command for Rebase {
-    //ver que pasa cuando uno commit ancestro es commit root
     fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         Ok(String::new())
     }

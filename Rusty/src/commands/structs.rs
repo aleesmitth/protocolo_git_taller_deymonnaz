@@ -1,4 +1,4 @@
-use std::{collections::HashMap, error::Error, fmt, fs, io, io::Write, path::Path, path::PathBuf};
+use std::{collections::HashMap, error::Error, fmt, fs, io, io::Write, path::Path, path::PathBuf, env};
 const OBJECT: &str = ".git/objects";
 const INDEX_FILE: &str = ".git/index";
 const TREE_SUBTREE_MODE: &str = "040000";
@@ -10,7 +10,7 @@ const HEAD_FILE: &str = ".git/HEAD";
 //use gtk::gdk::keys::constants::L;
 
 use crate::commands::helpers;
-
+use chrono::{DateTime, Local};
 use super::{git_commands::PathHandler, helpers::get_file_length};
 
 /// Struct to interact with the HEAD file in the .git directory.
@@ -128,16 +128,7 @@ impl HashObjectCreator {
             PathHandler::get_relative_path(&obj_directory_path),
             &hashed_data[2..]
         );
-
-        // println!("obj content: {}", String::from_utf8(object_content.clone())?);
-
         let compressed_data = helpers::compress_bytes(&object_content)?;
-
-        // let decompressed = helpers::decompress_file_content(compressed_data.clone())?;
-
-        // println!("test decompress: {}", decompressed);
-        // let test_hash = helpers::hex_string_to_bytes(&decompressed[16..]);
-
         let mut object_file = fs::File::create(object_file_path)?;
         object_file.write_all(&compressed_data)?;
 
@@ -156,7 +147,7 @@ impl HashObjectCreator {
         let mut subdirectories: HashMap<String, Vec<Vec<u8>>> = HashMap::new();
 
         let index_file_lines: Vec<&str> = index_file_content.split('\n').collect();
-        //println!("index_file_lines: {:?}", index_file_lines);
+        println!("index_file_lines: {:?}", index_file_lines);
 
         for line in index_file_lines {
             let split_line: Vec<&str> = line.split(';').collect();
@@ -265,6 +256,59 @@ impl HashObjectCreator {
             }
         }
         Ok(sub_tree_content)
+    }
+
+    // aca podria hacer una funcion para crear un commit object con dos padres
+    // tal vez podria pasar lo de generar contenido del comando para aca, seria
+    // mejor division de tareas ahi
+    pub fn create_commit_object(message: Option<&str>, parents: Vec<String>) -> Result<String, Box<dyn Error>> {
+        let tree_hash = HashObjectCreator::create_tree_object()?;
+        let commit_content = Self::generate_commit_content(tree_hash, message, parents)?;
+        println!("commit content: {}", commit_content);
+        let commit_object_hash = HashObjectCreator::write_object_file(
+            commit_content.clone(),
+            ObjectType::Commit,
+            commit_content.as_bytes().len() as u64,
+        )?;
+        
+        Ok(commit_object_hash)
+    }
+
+    fn generate_commit_content(
+        tree_hash: String,
+        message: Option<&str>,
+        parents: Vec<String>
+    ) -> Result<String, Box<dyn Error>> {
+        let username = env::var("USER")?;
+        let current_time: DateTime<Local> = Local::now();
+        let timestamp = current_time.timestamp();
+
+        let offset_minutes = current_time.offset().local_minus_utc();
+        let offset_hours = (offset_minutes / 60) / 60;
+
+        let offset_string = format!("{:03}{:02}", offset_hours, (offset_minutes % 60).abs());
+
+        let author_line = format!(
+            "author {} <{}@fi.uba.ar> {} {}",
+            username, username, timestamp, offset_string
+        );
+        let commiter_line = format!(
+            "committer {} <{}@fi.uba.ar> {} {}",
+            username, username, timestamp, offset_string
+        );
+        let mut content = format!("tree {}\n", tree_hash);
+        let mut parents_string = String::new();
+        if !parents.is_empty() {
+            for parent in parents {
+                parents_string = format!("{}parent {}\n", parents_string, parent)
+            }
+            content = format!("{}{}", content, parents_string);
+        }
+        content = format!("{}{}\n{}\n", content, author_line, commiter_line);
+        if let Some(message) = message {
+            content = format!("{}\n{}", content, message);
+        }
+        Ok(content)
     }
 }
 
@@ -423,61 +467,21 @@ impl StagingArea {
                 }
             }
         }
-        // println!("state: {:?}, result: {:?}", state.to_string(), result);
 
         Ok(result)
     }
 
-    pub fn change_index_file(&self, commit_tree: String) -> Result<(), Box<dyn Error>> {
-        // println!("change index file for tree: {}", commit_tree);
-        let mut index_file = fs::File::create(PathHandler::get_relative_path(INDEX_FILE))?;
-        let mut new_index_content = String::new();
 
-        // println!("antes del tree content");
-
-        // el pull no lee bien el objeto. el tree se esta guardando con un hash distinto
-        let tree_content: Vec<(String, String, String)> = helpers::read_tree_content(&commit_tree)?;
-        // println!("tree content");
-
-        // let tree_lines: Vec<String> = tree_content.lines().map(|s| s.to_string()).collect();
-        // println!("tree lines: {:?}", tree_lines);
-        // let tree_split_line: Vec<String> = commit_file_lines[0].split_whitespace().map(String::from).collect();
-
-        // let tree_hash_trimmed = &tree_split_line[1];
-        StagingArea::create_index_content(&mut new_index_content, &tree_content, "")?;
-        // println!("new content: {}", new_index_content);
-        index_file.write_all(new_index_content.as_bytes())?;
-        Ok(())
-    }
-
-    fn create_index_content(
-        index_content: &mut String,
-        tree_data: &Vec<(String, String, String)>,
-        partial_path: &str,
-    ) -> Result<(), Box<dyn Error>> {
-        for (file_mode, file_name, file_hash) in tree_data {
-            if file_mode == TREE_SUBTREE_MODE {
-                let directory_path = format!("{}{}/", partial_path, file_name);
-                // println!("dir path: {}", directory_path);
-                let sub_tree_content = helpers::read_tree_content(file_hash)?;
-                // let sub_tree_lines: Vec<String> = sub_tree_content.lines().map(|s| s.to_string()).collect();
-                StagingArea::create_index_content(
-                    index_content,
-                    &sub_tree_content,
-                    &directory_path,
-                )?
-            } else {
-                let index_line = format!(
-                    "{}{};{};{}\n",
-                    partial_path,
-                    file_name,
-                    file_hash,
-                    IndexFileEntryState::Cached
-                );
-                // println!("index line: {}", index_line);
-                index_content.push_str(index_line.as_str());
-            }
+    pub fn change_index_file(&self, working_tree: HashMap<String, String>) -> Result<(), Box<dyn Error>> {
+        let mut new_index_lines: Vec<String> = Vec::new();
+        for (file_name, file_hash) in working_tree {
+            let new_line = format!("{};{};{}", file_name, file_hash, IndexFileEntryState::Staged);
+            new_index_lines.push(new_line);
         }
+        let new_index_content = new_index_lines.join("\n");
+        let mut index_file = fs::File::create(INDEX_FILE)?;
+        index_file.write_all(new_index_content.as_bytes());
+
         Ok(())
     }
 }
