@@ -1,1 +1,15 @@
-holax32
+linea1
+<<<<<<< HEAD
+<<<<<<< HEAD
+linea2222
+=======
+linea222
+linea333
+>>>>>>>
+linea3333
+=======
+linea222
+linea333
+>>>>>>>
+linea4
+linea5

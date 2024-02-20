@@ -480,7 +480,7 @@ impl StagingArea {
         }
         let new_index_content = new_index_lines.join("\n");
         let mut index_file = fs::File::create(INDEX_FILE)?;
-        index_file.write_all(new_index_content.as_bytes());
+        let _ = index_file.write_all(new_index_content.as_bytes())?;
 
         Ok(())
     }

@@ -38,6 +38,7 @@ const LONG_FLAG: &str = "-l";
 
 const EXCLUDE_LOG_ENTRY: char = '^';
 const HEAD: &str = "HEAD";
+const REBASE_HEAD: &str = ".git/REBASE_HEAD";
 const ADD_FLAG: &str = "add";
 const REMOVE_FLAG: &str = "rm";
 pub const R_HEADS: &str = ".git/refs/heads";
@@ -64,6 +65,7 @@ const COPY_ZERO_SIZE: usize = 0x10000;
 //CODES FOR COLORS IN TEXT
 const COLOR_GREEN_CODE: &str = "\x1b[32m";
 const COLOR_YELLOW_CODE: &str = "\x1b[33m";
+const COLOR_RED_CODE: &str = "\x1b[31m";
 const COLOR_RESET_CODE: &str = "\x1b[0m";
 
 use crate::client;
@@ -78,8 +80,6 @@ use crate::commands::structs::StagingArea;
 use crate::commands::helpers;
 use crate::commands::structs::IndexFileEntryState;
 use crate::commands::structs::WorkingDirectory;
-
-use super::helpers::get_remote_tracking_branches;
 // TODO MOVER A OTRA CARPETA. NO TIENE SENTIDO commands::commands::PathHandler
 pub struct PathHandler;
 
@@ -2204,83 +2204,28 @@ impl Command for Merge {
         let arg_slice = args.unwrap_or_default(); //aca tendria que chequear que sea valido el branch que recibo por parametro
 
         let branch_to_merge = arg_slice[0];
-        println!("branch to merge: {}", branch_to_merge);
         let mut branch_to_merge_path = helpers::get_branch_path(branch_to_merge);
         if !helpers::check_if_file_exists(&branch_to_merge_path) {
             // This means the branch is a remote branch
             branch_to_merge_path = format!("{}/{}", R_REMOTES, branch_to_merge);
         }
-        let merging_commit_hash = helpers::get_branch_last_commit(&branch_to_merge_path)?;
 
+        let merging_commit_hash = helpers::get_branch_last_commit(&branch_to_merge_path)?;
         let current_commit_hash = Head::get_head_commit()?;
 
-        // three-way merge algorithm
-        // tengo que buscar commit ancestro
-       
-        let ancestor_commit = helpers::find_common_ancestor_commit(&current_commit_hash, &merging_commit_hash)?;
-        println!("ancestor commit found");
-        // DE ACA BUSCO ARCHIVOS CON CONFLICTOS
+        let ancestor_commit = helpers::find_common_ancestor_commit(&merging_commit_hash)?;
 
-        // comparar cambios de ancestro comun y las branches actual y la entrante
         let ancestor_working_tree = helpers::reconstruct_working_tree(ancestor_commit)?;
         let current_working_tree = helpers::reconstruct_working_tree(current_commit_hash.clone())?;
         let merging_working_tree = helpers::reconstruct_working_tree(merging_commit_hash.clone())?;
-        println!("current working tree: {:?}", current_working_tree);
-        println!("mergining working tree: {:?}", merging_working_tree);
 
-        // let current_modified_files = helpers::find_modified_files(ancestor_working_tree.clone(), current_working_tree);
-        // let merging_modified_files = helpers::find_modified_files(ancestor_working_tree, merging_working_tree);
-        // println!("current modified: {:?}", current_modified_files);
-        // println!("mergining modified: {:?}", merging_modified_files);
-
-        // el siguiente nombre esta mal porque todavia no hay conflicto, si no que si se hciieron cambios en
-        // las mismas lineas se generar un conflicto 
-        
-        // let files_without_conflicts = helpers::find_files_with_conflict(current_modified_files, merging_modified_files);
-        
-        // aca tendria que hacer que si encuentra conflicto te devuelve un None y printea los archivos con conflicto
-        // ademas de marcar los conflictos en estos archivos
-        // sino te tira un some con todo el working tree sin conflictos
-
-        // aca solo comparo lo de aquellos archivos que vieron algun tipo de cambio
-        // por ejemplo file.txt donde el hash asociado en ancestro es distinto al de un branch
-        // si el hash es igual evito la comparacion
-        // podria crear una funcion que devuelva los archivos en los que hubo cambios
-
-        // de alli comparo en que archivos hubo modificaciones en ambas branches y me quedo con esos
-        // de aca tengo que ver si las modificaciones de esos archivos generan conflictos o no 
-
-        // HASTA ACA VEO SI NO SE MODIFICAN IGUALES ARCHIVOS
-
-        // identificar conflictos
-        // si hay se marcan conflictos a resolver
-
-        // CONFLICTOS
-
-        match helpers::find_files_without_conflict(current_working_tree, merging_working_tree) {
-            Some(files_without_conflict) => {
-                println!("working tree after merge: {:?}", files_without_conflict);
-                // StagingArea::new().change_index_file(files_without_conflict)?; // esto ya podria hacerlo a files without conflct
-                // let new_commit_hash = HashObjectCreator::create_commit_object(None, vec![current_commit_hash, merging_commit_hash]);
-            // helpers::update_branch_hash(&Head::get_current_branch_name()?, &new_commit_hash)?;
-        //     WorkingDirectory::clean_working_directory()?;
-        //     let commit_tree = helpers::get_commit_tree(&new_commit_hash)?; // este tiene que ser el nuevo commit 
-        //     WorkingDirectory::update_working_directory_to(&commit_tree)?;
-        //     
-            }
-            None => {}
-        }
-
-        // aca se hace un ff merge
-        // if helpers::ancestor_commit_exists(&current_commit_hash, &merging_commit_hash)? {
-        //     helpers::update_branch_hash(&Head::get_current_branch_name()?, &merging_commit_hash)?;
-        //     // println!("updating branch last commit in current branch... to commit: {}", merging_commit_hash);
-        //     WorkingDirectory::clean_working_directory()?;
-        //     // println!("cleaning working directory...");
-        //     let commit_tree = helpers::get_commit_tree(&merging_commit_hash)?;
-        //     WorkingDirectory::update_working_directory_to(&commit_tree)?;
-        //     StagingArea::new().change_index_file(commit_tree)?;
-        // }   
+        let files_without_conflict = helpers::find_files_without_conflict(ancestor_working_tree, current_working_tree, merging_working_tree)?; 
+        // StagingArea::new().change_index_file(files_without_conflict)?; // esto ya podria hacerlo a files without conflct
+        // let new_commit_hash = HashObjectCreator::create_commit_object(None, vec![current_commit_hash, merging_commit_hash])?;
+        // helpers::update_branch_hash(&Head::get_current_branch_name()?, &new_commit_hash)?;
+        // WorkingDirectory::clean_working_directory()?;
+        // let commit_tree = helpers::get_commit_tree(&new_commit_hash)?; // este tiene que ser el nuevo commit 
+        // WorkingDirectory::update_working_directory_to(&commit_tree)?;
 
         Ok(String::new())
     }
@@ -2302,6 +2247,48 @@ impl Rebase {
 
 impl Command for Rebase {
     fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        let mut rebasing_branch_name = String::new();
+        let mut rebasing_commit = String::new();
+        match args {
+            Some(arg) => {
+                if arg[0] == "--continue" && helpers::check_if_file_exists(REBASE_HEAD) {
+                    rebasing_commit = helpers::read_file_content(REBASE_HEAD)?;
+
+                } else {
+                    rebasing_branch_name = arg[0].to_string();
+                    helpers::check_if_branch_exists(&rebasing_branch_name)?;
+                    rebasing_commit = helpers::get_branch_last_commit(&helpers::get_branch_path(&rebasing_branch_name))?;
+                }
+            }
+            None => return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "Error: No argument was provided for rebase.",
+            ))),
+        }
+        
+        // println!("rebasing commit: {}", rebasing_commit);
+        let ancestor_commit = helpers::find_common_ancestor_commit(&rebasing_commit)?;
+
+        let mut rebasing_commit_log: Vec<(String, String)> = Vec::new();
+        Log::generate_log_entries(&mut rebasing_commit_log, rebasing_commit)?;
+        // println!("log: {:?}", rebasing_commit_log);
+
+        for (commit, message) in rebasing_commit_log.iter().rev() {
+            println!("{}Applying:{} {}", COLOR_RED_CODE, COLOR_RESET_CODE, commit);
+            let branch_name = format!("rebase_{}", rebasing_branch_name);
+            Branch::new().create_new_branch(&branch_name);
+            helpers::update_branch_hash(&branch_name, commit)?;
+
+            match Merge::new().execute(Some(vec![&branch_name])) {
+                Ok(_) => {
+                    let _ = Branch::new().execute(Some(vec![DELETE_FLAG, &branch_name]))?;
+                }
+                Err(_) => {
+                    let mut rebase_head = fs::File::create(REBASE_HEAD)?;
+                    let _ = rebase_head.write_all(commit.as_bytes())?;
+                }
+            }
+        }
         Ok(String::new())
     }
 }
