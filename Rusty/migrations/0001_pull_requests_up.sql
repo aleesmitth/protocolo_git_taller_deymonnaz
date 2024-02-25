@@ -2,7 +2,7 @@
 CREATE SEQUENCE IF NOT EXISTS pull_request_surrogate;
 
 CREATE TABLE pull_requests (
-    _id INT DEFAULT nextval('pull_request_surrogate'),
+    _id INT DEFAULT nextval('pull_request_surrogate') NOT NULL,
     name VARCHAR(255) NOT NULL,
     repo VARCHAR(255) NOT NULL,
     head VARCHAR(255),

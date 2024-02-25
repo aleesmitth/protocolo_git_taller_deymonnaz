@@ -5,12 +5,22 @@ use crate::commands::git_commands;
 use crate::commands::git_commands::Command;
 use crate::server::models::*;
 use rocket::serde::json::Json;
-
+use rocket_okapi::openapi;
 use rocket::State;
 
 
 use super::models::create;
 
+#[openapi(skip)]
+#[get("/")]
+pub async fn test_api(state: &State<AppState>) -> String {
+    format!("Hello world")
+}
+
+/// # Get repo's pull requests
+///
+/// Returns all pull requests in the specified repo.
+#[openapi(tag = "Pull Requests")]
 #[get("/repos/<repo>/pulls")]
 pub async fn get_repo_pull_request(state: &State<AppState>, repo: String) -> String {
     let mut options = PullRequestOptions::default();
@@ -27,6 +37,10 @@ pub async fn get_repo_pull_request(state: &State<AppState>, repo: String) -> Str
     }
 }
 
+/// # Get a specific pull requests
+///
+/// Returns the specified pull requests that's in the specified repo.
+#[openapi(tag = "Pull Requests")]
 #[get("/repos/<repo>/pulls/<pull_name>")]
 pub async fn get_pull_request(state: &State<AppState>, repo: String, pull_name: String) -> String {
     let mut options = PullRequestOptions::default();
@@ -44,6 +58,10 @@ pub async fn get_pull_request(state: &State<AppState>, repo: String, pull_name: 
     }
 }
 
+/// # Get all pull request's commits
+///
+/// Returns all the commits from the specified pull request that's in the specified repo.
+#[openapi(tag = "Pull Requests")]
 #[get("/repos/<repo>/pulls/<pull_name>/commits")]
 pub async fn get_pull_request_commits(_state: &State<AppState>, repo: String, pull_name: String) -> String {
     let mut options = PullRequestOptions::default();
@@ -85,6 +103,10 @@ pub async fn get_pull_request_commits(_state: &State<AppState>, repo: String, pu
     }
 }
 
+/// # Merge a pull requests.
+///
+/// Merges a pull request into the base branch.
+#[openapi(tag = "Pull Requests")]
 #[put("/repos/<repo>/pulls/<pull_name>/merge", format = "application/json")]
 pub fn put_merge(_state: &State<AppState>, repo: String, pull_name: String) -> String {
     let mut options = PullRequestOptions::default();
@@ -93,9 +115,11 @@ pub fn put_merge(_state: &State<AppState>, repo: String, pull_name: String) -> S
     "TODO implement end point".to_string()
 }
 
-#[get("/init/<repo_name>")]
-pub async fn init_repo(repo_name: &str) -> String {
-    let repo_name_clone = repo_name.to_string(); // Clone the string
+/// # git init a repo for testing only
+#[openapi(tag = "Pull Requests")]
+#[get("/init/<repo>")]
+pub async fn init_repo(repo: &str) -> String {
+    let repo_name_clone = repo.to_string(); // Clone the string
     let _vec = spawn_blocking(move || {
         if let Err(e) = git_commands::Init::new().execute(Some(vec![&repo_name_clone])) {
             println!("e {}",e);
@@ -104,6 +128,8 @@ pub async fn init_repo(repo_name: &str) -> String {
     format!("result: {:?}", _vec)
 }
 
+/// # Create a pull request
+#[openapi(tag = "Pull Requests")]
 #[post("/repos/<repo>/pulls", format = "application/json", data = "<pr>")]
 pub async fn post_pull_request(state: &State<AppState>, repo: String, pr: Json<PullRequest>) -> String {
     // 1. Extract data from the Json<PullRequestData> parameter

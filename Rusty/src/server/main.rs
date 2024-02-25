@@ -10,6 +10,9 @@ use std::{env, thread};
 //use std::thread;
 use sqlx::PgPool;
 
+use rocket_okapi::settings::UrlObject;
+use rocket_okapi::{openapi_get_routes, rapidoc::*, swagger_ui::*};
+
 
 
 #[tokio::main]
@@ -52,16 +55,55 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn run_rocket(db_pool: PgPool) -> Result<(), rocket::Error> {
     let state = AppState { db_pool };
 
-    let _rocket = rocket::build()
+    /*let _rocket = rocket::build()
         .manage(state)
         .mount("/", routes![
+            test_api,
             get_pull_request_commits,
             get_repo_pull_request,
             get_pull_request,
             init_repo,
             post_pull_request,
             put_merge
-        ]);
+        ]);*/
+
+    let _rocket = rocket::build()
+        .manage(state)
+        .mount(
+            "/",
+            openapi_get_routes![
+                test_api,
+                init_repo,
+                post_pull_request,
+                get_repo_pull_request,
+                get_pull_request,
+                put_merge,
+                get_pull_request_commits,
+            ],
+        )
+        .mount(
+            "/swagger-ui/",
+            make_swagger_ui(&SwaggerUIConfig {
+                url: "../openapi.json".to_owned(),
+                ..Default::default()
+            }),
+        )
+        .mount(
+            "/rapidoc/",
+            make_rapidoc(&RapiDocConfig {
+                general: GeneralConfig {
+                    spec_urls: vec![UrlObject::new("General", "../openapi.json")],
+                    ..Default::default()
+                },
+                hide_show: HideShowConfig {
+                    allow_spec_url_load: false,
+                    allow_spec_file_load: false,
+                    ..Default::default()
+                },
+                ..Default::default()
+            }),
+        );
+
 
     // If you don't need to customize the Rocket configuration, you can use the default configuration.
     let _rocket = _rocket.launch().await;

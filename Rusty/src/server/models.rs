@@ -4,6 +4,8 @@ use std::error::Error;
 use sqlx::Row;
 use sqlx::FromRow;
 use serde::{Serialize, Deserialize};
+use rocket_okapi::okapi::schemars;
+use rocket_okapi::okapi::schemars::JsonSchema;
 
 // TODO make a constructor for this, so it validates data or whatever, is it cleaner?
 // TODO we should use traits to support more than 1 model.
@@ -23,15 +25,24 @@ pub struct PullRequestOptions {
     pub commit_after_merge: Option<String>,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>
 }
-#[derive(Debug,FromRow,Serialize,Deserialize)]
+#[derive(Debug,FromRow,Serialize,Deserialize, JsonSchema)]
 pub struct PullRequest {
     pub _id: Option<i32>,
     pub name: String,
     pub repo: String,
     pub head: String,
     pub base: String,
+    #[schemars(example = "example")]
     pub commit_after_merge: Option<String>,
+    #[schemars(example = "example_date")]
     pub created_at: Option<chrono::DateTime<chrono::Utc>>
+}
+
+fn example() -> &'static str {
+    "test"
+}
+fn example_date() -> chrono::DateTime<chrono::Utc> {
+    chrono::Utc::now()
 }
 
 impl PullRequest {
