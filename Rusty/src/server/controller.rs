@@ -103,7 +103,7 @@ pub async fn get_pull_request_commits(_state: &State<AppState>, repo: String, pu
     }
 }
 
-/// # Merge a pull requests.
+/// # Merge a pull request
 ///
 /// Merges a pull request into the base branch.
 #[openapi(tag = "Pull Requests")]
