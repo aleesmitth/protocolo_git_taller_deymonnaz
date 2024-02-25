@@ -37,9 +37,9 @@ pub async fn get_repo_pull_request(state: &State<AppState>, repo: String) -> Str
     }
 }
 
-/// # Get a specific pull requests
+/// # Get a specific pull request
 ///
-/// Returns the specified pull requests that's in the specified repo.
+/// Returns the specified pull request that's in the specified repo.
 #[openapi(tag = "Pull Requests")]
 #[get("/repos/<repo>/pulls/<pull_name>")]
 pub async fn get_pull_request(state: &State<AppState>, repo: String, pull_name: String) -> String {
