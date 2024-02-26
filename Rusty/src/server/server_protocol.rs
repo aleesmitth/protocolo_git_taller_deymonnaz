@@ -4,6 +4,8 @@ use crate::commands::git_commands::PathHandler;
 use crate::commands::git_commands::UnpackObjects;
 use crate::commands::helpers;
 use crate::commands::protocol_utils;
+use crate::commands::git_commands::RELATIVE_PATH;
+use std::env;
 
 use std::{error::Error, fs::File, io, io::Read, io::Write, net::TcpListener, net::TcpStream};
 const RECEIVE_PACK: &str = "git-receive-pack";
@@ -62,13 +64,62 @@ impl ServerProtocol {
         let request = protocol_utils::read_exact_length_to_string(&mut reader, request_length)?;
         // println!("request: {:?}", request);
         let request_array: Vec<&str> = request.split_whitespace().collect();
-        // println!("request in array: {:?}", request_array);
+        //println!("request in array: {:?}", request_array);
+        let second_part_of_request = request
+            .split('\0')
+            .next() // Take the first element before '\0'
+            .and_then(|s| s.split_whitespace().nth(1)) // Extract the second part after the space
+            .map_or_else(|| "/".to_string(), String::from);
+        //println!("second_part_of_request in array: {:?}", second_part_of_request);
+
+        let trimmed_string_path = if second_part_of_request.starts_with('/') {
+            &second_part_of_request[1..]
+        } else {
+            second_part_of_request.as_str()
+        };
+
+        let result_string = trimmed_string_path.to_string();
+
+        let trimmed_path_name = result_string.strip_suffix(".git").unwrap_or(result_string.as_str());
+
+        // Retrieve the current value
+        let base_repo_path = env::var(RELATIVE_PATH).unwrap_or_else(|_| String::new());
+        let mut current_repo_path = base_repo_path.clone();
+
+        // Concatenate a new string
+        current_repo_path.push_str(trimmed_path_name);
+        println!("current_repo_path: {:?}", current_repo_path);
+        
+        // Check if the directory exists
+    /*if !fs::metadata(&current_repo_path).is_ok() {
+        // If the directory doesn't exist, create it
+        if let Err(err) = fs::create_dir(&current_repo_path) {
+            eprintln!("Error creating directory: {}", err);
+        } else {
+            println!("Directory created successfully!");
+        }
+    } else {
+        println!("Directory already exists.");
+    }*/
+        // Set the modified value back to the environment variable
+        env::set_var(RELATIVE_PATH, &current_repo_path);
+
+
+
+
+
+
+        /*if let Err(e) = git_commands::Init::new().execute(None) {
+            println!("e {}",e);
+        }*/
+
         match request_array[0] {
             UPLOAD_PACK => ServerProtocol::upload_pack(stream)?,
             RECEIVE_PACK => ServerProtocol::receive_pack(stream)?,
             _ => {}
         }
 
+        env::set_var(RELATIVE_PATH, &base_repo_path);
         println!("end handling connection");
         Ok(())
     }

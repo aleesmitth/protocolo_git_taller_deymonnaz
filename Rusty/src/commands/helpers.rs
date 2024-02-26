@@ -1,3 +1,4 @@
+use std::{collections::HashMap, error::Error, fs, io, io::Read, io::Write, path::Path, thread::current};
 use std::{collections::HashMap, error::Error, fs, io, io::Read, io::Write, path::Path, fmt};
 extern crate crypto;
 extern crate libflate;
@@ -427,6 +428,83 @@ pub fn ancestor_commit_exists(
     Ok(false)
 }
 
+pub fn get_changes_in_branch(
+    ancestor_commit_hash: &str,
+    current_commit_hash: &str,
+) -> Result<(HashMap<String, String>, HashMap<String, String>), Box<dyn Error>> {
+    let mut modified_objects = HashMap::new();
+    let mut added_objects = HashMap::new();
+
+    let ancestor_commit_tree = get_commit_tree(ancestor_commit_hash)?;
+    let ancestor_tree_content = read_tree_content(&ancestor_commit_tree)?;
+
+    let current_commit_tree = get_commit_tree(current_commit_hash)?;
+    let current_tree_content = read_tree_content(&current_commit_tree)?;
+
+    let mut counter = 0;
+
+    while counter < current_tree_content.len() {
+        let current_commit_line_name = &current_tree_content[counter].1;
+        let current_commit_line_hash = &current_tree_content[counter].2;
+
+        if counter < ancestor_tree_content.len() {
+            let ancestor_commit_line_name = &ancestor_tree_content[counter].1;
+            let ancestor_commit_line_hash = &ancestor_tree_content[counter].2;
+            if ancestor_commit_line_name == current_commit_line_name
+                && ancestor_commit_line_hash != current_commit_line_hash
+            {
+                modified_objects.insert(
+                    current_commit_line_name.to_string(),
+                    current_commit_line_hash.to_string(),
+                );
+            }
+        } else {
+            added_objects
+                .insert(current_commit_line_name.to_string(), current_commit_line_hash.to_string());
+        }
+
+        counter += 1;
+    }
+
+    Ok((added_objects, modified_objects))
+}
+
+pub fn get_modified_objects(
+    modified_current_branch: HashMap<String, String>,
+    modified_merging_branch: HashMap<String, String>,
+) -> Result<(HashMap<String, String>, HashMap<String, String>), Box<dyn Error>> {
+    let mut modified_objects = HashMap::new();
+    let mut objects_with_conflict = HashMap::new();
+
+    for (object_name, object_hash) in modified_merging_branch {
+        if let Some(current_branch_object_hash) = modified_current_branch.get(&object_name) {
+            objects_with_conflict.insert(object_name, object_hash);
+        } else {
+            modified_objects.insert(object_name, object_hash);
+        }
+    }
+
+    Ok((modified_objects, objects_with_conflict))
+}
+
+fn generate_conflict(file_name: String, merging_hash: String, current_hash: String) -> Result<bool, Box<dyn Error>> {
+    let (_, merging_content, _) = read_object_to_string(merging_hash)?;
+    let (_, current_content, _) = read_object_to_string(current_hash)?;
+
+    let merging_content_lines: Vec<String> = merging_content.split('\n').map(String::from).collect();
+    let current_content_lines: Vec<String> = current_content.split('\n').map(String::from).collect();
+
+    let mut counter = 0;
+
+    loop {
+        if merging_content_lines[counter] != current_content_lines[counter] {
+            // aca tengo una diferencia que plantear 
+        }
+
+        counter += 1
+    }
+}
+ 
 /// Given a commit's hash it accesses its file and returns the hash of its associated
 /// tree object.
 pub fn get_commit_tree(commit_hash: &str) -> Result<String, Box<dyn Error>> {
@@ -556,20 +634,21 @@ pub fn validate_ref_update_request(
     let branch_path = format!(".git/{}", branch_ref);
     // println!("path: {}", branch_path);
     if check_if_file_exists(&branch_path) {
-        if prev_remote_hash == client_protocol::ZERO_HASH {
+        // TODO double check this validations, don't think they are correct
+        /*if prev_remote_hash == client_protocol::ZERO_HASH {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
                 "Error: Trying to initialize existing ref",
             )));
-        }
-        if get_branch_last_commit(&PathHandler::get_relative_path(&branch_path))?
+        }*/
+        /*if get_branch_last_commit(&PathHandler::get_relative_path(&branch_path))?
             != prev_remote_hash
         {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
-                "Error: New hash is different from ref's current hash",
+                "Error: Prev hash is different from ref's current hash",
             )));
-        }
+        }*/
     } else if prev_remote_hash != client_protocol::ZERO_HASH {
         return Err(Box::new(io::Error::new(
             io::ErrorKind::Other,
