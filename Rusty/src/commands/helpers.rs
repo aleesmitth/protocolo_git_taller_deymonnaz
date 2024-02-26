@@ -387,13 +387,15 @@ pub fn get_object_path(object_hash: &str) -> String {
     )
 }
 
+/// Goes through the logs of the merging branch and head branch looking
+/// for its common ancestor commit. If found it returns said commit hash.
+/// If not, it return an empty string
 pub fn find_common_ancestor_commit(
+    current_branch_commit: &str,
     merging_branch: &str,
 ) -> Result<String, Box<dyn Error>> {
-    let current_branch_commit = Head::get_head_commit()?;
-
     let mut current_branch_log = Vec::new();
-    let _ = Log::generate_log_entries(&mut current_branch_log, current_branch_commit);
+    let _ = Log::generate_log_entries(&mut current_branch_log, current_branch_commit.to_string());
     // println!("current branch log: {:?}", current_branch_log);
 
     let mut merging_branch_log = Vec::new();
@@ -605,6 +607,8 @@ pub fn find_modified_files(ancestor_working_tree: HashMap<String, String>, worki
     modified_files
 }
 
+/// Given two working trees stored in HashMaps, it goes through their content and check if any conflict is found when merging.
+/// Returning a HashMap that contains the files without conflict name's and hashes;
 pub fn find_files_without_conflict(ancestor_working_tree: HashMap<String, String>, current_modified_files: HashMap<String, String>, mut merging_modified_files:  HashMap<String, String>) -> Result<HashMap<String, String>, Box<dyn Error>> {
     let mut files_without_conflict: HashMap<String, String> = HashMap::new();
     let mut files_with_conflict: Vec<String> = Vec::new(); // tal vez esto ni hace falta si los voy printeando
@@ -779,7 +783,7 @@ pub fn reconstruct_working_tree(commit_hash: String) -> Result<HashMap<String, S
 /// Receives a branch name and return a bool indicating if the branch already exists or not
 pub fn check_if_branch_exists(branch_name: &str) -> Result<(), Box<dyn Error>> {
     let branch_path = get_branch_path(branch_name);
-    if !check_if_file_exists(&branch_path) {
+    if !check_if_file_exists(&PathHandler::get_relative_path(&branch_path)) {
         return Err(Box::new(io::Error::new(
             io::ErrorKind::Other,
             "Error: Specified branch does not exist.",

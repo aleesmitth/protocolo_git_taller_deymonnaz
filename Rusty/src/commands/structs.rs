@@ -479,7 +479,7 @@ impl StagingArea {
             new_index_lines.push(new_line);
         }
         let new_index_content = new_index_lines.join("\n");
-        let mut index_file = fs::File::create(INDEX_FILE)?;
+        let mut index_file = fs::File::create(PathHandler::get_relative_path(INDEX_FILE))?;
         let _ = index_file.write_all(new_index_content.as_bytes())?;
 
         Ok(())
@@ -566,7 +566,7 @@ impl WorkingDirectory {
             let file_path_str = split_line[0].clone();
             // println!("path to delete: {}", file_path_str);
             let file_path = PathBuf::from(file_path_str);
-            Self::remove_file_and_empty_parent_directories(&file_path)?;
+            Self::remove_file_and_empty_parent_directories(PathHandler::get_relative_path(&file_path))?;
         }
 
         Ok(())
@@ -583,13 +583,7 @@ impl WorkingDirectory {
         current_directory: &str,
     ) -> Result<(), Box<dyn Error>> {
         let tree_content = helpers::read_tree_content(tree)?;
-        // println!("tree_content: {:?}", tree_content);
         for (file_mode, file_name, file_hash) in tree_content {
-            // println!("line to create: {} {} {}", file_mode, file_name, file_hash);
-            // let split_line: Vec<String> = line.split_whitespace().map(String::from).collect();
-            // let file_mode = split_line[0].as_str();
-            // let object_hash = split_line[2].clone();
-            // let file_path = &split_line[3];
             let relative_file_path = format!("{}{}", current_directory, file_name);
 
             match file_mode.as_str() {

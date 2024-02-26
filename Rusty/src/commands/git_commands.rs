@@ -1,3 +1,4 @@
+use std::env::current_exe;
 use std::fmt::Write as Write_FMT;
 use std::fs::ReadDir;
 use std::{
@@ -791,6 +792,8 @@ impl Remote {
         let remote_dir_path = format!("{}/{}", R_REMOTES, remote_name);
         fs::create_dir(PathHandler::get_relative_path(&remote_dir_path))?;
 
+        println!("Added new remote: {}", remote_name);
+
         Ok(())
     }
 
@@ -1501,11 +1504,8 @@ impl Command for Push {
             }
         }
 
-        // me parece mejor asumir que siempre va a ser desde la rama actual, solo si esta bueno
-        // declarar a que repo remoto
-
         ClientProtocol::new().receive_pack(remote_url.to_string())?;
-        // // volver esto abstracto como decia y no isntanciarlo
+
         Ok(String::new())
     }
 }
@@ -2203,28 +2203,47 @@ impl Command for Merge {
     fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let arg_slice = args.unwrap_or_default(); //aca tendria que chequear que sea valido el branch que recibo por parametro
 
+        let mut head_commit = Head::get_head_commit()?;
         let branch_to_merge = arg_slice[0];
+
+        if arg_slice.len() == 2 {
+            let current_branch = arg_slice[1];
+            if branch_to_merge == current_branch {
+                return Err(Box::new(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Error: Cannot merge same branch.",
+                )))
+            }
+            helpers::check_if_branch_exists(current_branch)?;
+            head_commit = helpers::get_branch_last_commit(&PathHandler::get_relative_path(&helpers::get_branch_path(current_branch)));
+        }
+
+        if branch_to_merge == Head::get_current_branch_name() {
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "Error: Cannot merge same branch.",
+            )))
+        }
+
         let mut branch_to_merge_path = helpers::get_branch_path(branch_to_merge);
-        if !helpers::check_if_file_exists(&branch_to_merge_path) {
+        if !helpers::check_if_file_exists(&PathHandler::get_relative_path(&branch_to_merge_path)) {
             // This means the branch is a remote branch
             branch_to_merge_path = format!("{}/{}", R_REMOTES, branch_to_merge);
         }
 
-        let merging_commit_hash = helpers::get_branch_last_commit(&branch_to_merge_path)?;
-        let current_commit_hash = Head::get_head_commit()?;
-
-        let ancestor_commit = helpers::find_common_ancestor_commit(&merging_commit_hash)?;
+        let merging_commit_hash = helpers::get_branch_last_commit(&PathHandler::get_relative_path(&branch_to_merge_path))?;
+        let ancestor_commit = helpers::find_common_ancestor_commit(&head_commit, &merging_commit_hash)?;
 
         let ancestor_working_tree = helpers::reconstruct_working_tree(ancestor_commit)?;
-        let current_working_tree = helpers::reconstruct_working_tree(current_commit_hash.clone())?;
+        let current_working_tree = helpers::reconstruct_working_tree(head_commit.clone())?;
         let merging_working_tree = helpers::reconstruct_working_tree(merging_commit_hash.clone())?;
 
         let files_without_conflict = helpers::find_files_without_conflict(ancestor_working_tree, current_working_tree, merging_working_tree)?;
-        StagingArea::new().change_index_file(files_without_conflict)?; // esto ya podria hacerlo a files without conflct
-        let new_commit_hash = HashObjectCreator::create_commit_object(None, vec![current_commit_hash, merging_commit_hash])?;
+        StagingArea::new().change_index_file(files_without_conflict)?;
+        let new_commit_hash = HashObjectCreator::create_commit_object(None, vec![head_commit, merging_commit_hash])?;
         helpers::update_branch_hash(&Head::get_current_branch_name()?, &new_commit_hash)?;
         WorkingDirectory::clean_working_directory()?;
-        let commit_tree = helpers::get_commit_tree(&new_commit_hash)?; // este tiene que ser el nuevo commit
+        let commit_tree = helpers::get_commit_tree(&new_commit_hash)?;
         WorkingDirectory::update_working_directory_to(&commit_tree)?;
 
         Ok(String::new())
@@ -2267,7 +2286,7 @@ impl Command for Rebase {
         }
 
         // println!("rebasing commit: {}", rebasing_commit);
-        let ancestor_commit = helpers::find_common_ancestor_commit(&rebasing_commit)?;
+        let ancestor_commit = helpers::find_common_ancestor_commit(&Head::get_head_commit()?, &rebasing_commit)?;
 
         let mut rebasing_commit_log: Vec<(String, String)> = Vec::new();
         Log::generate_log_entries(&mut rebasing_commit_log, rebasing_commit)?;
