@@ -556,7 +556,7 @@ pub fn validate_ref_update_request(
     let branch_path = format!(".git/{}", branch_ref);
     // println!("path: {}", branch_path);
     if check_if_file_exists(&branch_path) {
-        if prev_remote_hash == client_protocol::ZERO_HASH {
+        /*if prev_remote_hash == client_protocol::ZERO_HASH {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
                 "Error: Trying to initialize existing ref",
@@ -569,7 +569,7 @@ pub fn validate_ref_update_request(
                 io::ErrorKind::Other,
                 "Error: New hash is different from ref's current hash",
             )));
-        }
+        }*/
     } else if prev_remote_hash != client_protocol::ZERO_HASH {
         return Err(Box::new(io::Error::new(
             io::ErrorKind::Other,

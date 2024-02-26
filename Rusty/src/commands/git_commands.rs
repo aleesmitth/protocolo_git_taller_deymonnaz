@@ -2220,12 +2220,12 @@ impl Command for Merge {
         let merging_working_tree = helpers::reconstruct_working_tree(merging_commit_hash.clone())?;
 
         let files_without_conflict = helpers::find_files_without_conflict(ancestor_working_tree, current_working_tree, merging_working_tree)?;
-        // StagingArea::new().change_index_file(files_without_conflict)?; // esto ya podria hacerlo a files without conflct
-        // let new_commit_hash = HashObjectCreator::create_commit_object(None, vec![current_commit_hash, merging_commit_hash])?;
-        // helpers::update_branch_hash(&Head::get_current_branch_name()?, &new_commit_hash)?;
-        // WorkingDirectory::clean_working_directory()?;
-        // let commit_tree = helpers::get_commit_tree(&new_commit_hash)?; // este tiene que ser el nuevo commit
-        // WorkingDirectory::update_working_directory_to(&commit_tree)?;
+        StagingArea::new().change_index_file(files_without_conflict)?; // esto ya podria hacerlo a files without conflct
+        let new_commit_hash = HashObjectCreator::create_commit_object(None, vec![current_commit_hash, merging_commit_hash])?;
+        helpers::update_branch_hash(&Head::get_current_branch_name()?, &new_commit_hash)?;
+        WorkingDirectory::clean_working_directory()?;
+        let commit_tree = helpers::get_commit_tree(&new_commit_hash)?; // este tiene que ser el nuevo commit
+        WorkingDirectory::update_working_directory_to(&commit_tree)?;
 
         Ok(String::new())
     }

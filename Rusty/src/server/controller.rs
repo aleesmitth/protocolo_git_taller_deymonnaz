@@ -141,6 +141,12 @@ pub async fn post_pull_request(state: &State<AppState>, repo: String, pr: Json<P
     }
     match create(&pull_request_data, &state.db_pool).await {
         Ok(pull_request_id) => {
+            /*let _vec = spawn_blocking(move || {
+                if let Err(e) = git_commands::Merge::new().execute(Some(vec!["segunda_branch"])) {
+                    println!("e {}",e);
+                }
+            });
+            format!("result: {:?}", _vec);*/
             // 4. Return an appropriate response
             format!("Pull request created successfully with Id: {}", pull_request_id)
         }
