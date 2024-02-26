@@ -57,6 +57,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "unpack-objects" => {
                 git_commands::UnpackObjects::new().execute(parse_arguments(&args[2..]))?
             }
+            "rebase" => git_commands::Rebase::new().execute(parse_arguments(&args[2..]))?,
 
             _ => {
                 return Err(Box::new(io::Error::new(

@@ -1,4 +1,3 @@
-use chrono::{DateTime, Local};
 use std::fmt::Write as Write_FMT;
 use std::fs::ReadDir;
 use std::{
@@ -40,6 +39,7 @@ const LONG_FLAG: &str = "-l";
 
 const EXCLUDE_LOG_ENTRY: char = '^';
 const HEAD: &str = "HEAD";
+const REBASE_HEAD: &str = ".git/REBASE_HEAD";
 const ADD_FLAG: &str = "add";
 const REMOVE_FLAG: &str = "rm";
 pub const R_HEADS: &str = ".git/refs/heads";
@@ -66,6 +66,7 @@ const COPY_ZERO_SIZE: usize = 0x10000;
 //CODES FOR COLORS IN TEXT
 const COLOR_GREEN_CODE: &str = "\x1b[32m";
 const COLOR_YELLOW_CODE: &str = "\x1b[33m";
+const COLOR_RED_CODE: &str = "\x1b[31m";
 const COLOR_RESET_CODE: &str = "\x1b[0m";
 
 use crate::client;
@@ -408,7 +409,6 @@ impl Command for Checkout {
                         "Already on specified branch",
                     )));
                 }
-                // falla aca que no chequeo que haya algun commit, si no hay commit previo rompe
                 Head::change_head_branch(branch_name)?;
                 let head_commit = Head::get_head_commit()?;
                 WorkingDirectory::clean_working_directory()?;
@@ -416,7 +416,8 @@ impl Command for Checkout {
                 if !head_commit.is_empty() {
                     let head_tree = helpers::get_commit_tree(&head_commit)?;
                     WorkingDirectory::update_working_directory_to(&head_tree)?;
-                    StagingArea::new().change_index_file(head_tree)?; //esto rompe en caso aca, pero quiero testear abtes
+                    let working_tree = helpers::reconstruct_working_tree(head_commit)?;
+                    StagingArea::new().change_index_file(working_tree)?;
                 }
             }
             None => {
@@ -573,45 +574,6 @@ impl Commit {
         }
     }
 
-    /// Generates the content for a new commit.    
-    fn generate_commit_content(
-        &self,
-        tree_hash: String,
-        message: Option<&str>,
-        _branch_path: &str,
-    ) -> Result<String, Box<dyn Error>> {
-        let head_commit = Head::get_head_commit()?;
-        let mut content;
-
-        let username = env::var("USER")?;
-        let current_time: DateTime<Local> = Local::now();
-        let timestamp = current_time.timestamp();
-
-        let offset_minutes = current_time.offset().local_minus_utc();
-        let offset_hours = (offset_minutes / 60) / 60;
-
-        let offset_string = format!("{:03}{:02}", offset_hours, (offset_minutes % 60).abs());
-
-        let author_line = format!(
-            "author {} <{}@fi.uba.ar> {} {}",
-            username, username, timestamp, offset_string
-        );
-        let commiter_line = format!(
-            "committer {} <{}@fi.uba.ar> {} {}",
-            username, username, timestamp, offset_string
-        );
-
-        if head_commit.is_empty() {
-            content = format!("tree {}", tree_hash);
-        } else {
-            content = format!("tree {}\nparent {}", tree_hash, head_commit);
-        }
-        content = format!("{}\n{}\n{}\n", content, author_line, commiter_line);
-        if let Some(message) = message {
-            content = format!("{}\n{}", content, message);
-        }
-        Ok(content)
-    }
 }
 
 impl Command for Commit {
@@ -641,23 +603,18 @@ impl Command for Commit {
                 }
             }
         }
-        let tree_hash = HashObjectCreator::create_tree_object()?;
-        //println!("tree_hash: {:?}", tree_hash);
-        let branch_path = Head::get_current_branch_path()?;
         message = if message_flag { message } else { None };
-        let commit_content = self.generate_commit_content(tree_hash, message, &branch_path)?;
-        //println!("commit content: {}", commit_content);
-        let commit_object_hash = HashObjectCreator::write_object_file(
-            commit_content.clone(),
-            ObjectType::Commit,
-            commit_content.as_bytes().len() as u64,
-        )?;
+        let head_commit = Head::get_head_commit()?;
+        let mut parent = Vec::new();
+        if !head_commit.is_empty() {
+            parent.push(head_commit)
+        }
+        let commit_object_hash = HashObjectCreator::create_commit_object(message, parent)?;
 
-        let mut branch_file = fs::File::create(PathHandler::get_relative_path(&branch_path))?;
-        branch_file.write_all(commit_object_hash.as_bytes())?;
+        helpers::update_branch_hash(&Head::get_current_branch_name()?, &commit_object_hash);
 
         self.stg_area.unstage_index_file()?;
-        Ok(commit_content)
+        Ok(String::new())
     }
 }
 
@@ -1642,6 +1599,9 @@ impl Command for Clone {
                 Remote::new().execute(Some(vec!["add", "origin", remote_repository[0]]))?;
                 Fetch::new().execute(None)?;
                 // aca tendria que crear las branches de remotes
+                // creo funcion que lea las brnaches que terngo en remote
+                let remote_branches = helpers::get_remote_branches()?;
+                helpers::update_branches(remote_branches)?;
                 Pull::new().execute(Some(vec!["origin"]))?;
             }
             None => {
@@ -2269,13 +2229,10 @@ impl Merge {
 }
 
 impl Command for Merge {
-    //ver que pasa cuando uno commit ancestro es commit root
     fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let arg_slice = args.unwrap_or_default(); //aca tendria que chequear que sea valido el branch que recibo por parametro
 
         let branch_to_merge = arg_slice[0];
-        // println!("branch to merge: {}", branch_to_merge);
-        println!("merging {} -> {}", branch_to_merge, Head::get_current_branch_name()?);
         let mut branch_to_merge_path = helpers::get_branch_path(branch_to_merge);
         if !helpers::check_if_file_exists(&branch_to_merge_path) {
             // This means the branch is a remote branch
@@ -2283,60 +2240,84 @@ impl Command for Merge {
         }
 
         let merging_commit_hash = helpers::get_branch_last_commit(&branch_to_merge_path)?;
-
         let current_commit_hash = Head::get_head_commit()?;
+        let ancestor_commit = helpers::find_common_ancestor_commit(&merging_commit_hash)?;
 
-        println!("merging commits: {} => {}", merging_commit_hash, current_commit_hash);
+        let ancestor_working_tree = helpers::reconstruct_working_tree(ancestor_commit)?;
+        let current_working_tree = helpers::reconstruct_working_tree(current_commit_hash.clone())?;
+        let merging_working_tree = helpers::reconstruct_working_tree(merging_commit_hash.clone())?;
 
-        let ancestor_commit = helpers::find_common_ancestor_commit(&current_commit_hash, &merging_commit_hash)?;
-        println!("ancestor commit: {}", ancestor_commit);
+        let files_without_conflict = helpers::find_files_without_conflict(ancestor_working_tree, current_working_tree, merging_working_tree)?; 
+        // StagingArea::new().change_index_file(files_without_conflict)?; // esto ya podria hacerlo a files without conflct
+        // let new_commit_hash = HashObjectCreator::create_commit_object(None, vec![current_commit_hash, merging_commit_hash])?;
+        // helpers::update_branch_hash(&Head::get_current_branch_name()?, &new_commit_hash)?;
+        // WorkingDirectory::clean_working_directory()?;
+        // let commit_tree = helpers::get_commit_tree(&new_commit_hash)?; // este tiene que ser el nuevo commit 
+        // WorkingDirectory::update_working_directory_to(&commit_tree)?;
 
-        if ancestor_commit == current_commit_hash {
-            //hacer ff merge
-            let commit_tree = helpers::get_commit_tree(&merging_commit_hash)?;
-            self.merge_branch(&Head::get_current_branch_name()?, &commit_tree, &merging_commit_hash)?;
-            return Ok(String::new())
+        Ok(String::new())
+    }
+}
+
+pub struct Rebase;
+
+impl Default for Rebase {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Rebase {
+    pub fn new() -> Self {
+        Rebase {}
+    }
+}
+
+impl Command for Rebase {
+    fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        let mut rebasing_branch_name = String::new();
+        let mut rebasing_commit = String::new();
+        match args {
+            Some(arg) => {
+                if arg[0] == "--continue" && helpers::check_if_file_exists(REBASE_HEAD) {
+                    rebasing_commit = helpers::read_file_content(REBASE_HEAD)?;
+
+                } else {
+                    rebasing_branch_name = arg[0].to_string();
+                    helpers::check_if_branch_exists(&rebasing_branch_name)?;
+                    rebasing_commit = helpers::get_branch_last_commit(&helpers::get_branch_path(&rebasing_branch_name))?;
+                }
+            }
+            None => return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "Error: No argument was provided for rebase.",
+            ))),
         }
+        
+        // println!("rebasing commit: {}", rebasing_commit);
+        let ancestor_commit = helpers::find_common_ancestor_commit(&rebasing_commit)?;
 
-        let (added_current_branch, modified_current_branch) = helpers::get_changes_in_branch(&ancestor_commit, &current_commit_hash)?;
-        let (added_merging_branch, modified_merging_branch) = helpers::get_changes_in_branch(&ancestor_commit, &merging_commit_hash)?;
+        let mut rebasing_commit_log: Vec<(String, String)> = Vec::new();
+        Log::generate_log_entries(&mut rebasing_commit_log, rebasing_commit)?;
+        // println!("log: {:?}", rebasing_commit_log);
 
-        println!("added_merging_branch: {:?} modified_merging_branch: {:?}", added_merging_branch, modified_merging_branch);
-        println!("added_current_branch: {:?} modified_current_branch: {:?}", added_current_branch, modified_current_branch);
+        for (commit, message) in rebasing_commit_log.iter().rev() {
+            println!("{}Applying:{} {}", COLOR_RED_CODE, COLOR_RESET_CODE, commit);
+            let branch_name = format!("rebase_{}", rebasing_branch_name);
+            Branch::new().create_new_branch(&branch_name);
+            helpers::update_branch_hash(&branch_name, commit)?;
 
-        let (modified_objects, objects_with_conflict) = helpers::get_modified_objects(modified_current_branch, modified_merging_branch)?;
-
-        if !objects_with_conflict.is_empty() {
-            for (object_name, _) in objects_with_conflict {
-                println!("conflict when merging {}", object_name)
+            match Merge::new().execute(Some(vec![&branch_name])) {
+                Ok(_) => {
+                    let _ = Branch::new().execute(Some(vec![DELETE_FLAG, &branch_name]))?;
+                }
+                Err(_) => {
+                    let mut rebase_head = fs::File::create(REBASE_HEAD)?;
+                    let _ = rebase_head.write_all(commit.as_bytes())?;
+                }
             }
-            return Ok(String::new())
-        } 
-        let ancestor_tree = helpers::get_commit_tree(&ancestor_commit)?;
-        let ancestor_tree_content = helpers::read_tree_content(&ancestor_tree)?;
-
-        let mut new_working_tree_content = Vec::new();
-
-        for (_, file_name, hash) in ancestor_tree_content {
-            if let Some(modified_object_hash) = modified_objects.get(&file_name) {
-                new_working_tree_content.push((file_name, modified_object_hash.to_string()))
-            } else {
-                new_working_tree_content.push((file_name, hash.clone()))
-            }
-        } 
-
-        // como lo estaba haceindo antes estaba mal
-        // hacer que create_tree_object() reciba un un Vec<(String, String)> con hash y file name para guardar en el tree
-        // asi sirve en otro contextos y no solo para index
-        // crear funcion en StagingArea que devuelva el index que esta Staged en forma de Vec<(String, String)>
-        // usar esto cuando creo commit objects
-        let tree_hash = HashObjectCreator::create_tree_object()?;
-        // create new commit con tree hash y dos parents
-        let new_commit_hash = String::new();
-
-        self.merge_branch(&Head::get_current_branch_name()?, &tree_hash, &new_commit_hash)?;
-
-        Ok(new_commit_hash) // return hash of new commit
+        }
+        Ok(String::new())
     }
 }
 
