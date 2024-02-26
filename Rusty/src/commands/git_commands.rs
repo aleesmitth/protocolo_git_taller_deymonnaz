@@ -4,13 +4,12 @@ use std::{
     collections::HashSet, env, error::Error, fs, io, io::BufRead, io::ErrorKind, io::Read,
     io::Seek, io::SeekFrom, io::Write, str,
 };
-use std::clone::Clone as STDClone;
 
 extern crate libflate;
 use crypto::digest::Digest;
 use crypto::sha1::Sha1;
 use libflate::zlib::Decoder;
-//const GIT: &str = ".git";
+const GIT: &str = ".git";
 const OBJECT: &str = ".git/objects";
 const PACK: &str = ".git/pack";
 const PARENT: &str = "parent";
@@ -71,7 +70,7 @@ const COLOR_RESET_CODE: &str = "\x1b[0m";
 
 use crate::client;
 use crate::client::client_protocol::ClientProtocol;
-use crate::commands::helpers::{get_file_length, get_commit_tree};
+use crate::commands::helpers::get_file_length;
 use crate::commands::structs::HashObjectCreator;
 use crate::commands::structs::Head;
 use crate::commands::structs::ObjectType;
@@ -128,40 +127,23 @@ impl Command for Init {
     /// for branches, tags, and objects. It also sets the default branch to 'main' and creates an empty
     ///  index file. If successful, it returns an empty string; otherwise, it returns an error message.
     fn execute(&self, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
-        let mut relative_path_prefix: String = String::new();
-
-        // Check if args is Some and has at least one element
-        if let Some(arg_vec) = _args {
-            if let Some(first_arg) = arg_vec.first() {
-                // Save the first argument to the relative_path_prefix
-                relative_path_prefix = first_arg.to_string();
-
-                // Ensure the string ends with "/"
-                if !relative_path_prefix.ends_with('/') {
-                    relative_path_prefix.push('/');
-                }
-            }
+        if helpers::check_if_directory_exists(&PathHandler::get_relative_path(GIT)) {
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "A git repository already exists in this directory",
+            )));
         }
-        let base_repo_path = env::var(RELATIVE_PATH).unwrap_or_else(|_| String::new());
-        let mut current_repo_path = base_repo_path.clone();
-        // Concatenate a new string
-        current_repo_path.push_str(&relative_path_prefix);
-        //println!("current_repo_path: {:?}", current_repo_path);
-        // Set the modified value back to the environment variable
-        env::set_var(RELATIVE_PATH, &current_repo_path);
-
         let _refs_heads = fs::create_dir_all(PathHandler::get_relative_path(R_HEADS));
         fs::create_dir_all(PathHandler::get_relative_path(R_TAGS))?;
-        fs::create_dir_all(PathHandler::get_relative_path(OBJECT))?;
-        fs::create_dir_all(PathHandler::get_relative_path(PACK))?;
-        fs::create_dir_all(PathHandler::get_relative_path(R_REMOTES))?;
-        fs::File::create(PathHandler::get_relative_path(INDEX_FILE))?;
-        fs::File::create(PathHandler::get_relative_path(CONFIG_FILE))?;
-        if let Ok(_e) = Branch::new().create_new_branch(DEFAULT_BRANCH_NAME) {
-            Head::change_head_branch(DEFAULT_BRANCH_NAME)?;
-        }
-        //println!("initial_repo_path: {:?}", initial_repo_path);
-        env::set_var(RELATIVE_PATH, &base_repo_path);
+        fs::create_dir(PathHandler::get_relative_path(OBJECT))?;
+        fs::create_dir(PathHandler::get_relative_path(PACK))?;
+        fs::create_dir(PathHandler::get_relative_path(R_REMOTES))?;
+
+        let mut _config_file = fs::File::create(PathHandler::get_relative_path(CONFIG_FILE))?;
+        Branch::new().create_new_branch(DEFAULT_BRANCH_NAME)?;
+        Head::change_head_branch(DEFAULT_BRANCH_NAME)?;
+
+        let _index_file = fs::File::create(PathHandler::get_relative_path(INDEX_FILE))?;
 
         Ok(String::new())
     }
@@ -719,11 +701,12 @@ impl Command for Status {
     fn execute(&self, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let last_commit_hash: String = Head::get_head_commit()?;
         let mut no_changes = true;
-        let mut tree_content: Vec<(String, String, String)> = Vec::new();
+        let tree_content: Vec<(String, String, String)> = Vec::new();
         if !last_commit_hash.is_empty() {
             let last_commit = Head::get_head_commit()?;
             let tree_hash = helpers::get_commit_tree(&last_commit)?;
-            tree_content = helpers::read_tree_content(&tree_hash)?;
+            let _tree_content: Vec<(String, String, String)> =
+                helpers::read_tree_content(&tree_hash)?;
         }
 
         let index_file_content =
@@ -748,22 +731,19 @@ impl Command for Status {
                 let current_object_content = helpers::read_file_content(index_file_line[0])?;
                 let current_object_hash = HashObjectCreator::generate_object_hash(
                     ObjectType::Blob,
-                    current_object_content.bytes().len() as u64,
+                    get_file_length(index_file_line[0])?,
                     &current_object_content,
                 );
                 if current_object_hash != hash_string && index_file_line[2] == "0" {
                     no_changes = false;
                     line = format!("modified: {} (Unstaged)", index_file_line[0]);
-                    println!("{}", line);
-                    line_result.push_str(&line);
                 }
             } else {
                 no_changes = false;
                 line = format!("new file: {} (Staged)", index_file_line[0]);
-                println!("{}", line);
-                line_result.push_str(&line);    
             }
-            
+            println!("{}", line);
+            line_result.push_str(&line);
             line_result.push('\n');
         }
         if no_changes {
@@ -988,7 +968,7 @@ impl Command for PackObjects {
     /// It also creates an index file that helps locate objects in the pack file.
     fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let commit_list = args.unwrap_or_default(); //aca recibo hashes de commits
-                                                    //por cada hash de commit busco su hash de tree
+        //por cada hash de commit busco su hash de tree
         let mut object_set: HashSet<String> = HashSet::new();
         for commit_hash in commit_list {
             // println!("looping first commit {}", commit_hash);
@@ -1641,7 +1621,7 @@ impl Log {
     /// * `entries` - A mutable reference to a vector to store log entries.
     /// * `base_commit` - The base commit ID to start generating logs from./// # Returns
     ///
-    /// A `Result` containing the execution result or an error message.    
+    /// A `Result` containing the execution result or an error message.
     pub fn generate_log_entries(
         entries: &mut Vec<(String, String)>,
         base_commit: String,
@@ -1882,7 +1862,7 @@ impl LsTree {
 }
 
 impl Command for LsTree {
-    /// Executes the "git ls-tree" command.    
+    /// Executes the "git ls-tree" command.
     fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let mut direct_flag = false;
         let mut recurse_flag = false;
@@ -1903,9 +1883,9 @@ impl Command for LsTree {
 
         if !direct_flag && !recurse_flag && !long_flag {
             return Err(Box::new(io::Error::new(
-                        io::ErrorKind::Other,
-                        "Error: ls-tree wrong arguments received. supported flags are -d -r -l followed by a tree hash",
-                    )));
+                io::ErrorKind::Other,
+                "Error: ls-tree wrong arguments received. supported flags are -d -r -l followed by a tree hash",
+            )));
         }
 
         if let Some(tree) = tree_hash {
@@ -2217,15 +2197,6 @@ impl Merge {
     pub fn new() -> Self {
         Merge {}
     }
-
-    fn merge_branch(&self, branch_name: &str, tree_hash: &str, new_commit_hash: &str) -> Result<(), Box<dyn Error>> {
-        helpers::update_branch_hash(&Head::get_current_branch_name()?, &new_commit_hash)?;
-        WorkingDirectory::clean_working_directory()?;
-        // let commit_tree = helpers::get_commit_tree(&new_commit_hash)?;
-        WorkingDirectory::update_working_directory_to(tree_hash)?;
-        StagingArea::new().change_index_file(tree_hash.to_string())?;
-        Ok(())
-    }
 }
 
 impl Command for Merge {
@@ -2241,18 +2212,19 @@ impl Command for Merge {
 
         let merging_commit_hash = helpers::get_branch_last_commit(&branch_to_merge_path)?;
         let current_commit_hash = Head::get_head_commit()?;
+
         let ancestor_commit = helpers::find_common_ancestor_commit(&merging_commit_hash)?;
 
         let ancestor_working_tree = helpers::reconstruct_working_tree(ancestor_commit)?;
         let current_working_tree = helpers::reconstruct_working_tree(current_commit_hash.clone())?;
         let merging_working_tree = helpers::reconstruct_working_tree(merging_commit_hash.clone())?;
 
-        let files_without_conflict = helpers::find_files_without_conflict(ancestor_working_tree, current_working_tree, merging_working_tree)?; 
+        let files_without_conflict = helpers::find_files_without_conflict(ancestor_working_tree, current_working_tree, merging_working_tree)?;
         // StagingArea::new().change_index_file(files_without_conflict)?; // esto ya podria hacerlo a files without conflct
         // let new_commit_hash = HashObjectCreator::create_commit_object(None, vec![current_commit_hash, merging_commit_hash])?;
         // helpers::update_branch_hash(&Head::get_current_branch_name()?, &new_commit_hash)?;
         // WorkingDirectory::clean_working_directory()?;
-        // let commit_tree = helpers::get_commit_tree(&new_commit_hash)?; // este tiene que ser el nuevo commit 
+        // let commit_tree = helpers::get_commit_tree(&new_commit_hash)?; // este tiene que ser el nuevo commit
         // WorkingDirectory::update_working_directory_to(&commit_tree)?;
 
         Ok(String::new())
@@ -2293,7 +2265,7 @@ impl Command for Rebase {
                 "Error: No argument was provided for rebase.",
             ))),
         }
-        
+
         // println!("rebasing commit: {}", rebasing_commit);
         let ancestor_commit = helpers::find_common_ancestor_commit(&rebasing_commit)?;
 
@@ -2382,9 +2354,9 @@ mod tests {
         assert!(temp_path
             .join(PathHandler::get_relative_path(CONFIG_FILE))
             .exists());
-        /*assert!(temp_path
+        assert!(temp_path
             .join(PathHandler::get_relative_path(HEAD_FILE))
-            .exists()); */
+            .exists());
         // Add more assertions for other files and folders as needed
     }
 
@@ -2741,7 +2713,7 @@ mod tests {
         let (_temp_dir, _temp_path) = common_setup();
 
         // Create a .gitignore.txt file in the temporary directory
-        let gitignore_path = ".gitignore.txt";
+        let gitignore_path = (".gitignore.txt");
         fs::write(&gitignore_path, "ignored_file.txt")
             .expect("Failed to create .gitignore.txt file");
 
@@ -2753,13 +2725,13 @@ mod tests {
 
         // Assert that the result is the provided file path
         assert_eq!(result.unwrap(), "ignored_file.txt");
-        let _ = fs::remove_file("ignored_file.txt");
+        fs::remove_file("ignored_file.txt");
     }
 
     #[test]
     fn test_check_ignore_file_not_exists() {
         // Create a temporary directory
-        let (_temp_dir, _temp_path) = common_setup();
+        let (temp_dir, temp_path) = common_setup();
 
         // Create a CheckIgnore instance
         let check_ignore = CheckIgnore::new();
@@ -2774,7 +2746,7 @@ mod tests {
     #[test]
     fn test_check_ignore_no_gitignore_file() {
         // Create a temporary directory
-        let (_temp_dir, _temp_path) = common_setup();
+        let (temp_dir, temp_path) = common_setup();
 
         // Create a CheckIgnore instance
         let check_ignore = CheckIgnore::new();
