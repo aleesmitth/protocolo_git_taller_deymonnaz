@@ -2215,10 +2215,10 @@ impl Command for Merge {
                 )))
             }
             helpers::check_if_branch_exists(current_branch)?;
-            head_commit = helpers::get_branch_last_commit(&PathHandler::get_relative_path(&helpers::get_branch_path(current_branch)));
+            head_commit = helpers::get_branch_last_commit(&PathHandler::get_relative_path(&helpers::get_branch_path(current_branch)))?;
         }
 
-        if branch_to_merge == Head::get_current_branch_name() {
+        if branch_to_merge == Head::get_current_branch_name()? {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
                 "Error: Cannot merge same branch.",
