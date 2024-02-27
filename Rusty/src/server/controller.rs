@@ -1,4 +1,3 @@
-use chrono::format;
 use rocket::tokio::task::spawn_blocking;
 use rocket::{get, post, put};
 use crate::commands::git_commands;
@@ -13,8 +12,8 @@ use super::models::create;
 
 #[openapi(skip)]
 #[get("/")]
-pub async fn test_api(state: &State<AppState>) -> String {
-    format!("Hello world")
+pub async fn test_api(_state: &State<AppState>) -> String {
+    "Hello world".to_string()
 }
 
 /// # Get repo's pull requests
@@ -63,11 +62,11 @@ pub async fn get_pull_request(state: &State<AppState>, repo: String, pull_name: 
 /// Returns all the commits from the specified pull request that's in the specified repo.
 #[openapi(tag = "Pull Requests")]
 #[get("/repos/<repo>/pulls/<pull_name>/commits")]
-pub async fn get_pull_request_commits(_state: &State<AppState>, repo: String, pull_name: String) -> String {
+pub async fn get_pull_request_commits(state: &State<AppState>, repo: String, pull_name: String) -> String {
     let mut options = PullRequestOptions::default();
     options.repo = Some(repo);
     options.name = Some(pull_name);
-    match read(&options, &_state.db_pool).await {
+    match read(&options, &state.db_pool).await {
         Ok(pull_requests) => {
             // only one pull request should've been returned
             // assuming that only the first pull request is the valid one
@@ -87,11 +86,11 @@ pub async fn get_pull_request_commits(_state: &State<AppState>, repo: String, pu
                         format!("Head log: {:?}\n Base log: {}", hash_log_head, log_base)
                     }
                     else {
-                            format!("Error fetching logs")
+                        "Error fetching logs".to_string()
                     }
                 }
                 else {
-                    format!("Error fetching logs")
+                    "Error fetching logs".to_string()
                 }
                 
             }

@@ -10,7 +10,7 @@ use crypto::digest::Digest;
 use crypto::sha1::Sha1;
 use libflate::zlib::{Decoder, Encoder};
 
-use super::{git_commands::PathHandler, structs::ObjectType};
+use super::{git_commands::PathHandler, structs::{ObjectType, self}};
 
 const OBJECT: &str = ".git/objects";
 const R_HEADS: &str = ".git/refs/heads";
@@ -597,7 +597,7 @@ pub fn find_modified_files(ancestor_working_tree: HashMap<String, String>, worki
     let mut modified_files: HashMap<String, String> = HashMap::new();
     for (file_name, file_hash) in working_tree_to_compare {
         if let Some(ancestor_hash) = ancestor_working_tree.get(&file_name) {
-            if ancestor_hash.to_string() != file_hash {
+            if *ancestor_hash != file_hash {
                 modified_files.insert(file_name, file_hash);
             }
         } else {
@@ -615,7 +615,7 @@ pub fn find_files_without_conflict(ancestor_working_tree: HashMap<String, String
 
     for (file_name, file_hash) in current_modified_files {
         if let Some(merging_hash) = merging_modified_files.remove(&file_name) {
-            if merging_hash.to_string() != file_hash {
+            if merging_hash != file_hash {
                 let merged_file = find_conflict_in_file(file_name.clone(), ancestor_working_tree.get(&file_name).ok_or("Ancestor file not found")?.to_string(), file_hash, merging_hash)?;
                 if merged_file.is_empty() {
                     println!("CONFLICT: Merge conflict in {}", file_name);
@@ -710,7 +710,7 @@ pub fn find_conflict_in_file(file_name: String, ancestor_hash: String, first_obj
     Ok(new_object_hash)
 }
 
-pub fn find_changes_in_file(file_name: String, ancestor_hash: String, branch_hash: String) -> Result<Vec<LineChange>, Box<dyn Error>> {
+pub fn find_changes_in_file(_file_name: String, ancestor_hash: String, branch_hash: String) -> Result<Vec<LineChange>, Box<dyn Error>> {
     let (_, ancestor_object_content, _) = read_object_to_string(ancestor_hash)?;
     let (_, changed_object_content, _) = read_object_to_string(branch_hash)?;
 
@@ -725,7 +725,7 @@ pub fn find_changes_in_file(file_name: String, ancestor_hash: String, branch_has
             (Some(line1), Some(line2)) if line1 == line2 => {
                 changes.push(LineChange::Same(i + 1, line1.to_string()));
             }
-            (Some(line1), Some(line2)) => {
+            (Some(_line1), Some(line2)) => {
                 changes.push(LineChange::Modified(i + 1, line2.to_string()));
             }
             (Some(line1), None) => {
@@ -768,10 +768,10 @@ pub fn reconstruct_working_tree(commit_hash: String) -> Result<HashMap<String, S
 
     for (file_mode, file_name, file_hash) in tree_content {
         match file_mode.as_str() {
-            TREE_FILE_MODE => {
+            structs::TREE_FILE_MODE => {
                 working_tree.insert(file_name, file_hash);
             }
-            TREE_SUBTREE_MODE => {
+            structs::TREE_SUBTREE_MODE => {
                 working_tree.extend(reconstruct_working_tree(file_hash)?);
             }
             _ => {}

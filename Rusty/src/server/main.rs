@@ -1,4 +1,3 @@
-#[macro_use]
 extern crate rocket;
 use rusty::{commands::git_commands::RELATIVE_PATH, server::models::AppState};
 //use rusty::server::server_protocol::ServerProtocol;

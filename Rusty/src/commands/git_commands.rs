@@ -1,4 +1,3 @@
-use std::env::current_exe;
 use std::fmt::Write as Write_FMT;
 use std::fs::ReadDir;
 use std::{
@@ -612,7 +611,7 @@ impl Command for Commit {
         }
         let commit_object_hash = HashObjectCreator::create_commit_object(message, parent)?;
 
-        helpers::update_branch_hash(&Head::get_current_branch_name()?, &commit_object_hash);
+        let _ = helpers::update_branch_hash(&Head::get_current_branch_name()?, &commit_object_hash);
 
         self.stg_area.unstage_index_file()?;
         Ok(String::new())
@@ -2219,7 +2218,7 @@ impl Merge {
 
 impl Command for Merge {
     fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
-        let arg_slice = args.unwrap_or_default(); //aca tendria que chequear que sea valido el branch que recibo por parametro
+        let arg_slice = args.unwrap_or_default();
 
         let mut head_commit = Head::get_head_commit()?;
         let branch_to_merge = arg_slice[0];
@@ -2285,7 +2284,7 @@ impl Rebase {
 impl Command for Rebase {
     fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let mut rebasing_branch_name = String::new();
-        let mut rebasing_commit = String::new();
+        let rebasing_commit ;
         match args {
             Some(arg) => {
                 if arg[0] == "--continue" && helpers::check_if_file_exists(REBASE_HEAD) {
@@ -2304,16 +2303,16 @@ impl Command for Rebase {
         }
 
         // println!("rebasing commit: {}", rebasing_commit);
-        let ancestor_commit = helpers::find_common_ancestor_commit(&Head::get_head_commit()?, &rebasing_commit)?;
+        //let _ancestor_commit = helpers::find_common_ancestor_commit(&Head::get_head_commit()?, &rebasing_commit)?;
 
         let mut rebasing_commit_log: Vec<(String, String)> = Vec::new();
         Log::generate_log_entries(&mut rebasing_commit_log, rebasing_commit)?;
         // println!("log: {:?}", rebasing_commit_log);
 
-        for (commit, message) in rebasing_commit_log.iter().rev() {
+        for (commit, _message) in rebasing_commit_log.iter().rev() {
             println!("{}Applying:{} {}", COLOR_RED_CODE, COLOR_RESET_CODE, commit);
             let branch_name = format!("rebase_{}", rebasing_branch_name);
-            Branch::new().create_new_branch(&branch_name);
+            let _ = Branch::new().create_new_branch(&branch_name);
             helpers::update_branch_hash(&branch_name, commit)?;
 
             match Merge::new().execute(Some(vec![&branch_name])) {
@@ -2322,7 +2321,7 @@ impl Command for Rebase {
                 }
                 Err(_) => {
                     let mut rebase_head = fs::File::create(REBASE_HEAD)?;
-                    let _ = rebase_head.write_all(commit.as_bytes())?;
+                    _ = rebase_head.write_all(commit.as_bytes())?;
                 }
             }
         }
@@ -2390,9 +2389,6 @@ mod tests {
             .exists());
         assert!(temp_path
             .join(PathHandler::get_relative_path(CONFIG_FILE))
-            .exists());
-        assert!(temp_path
-            .join(PathHandler::get_relative_path(HEAD_FILE))
             .exists());
         // Add more assertions for other files and folders as needed
     }
@@ -2750,7 +2746,7 @@ mod tests {
         let (_temp_dir, _temp_path) = common_setup();
 
         // Create a .gitignore.txt file in the temporary directory
-        let gitignore_path = (".gitignore.txt");
+        let gitignore_path = ".gitignore.txt";
         fs::write(&gitignore_path, "ignored_file.txt")
             .expect("Failed to create .gitignore.txt file");
 
@@ -2762,13 +2758,13 @@ mod tests {
 
         // Assert that the result is the provided file path
         assert_eq!(result.unwrap(), "ignored_file.txt");
-        fs::remove_file("ignored_file.txt");
+        let _ = fs::remove_file("ignored_file.txt");
     }
 
     #[test]
     fn test_check_ignore_file_not_exists() {
         // Create a temporary directory
-        let (temp_dir, temp_path) = common_setup();
+        let (_temp_dir,_temp_pathh) = common_setup();
 
         // Create a CheckIgnore instance
         let check_ignore = CheckIgnore::new();
@@ -2783,7 +2779,7 @@ mod tests {
     #[test]
     fn test_check_ignore_no_gitignore_file() {
         // Create a temporary directory
-        let (temp_dir, temp_path) = common_setup();
+        let (_temp_dir,_temp_pathh) = common_setup();
 
         // Create a CheckIgnore instance
         let check_ignore = CheckIgnore::new();

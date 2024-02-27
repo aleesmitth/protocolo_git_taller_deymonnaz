@@ -1,8 +1,8 @@
 use std::{collections::HashMap, error::Error, fmt, fs, io, io::Write, path::Path, path::PathBuf, env};
 const OBJECT: &str = ".git/objects";
 const INDEX_FILE: &str = ".git/index";
-const TREE_SUBTREE_MODE: &str = "040000";
-const TREE_FILE_MODE: &str = "100644";
+pub const TREE_SUBTREE_MODE: &str = "040000";
+pub const TREE_FILE_MODE: &str = "100644";
 const DEFAULT_HEAD_LINE: &str = "ref: refs/heads/";
 const HEAD_FILE: &str = ".git/HEAD";
 //const DEFAULT_REMOTE: &str = "origin";
@@ -480,7 +480,7 @@ impl StagingArea {
         }
         let new_index_content = new_index_lines.join("\n");
         let mut index_file = fs::File::create(PathHandler::get_relative_path(INDEX_FILE))?;
-        let _ = index_file.write_all(new_index_content.as_bytes())?;
+        _ = index_file.write_all(new_index_content.as_bytes())?;
 
         Ok(())
     }
