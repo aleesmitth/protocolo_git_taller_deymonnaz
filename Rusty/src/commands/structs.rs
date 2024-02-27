@@ -563,17 +563,17 @@ impl WorkingDirectory {
 
         for line in lines.iter() {
             let split_line: Vec<String> = line.split(';').map(String::from).collect();
-            let file_path_str = split_line[0].clone();
+            let file_path_str = PathHandler::get_relative_path(&split_line[0].clone());
             // println!("path to delete: {}", file_path_str);
             let file_path = PathBuf::from(file_path_str);
-            Self::remove_file_and_empty_parent_directories(PathHandler::get_relative_path(&file_path))?;
+            Self::remove_file_and_empty_parent_directories(&file_path)?;
         }
 
         Ok(())
     }
 
     pub fn update_working_directory_to(new_tree: &str) -> Result<(), Box<dyn Error>> {
-        let _ = Self::create_files_for_directory(new_tree, "");
+        let _ = Self::create_files_for_directory(new_tree, &PathHandler::get_relative_path(""));
 
         Ok(())
     }
