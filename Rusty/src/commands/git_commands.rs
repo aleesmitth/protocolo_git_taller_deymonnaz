@@ -93,6 +93,10 @@ impl PathHandler {
         original_path.to_string()
     }
 
+    pub fn set_relative_path(path: &str) {
+        env::set_var(RELATIVE_PATH, path);
+    }
+
     pub fn remove_relative_path(original_path: &str) -> String {
         if let Ok(relative_path) = env::var(RELATIVE_PATH) {
             if original_path.starts_with(&relative_path) {
@@ -127,7 +131,21 @@ impl Command for Init {
     /// This function initializes a new Git repository by creating the necessary directory structure
     /// for branches, tags, and objects. It also sets the default branch to 'main' and creates an empty
     ///  index file. If successful, it returns an empty string; otherwise, it returns an error message.
-    fn execute(&self, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+    fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        let arg_slice = args.unwrap_or_default();
+
+        if let Some(&repo_name) = arg_slice.first() {
+            if repo_name.contains('/') {
+                return Err(Box::new(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Repository name can't contain the '/' special symbols",
+                )));
+            }
+
+            // Concatenate a '/' character and call the methods
+            PathHandler::set_relative_path(&PathHandler::get_relative_path(&format!("{}/", repo_name)));
+        }
+
         if helpers::check_if_directory_exists(&PathHandler::get_relative_path(GIT)) {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,

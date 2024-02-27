@@ -1,6 +1,7 @@
 use chrono;
 use sqlx::PgPool;
 use std::error::Error;
+use std::io;
 use sqlx::Row;
 use sqlx::FromRow;
 use serde::{Serialize, Deserialize};
@@ -46,8 +47,17 @@ fn example_date() -> chrono::DateTime<chrono::Utc> {
 }
 
 impl PullRequest {
-    pub fn new(name: String, repo: String, head: String, base: String) -> Self {
-        PullRequest {
+    pub fn new(name: String, repo: String, head: String, base: String) -> Result<Self, Box<dyn Error>> {
+        if head == base {
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "Can't create a PullRequest with head same as base",
+            )))
+        }
+
+        //TODO check if repo exists
+        //TODO check if head and base are inside repo
+        Ok(PullRequest {
             _id: None,
             name,
             repo,
@@ -55,7 +65,7 @@ impl PullRequest {
             base,
             commit_after_merge: None,
             created_at: None
-        }
+        })
     }
 }
 // TODO check for errors, refactor this and use table name in a .env var or constant
