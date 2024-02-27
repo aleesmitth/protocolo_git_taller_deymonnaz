@@ -943,12 +943,8 @@ impl PackObjects {
             ObjectType::Tag => 0b0100,
         };
 
-        // Print the bit representation of type_byte
-        // print_bits(&[type_byte]);
-
         // Combine type_byte and the last 4 bits of object_size
         let combined_byte = (type_byte << 4) | ((object_size as u8) & 0x0F);
-        // print_bits(&[combined_byte]);
 
         // Encode the object size in a variable-length format if it requires more than one byte
         let mut size = object_size >> 4;
@@ -988,65 +984,32 @@ impl Command for PackObjects {
     /// It also creates an index file that helps locate objects in the pack file.
     fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let commit_list = args.unwrap_or_default(); //aca recibo hashes de commits
-        //por cada hash de commit busco su hash de tree
+        // For each hash it looks for a hash tree
         let mut object_set: HashSet<String> = HashSet::new();
         for commit_hash in commit_list {
-            // println!("looping first commit {}", commit_hash);
             object_set.insert(commit_hash.to_string());
             let tree_hash = helpers::get_commit_tree(commit_hash)?;
-            // println!("tree_hash {}", tree_hash);
             PackObjects::get_tree_objects(&mut object_set, &tree_hash)?;
         }
-        // println!("object_set: {:?}", object_set);
-        // por cada hash de tree agrego objetos necesarios a una lista o hasta a un diccionario para chequear rapido que no este ya, pero sin ningun value
-        // let objects_list: Vec<String> = arg_slice[0]; // aca tengo que tener los hashes de todos los objetos que quiero procesar
-        // Open pack and index files
 
         // Create an uncompressed pack file
         let mut pack_file_content = Vec::new();
-        // let mut index_entries: Vec<u8> = Vec::new();
 
         // List all objects in the .git/objects directory
-        // helpers::list_files_recursively(".git/objects", &mut objects_list)?;
         let mut object_count: u32 = 0;
-        // let mut offset: u64 = 12;
         // Iterate through objects
         for object_hash in object_set {
             // going through hashes in objects_list
             object_count += 1;
 
-            // tengo qwue diferenciar si leo un objeto normal o un tree
-            // match helpers::get_object_type(&object_hash) {
-            //     ObjectType::Tree => helpers::read_tree_content(tree_hash)
-            // }
-            // println!("reading object: {}", object_hash);
             let (object_type, object_content, object_size) =
                 helpers::read_object_to_bytes(object_hash.to_string())?;
-            // let decompressed_data: String = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&object_path)?)?;
-            // let file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
-            // let object_header: Vec<String> = file_content[0].split(' ').map(String::from).collect();
-            // let object_type = ObjectType::new(&object_header[0]).unwrap_or(ObjectType::Blob);
-            // let object_size: u64 = object_header[1].parse()?;
-            // let object_content: &str = &file_content[1];
-            // println!("header=> type: {}, size: {}", object_type, object_size);
-            // println!("content: {}", object_content);
-            // Calculate the SHA-1 hash of the object content
-
-            // index_entries.extend_from_slice(&object_type.get_object_for_pack_file().to_be_bytes());  // Object type
-            // index_entries.extend_from_slice(&(object_size as u32).to_be_bytes());  // Object size
-            // index_entries.extend_from_slice(helpers::generate_sha1_string(&decompressed_data).as_bytes());  // SHA-1 hash bytes
-
-            // Calculate the offset in the pack file (you need to keep track of this as you write to the pack file).
-            // offset += object_size;
-
-            // index_entries.extend_from_slice(&offset.to_be_bytes());  // Offset in the pack file
 
             // Append object content to the uncompressed pack file
             let object_size_usize: usize = object_size.parse()?;
             let compressed_content: &Vec<u8> = &helpers::compress_bytes(&object_content)?;
             let header = self.calculate_object_header(object_type, object_size_usize);
-            // let header = self.calculate_object_header(object_size_usize, object_type);;
-            // println!("header: {:?}", header);
+            
             pack_file_content.extend_from_slice(&header);
             pack_file_content.extend_from_slice(compressed_content);
         }
@@ -1059,52 +1022,20 @@ impl Command for PackObjects {
         pack_file_final.extend_from_slice(&object_count.to_be_bytes());
 
         pack_file_final.extend_from_slice(&pack_file_content);
-        // let pack_checksum = helpers::generate_sha1_string_from_bytes(&pack_file_final);
+
         let pack_checksum = calculate_sha1_hash(&pack_file_final);
         let checksum_str = helpers::hex_string_to_bytes(&pack_checksum.clone());
 
         let pack_file_path = format!(".git/pack/pack-{}.pack", checksum_str);
-        // let pack_file_path = format!(".git/pack/pack-{}.pack", pack_checksum);
+        
         let mut pack_file = fs::File::create(PathHandler::get_relative_path(&pack_file_path))?;
-
-        // pack_file_final.extend_from_slice(pack_checksum.as_bytes());
 
         pack_file.write_all(&pack_file_final)?;
         pack_file.write_all(&pack_checksum)?;
 
-        // let mut index_file = fs::File::create(".git/pack/pack_file.idx")?;
-        // let mut index_content = Vec::new();
-        // index_content.extend_from_slice(b"DIRC");
-        // index_content.extend_from_slice(&object_count.to_be_bytes());
-        // let fanout_table = create_fanout_table(&index_entries);
-        // index_content.extend_from_slice(&fanout_table);
-        // index_content.extend_from_slice(&index_entries);
-        // index_content.extend_from_slice(pack_checksum.as_bytes());
-        // let index_checksum = helpers::generate_sha1_string_from_bytes(&index_content);
-        // index_content.extend_from_slice(index_checksum.as_bytes());
-        // index_file.write_all(&index_content)?;
-
         Ok(helpers::hex_string_to_bytes(&pack_checksum).to_string())
     }
 }
-
-// fn create_fanout_table(entries: &[IndexEntry]) -> Vec<u8> {
-//     let mut fanout_table = Vec::new();
-//     let mut counts = vec![0; 256];
-
-//     for entry in entries {
-//         let first_byte = entry.sha1[0] as usize;
-//         counts[first_byte] += 1;
-//     }
-
-//     let mut cumulative_count: i32 = 0;
-//     for &count in counts.iter() {
-//         cumulative_count += count;
-//         fanout_table.extend_from_slice(&cumulative_count.to_be_bytes());
-//     }
-
-//     fanout_table
-// }
 
 fn calculate_sha1_hash(data: &[u8]) -> [u8; 20] {
     // Create a Sha1 object
@@ -1133,18 +1064,6 @@ impl UnpackObjects {
         UnpackObjects {}
     }
 
-    // fn compare_checksum(pack_content: &Vec<u8>) -> io::Result<String> {
-    //     let calculated_checksum = helpers::generate_sha1_string_from_bytes(&pack_content[..pack_content.len()-20]);
-    //     let pack_checksum = pack_content[pack_content.len()-20..].to_string();
-    //     if calculated_checksum != pack_checksum {
-    //         return Err(Box::new(io::Error::new(
-    //             io::ErrorKind::Other,
-    //             "Checksum did not match",
-    //         )))
-    //     }
-    //     Ok(pack_checksum)
-    // }
-    /// Read the lower `bits` bits of `value`
     fn keep_bits(value: usize, bits: u8) -> usize {
         value & ((1 << bits) - 1)
     }
@@ -1363,37 +1282,49 @@ impl UnpackObjects {
                 return Self::apply_delta(pack_file, base_object_content.as_bytes(), object_type);
             }
         }
-        // Ok((ObjectType::Blob, Vec::new())) //placeholder
+    
     }
 }
 
 impl Command for UnpackObjects {
     fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        // Extract arguments or default to an empty vector
         let arg_slice = args.unwrap_or_default();
+
+        // Open the specified pack file
         let mut pack_file = fs::File::open(arg_slice[0])?;
-        // println!("opened pack file");
+
+        // Retrieve the size of the pack file
         let _pack_file_size = helpers::get_file_length(arg_slice[0])?;
+
+        // Read the header of the pack file
         let mut header = vec![0; 12]; //Size of header is fixed
         pack_file.read_exact(&mut header)?;
+
+        // Extract the number of objects from the header
         let object_amount = u32::from_be_bytes(header[8..12].try_into()?);
-        // println!("unpack header: {:?}", header);
-        //Self::compare_checksum(&pack_content)?;
-        // println!("pack file size: {}", pack_file_size);
+
+        // Initialize offset after the header
         let mut offset: u64 = 12; //Skipping the header
         let mut objects_unpacked = 1;
-        while objects_unpacked <= object_amount {
-            let (object_type, content, size) = Self::read_pack_object(&mut pack_file, offset)?;
-            // println!(
-            //     "type: {} ; size: {} ; content: {:?}",
-            //     object_type, size, content
-            // );
-            let _content_to_string = String::from_utf8_lossy(&content).to_string();
-            // println!("content as str: {}", content_to_string);
 
+        // Iterate over each object in the pack file
+        while objects_unpacked <= object_amount {
+            // Read the pack object at the specified offset
+            let (object_type, content, size) = Self::read_pack_object(&mut pack_file, offset)?;
+
+            // Convert content to a string (not used, can be removed if unnecessary)
+            let _content_to_string = String::from_utf8_lossy(&content).to_string();
+
+            // Write the object content to a file
             HashObjectCreator::write_object_file_bytes(&content, object_type, size)?;
+
+            // Update offset for the next object
             offset += size as u64;
             objects_unpacked += 1;
         }
+
+        // Return an empty string indicating successful execution
         Ok(String::new())
     }
 }
@@ -1418,10 +1349,10 @@ impl Fetch {
         ref_name: &str,
         remote_name: &str,
     ) -> Result<(), Box<dyn Error>> {
-        let split_ref_name: Vec<&str> = ref_name.split('/').collect(); //aca tendria que ver si es un tag o un branch
+        let split_ref_name: Vec<&str> = ref_name.split('/').collect(); 
         let remote_ref_name = split_ref_name[2];
         let mut ref_path = String::new();
-        // println!("split ref name: {:?}", split_ref_name);
+    
         match split_ref_name[1] {
             "heads" => {
                 let dir_path = format!("{}/{}", R_REMOTES, remote_name);
@@ -1429,28 +1360,17 @@ impl Fetch {
                     fs::create_dir(dir_path.clone())?;
                 }
                 ref_path = format!("{}/{}", dir_path, remote_ref_name);
-                // helpers::update_local_branch_with_commit(remote_name, remote_ref_name, ref_hash); //no hace falta hacer esto aca
             }
 
             "tags" => ref_path = format!("{}/{}", R_TAGS, remote_ref_name),
             _ => {}
         }
-        // println!("ref path: {}", ref_path);
+        
         let mut ref_file = fs::File::create(ref_path)?;
         ref_file.write_all(ref_hash.as_bytes())?;
         Ok(())
     }
 
-    // pub fn update_remote_tracking_branches(&self) -> Result<(), Box<dyn Error>> {
-    //     let branches_and_remotes = helpers::get_remote_tracking_branches()?;
-
-    //     for (branch_name, (remote, merge)) in branches_and_remotes.iter() {
-    //         // let split_value = value.split('/').collect();
-    //         println!("Key: {}, Values: remote:{} merge:{}", branch_name, remote, merge);
-    //     }
-
-    //     Ok(())
-    // }
 }
 
 impl Command for Fetch {
@@ -1474,11 +1394,10 @@ impl Command for Fetch {
             .fetch_from_remote_with_our_server(remote_url)?;
         UnpackObjects::new().execute(Some(vec![RECEIVED_PACK_FILE]))?;
         for (ref_hash, ref_name) in refs {
-            // println!("ref: {} {}", ref_hash, ref_name);
+            
             self.add_remote_ref(&ref_hash, &ref_name, remote_name)?;
         }
 
-        // self.update_remote_tracking_branches();
 
         Ok(String::new())
     }
@@ -1502,7 +1421,7 @@ impl Push {
 impl Command for Push {
     fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let mut remote_url = helpers::get_remote_url(DEFAULT_REMOTE_REPOSITORY)?;
-        // let remote_url = args.unwrap()[0];
+        
         let mut _remote_name = DEFAULT_REMOTE_REPOSITORY;
         let _branch = Head::get_current_branch_name()?;
         if let Some(args) = args {
@@ -1510,7 +1429,7 @@ impl Command for Push {
                 Ok(url) => {
                     remote_url = url;
                     _remote_name = args[0];
-                    // branch = &args[1];
+                    
                 }
                 Err(_) => {
                     return Err(Box::new(io::Error::new(
@@ -1536,7 +1455,6 @@ impl Default for Pull {
 }
 
 impl Pull {
-    /// Creates a new `Push` instance.
     pub fn new() -> Self {
         Pull {}
     }
@@ -1560,7 +1478,7 @@ impl Command for Pull {
         }
         Fetch::new().execute(Some(vec![&remote_url]))?;
         let remote_branch = format!("{}/{}", remote_name, Head::get_current_branch_name()?);
-        // println!("merging");
+        
         if !helpers::check_if_file_exists(&format!("{}/{}", R_REMOTES, remote_branch)) {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
@@ -1595,8 +1513,6 @@ impl Command for Clone {
             Some(remote_repository) => {
                 Remote::new().execute(Some(vec!["add", "origin", remote_repository[0]]))?;
                 Fetch::new().execute(None)?;
-                // aca tendria que crear las branches de remotes
-                // creo funcion que lea las brnaches que terngo en remote
                 let remote_branches = helpers::get_remote_branches()?;
                 helpers::update_branches(remote_branches)?;
                 Pull::new().execute(Some(vec!["origin"]))?;
@@ -1661,10 +1577,6 @@ impl Log {
             return Ok(String::new());
         }
 
-        // let commit_path = helpers::get_object_path(&current_commit);
-        // let decompressed_data = helpers::decompress_file_content(helpers::read_file_content_to_bytes(&commit_path)?)?;
-        // let object_type = decompressed_data.splitn(2, ' ').next().ok_or("")?;
-
         let (object_type, commit_file_content, _) =
             helpers::read_object_to_string(current_commit.clone())?;
 
@@ -1674,11 +1586,7 @@ impl Log {
                 "Error: Invalid SHA-1. Is not a commit",
             )));
         }
-        // trim header
-        // let commit_file_content: Vec<String> = decompressed_data.split('\0').map(String::from).collect();
-
-        // let commit_file_lines: Vec<String> = commit_file_content[1].lines().map(|s| s.to_string()).collect();
-
+        
         let commit_lines: Vec<String> = commit_file_content
             .split('\n')
             .map(|s| s.to_string())
@@ -1703,13 +1611,6 @@ impl Log {
 
         entries.push((current_commit, message));
 
-        // if parent_commit_trimmed.is_empty() {
-        //     //root commit
-        //     // println!("returning, found root commit");
-        //     return Ok(String::new());
-        // }
-
-        // println!("parent commit {:?}", parent_commit_trimmed.clone());
         Log::generate_log_entries(entries, parent_commit_trimmed.clone())?;
         Ok(String::new())
     }
@@ -1744,12 +1645,12 @@ impl Command for Log {
                     EXCLUDE_LOG_ENTRY => {
                         // Generate log entries for exclusion and store them in the excluded entries vector
                         Log::generate_log_entries(&mut log_entries_excluded, arg[1..].to_string())?;
-                        //println!("exclude {:?}", log_entries_excluded);
+                        
                     }
                     _ => {
                         // Generate log entries for inclusion and store them in the included entries vector
                         Log::generate_log_entries(&mut log_entries, arg.to_string())?;
-                        //println!("include {:?}", log_entries);
+                        
                     }
                 }
             }
@@ -1758,10 +1659,6 @@ impl Command for Log {
         if empty_args {
             Log::generate_log_entries(&mut log_entries, HEAD.to_string())?;
         }
-        // println!("result {:?}", log_entries.iter()
-        //     .filter(| entry | !log_entries_excluded.contains(entry))
-        //     .cloned()
-        //     .collect::<Vec<String>>());
 
         // Filter out log entries that are in the excluded entries vector
         log_entries = log_entries
@@ -1797,7 +1694,7 @@ impl Default for LsTree {
 }
 
 impl LsTree {
-    /// Creates a new `Log` instance.
+    
     pub fn new() -> Self {
         LsTree {}
     }
@@ -1814,32 +1711,20 @@ impl LsTree {
         } else {
             tree_hash
         };
-        // println!("current hash: {}", current_hash);
+        
         let mut tree_content = helpers::read_tree_content(&current_hash)?;
-        // println!("content: {:?}", tree_content);
-
-        // let (tree_type, tree_content, tree_size) = helpers::read_object(current_hash)?;
+        
         if tree_content.is_empty() {
-            // VER saque esta condicion: || tree_type != ObjectType::Tree
-            // no proceso tree vacio
             return Ok(());
         }
 
-        // let mut tree_content_lines: Vec<String> = tree_content.lines().map(|s| s.to_string()).collect();
-        //println!("[LSTREE]tree_content_lines {:?}, tree size: {:?}", tree_content_lines.clone(), tree_size);
 
         for (file_mode, file_name, object_hash) in &mut tree_content {
-            //println!("[LSTREE]line: {:?}", line.clone());
-            // let split_line: Vec<String> = line.split_whitespace().map(String::from).collect();
-            // let file_mode = split_line[0].as_str();
-            // let object_hash = split_line[2].clone();
 
             let mut line: String = format!("{} {} {}", file_mode, object_hash, file_name);
-            // volver a poner el file type, se puede sacar de file mode
 
             if file_mode == TREE_FILE_MODE && direct_flag {
                 // don't add files to the entries if direct flag is on
-                //println!("skip file because direct flag is on");
                 continue;
             }
 
@@ -2108,14 +1993,6 @@ impl Tag {
         Ok(())
     }
 
-    /* fn verify_tag(&self, name: &str) -> bool {
-        let tag_path = format!("{}{}", R_TAGS, name);
-
-        if fs::metadata(tag_path).is_ok() {
-            return true;
-        }
-        false
-    } */
 
     fn delete_tag(&self, name: &str) -> Result<(), Box<dyn Error>> {
         let tag_path = format!("{}/{}", R_TAGS, name);
@@ -2302,12 +2179,8 @@ impl Command for Rebase {
             ))),
         }
 
-        // println!("rebasing commit: {}", rebasing_commit);
-        //let _ancestor_commit = helpers::find_common_ancestor_commit(&Head::get_head_commit()?, &rebasing_commit)?;
-
         let mut rebasing_commit_log: Vec<(String, String)> = Vec::new();
         Log::generate_log_entries(&mut rebasing_commit_log, rebasing_commit)?;
-        // println!("log: {:?}", rebasing_commit_log);
 
         for (commit, _message) in rebasing_commit_log.iter().rev() {
             println!("{}Applying:{} {}", COLOR_RED_CODE, COLOR_RESET_CODE, commit);

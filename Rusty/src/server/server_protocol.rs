@@ -29,48 +29,25 @@ impl ServerProtocol {
         Ok(TcpListener::bind(address)?)
     }
 
-    // fn read_message_to_buffer(reader: &mut dyn Read, message_length: u32) -> Result<[u8; message_length], Box<dyn std::error::Error>> {
-    //     let mut buffer: [u8; message_length] = [0; message_length];
-    //     if let Err(e) = reader.read_exact(&mut buffer) {
-    //         return Err(Box::new(io::Error::new(
-    //             io::ErrorKind::Other,
-    //             "Error reading request",
-    //         )));
-    //     }
-    //     Ok(buffer)
-    // }
-
     pub fn handle_client_conection(stream: &mut TcpStream) -> Result<(), Box<dyn Error>> {
-        // In the Git Dumb Protocol, Git commands are sent as text lines.
-        // You would parse the incoming lines and respond accordingly.
         let stream_clone = stream.try_clone()?;
         let mut reader = std::io::BufReader::new(stream_clone);
         println!("waiting for request...");
         let request_length = protocol_utils::get_request_length(&mut reader)?;
-        // println!("request_length: {:?}", request_length);
         if request_length == 0 {
-            // TODO gracefully end connection, message length is 0
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
                 "Error: Request length 0",
             )));
         }
-        //println!("{:x}", ServerProtocol::read_message_length(&mut reader).unwrap());
-        // let mut writer = std::io::BufWriter::new(stream);
         println!("reading request_...");
-        // let mut buffer = [0; 1024];
-        // let _ = stream.read(&mut buffer);
-        // println!("{:?}", buffer);
         let request = protocol_utils::read_exact_length_to_string(&mut reader, request_length)?;
-        // println!("request: {:?}", request);
         let request_array: Vec<&str> = request.split_whitespace().collect();
-        //println!("request in array: {:?}", request_array);
         let second_part_of_request = request
             .split('\0')
             .next() // Take the first element before '\0'
             .and_then(|s| s.split_whitespace().nth(1)) // Extract the second part after the space
             .map_or_else(|| "/".to_string(), String::from);
-        //println!("second_part_of_request in array: {:?}", second_part_of_request);
 
         let trimmed_string_path = if second_part_of_request.starts_with('/') {
             &second_part_of_request[1..]
@@ -106,13 +83,6 @@ impl ServerProtocol {
 
 
 
-
-
-
-        /*if let Err(e) = git_commands::Init::new().execute(None) {
-            println!("e {}",e);
-        }*/
-
         match request_array[0] {
             UPLOAD_PACK => ServerProtocol::upload_pack(stream)?,
             RECEIVE_PACK => ServerProtocol::receive_pack(stream)?,
@@ -134,7 +104,6 @@ impl ServerProtocol {
         }
 
         let _ = stream.write_all(protocol_utils::REQUEST_LENGTH_CERO.as_bytes());
-        // println!("-sent end of message delimiter-");
 
         let mut reader = std::io::BufReader::new(stream.try_clone()?);
         let requests_received: Vec<String> =
@@ -153,7 +122,7 @@ impl ServerProtocol {
                     "Error: Expecting want request but got something else",
                 )));
             }
-            // TODO should probably go read the branches again in case some other client updated the latest commit
+
             let is_valid_commit =
                 ServerProtocol::validate_is_latest_commit_any_branch(request_array[1], &branches);
             if !is_valid_commit {
@@ -251,8 +220,6 @@ impl ServerProtocol {
 
         let mut buffer = Vec::new();
         stream.read_to_end(&mut buffer)?;
-        // println!("finished reading");
-        // println!("buffer: {:?}", buffer);
         let mut file = File::create(PathHandler::get_relative_path(
             ".git/pack/received_pack_file.pack",
         ))?;

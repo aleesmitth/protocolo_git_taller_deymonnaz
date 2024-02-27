@@ -159,7 +159,6 @@ pub fn remove_object_from_file(file_path: &str) -> io::Result<()> {
 
 pub fn get_all_branches() -> Result<Vec<String>, Box<dyn Error>> {
     let current_branch_path = &Head::get_current_branch_path()?;
-    // println!("test: {:?}", current_branch_path);
 
     // Extract the directory path from the file path
     let dir_path = Path::new(&current_branch_path)
@@ -174,8 +173,6 @@ pub fn get_all_branches() -> Result<Vec<String>, Box<dyn Error>> {
         let entry = entry?;
 
         let dir_path_without_git = dir_path.strip_prefix(".git/").unwrap_or(dir_path);
-
-        // println!("dir path: {:?}", dir_path_without_git);
 
         let file_name = dir_path_without_git
             .join(entry.file_name())
@@ -289,7 +286,6 @@ pub fn get_remote_tracking_branches() -> Result<HashMap<String, (String, String)
 
             // If both remote and merge values are present, store in the HashMap
             if let (Some(remote), Some(merge)) = (remote, merge) {
-                // branches_and_remotes.insert(branch_name.to_string(), format!("{}/{}", remote, merge));
                 branches_and_remotes.insert(branch_name.to_string(), (remote, merge));
             }
         }
@@ -396,11 +392,9 @@ pub fn find_common_ancestor_commit(
 ) -> Result<String, Box<dyn Error>> {
     let mut current_branch_log = Vec::new();
     let _ = Log::generate_log_entries(&mut current_branch_log, current_branch_commit.to_string());
-    // println!("current branch log: {:?}", current_branch_log);
 
     let mut merging_branch_log = Vec::new();
     let _ = Log::generate_log_entries(&mut merging_branch_log, merging_branch.to_string());
-    // println!("merging branch log: {:?}", merging_branch_log);
 
     for (commit, _message) in merging_branch_log {
         if current_branch_log.contains(&(commit.clone(), _message)) {
@@ -514,17 +508,15 @@ pub fn read_tree_content(tree_hash: &str) -> Result<Vec<TreeContent>, Box<dyn Er
 
 
     for substring in &substrings {
-        // println!("substring: {:?}", &substring);
         let processed_bytes = &substring[..20];
 
         let hash_string = hex_string_to_bytes(processed_bytes);
-        // println!("hash_string: {}", hash_string);
 
         divided_content.push((file_mode.clone(), file_name.clone(), hash_string));
-        // println!("substring len: {}", substring.len());
+
         if substring.len() > 20 {
             let tree_entry_data = String::from_utf8_lossy(&substring[20..]).to_string();
-            // println!("entry data: {}", tree_entry_data);
+            
             let split_entry: Vec<String> = tree_entry_data
                 .split_whitespace()
                 .map(String::from)
@@ -533,7 +525,7 @@ pub fn read_tree_content(tree_hash: &str) -> Result<Vec<TreeContent>, Box<dyn Er
             file_name = split_entry[1].clone();
         }
     }
-    // println!("{:?}", divided_content);
+
     Ok(divided_content)
 }
 
@@ -545,7 +537,6 @@ pub fn convert_hash_to_decimal_bytes(hash: &str) -> Result<Vec<u8>, Box<dyn Erro
         decimal_hash.push(result);
     }
 
-    // println!("hash: {:?}", decimal_hash);
     Ok(decimal_hash)
 }
 
@@ -554,9 +545,9 @@ pub fn validate_ref_update_request(
     _new_remote_hash: &str,
     branch_ref: &str,
 ) -> Result<(), Box<dyn Error>> {
-    // println!("{} {} {}", prev_remote_hash, new_remote_hash, branch_ref);
+    
     let branch_path = format!(".git/{}", branch_ref);
-    // println!("path: {}", branch_path);
+    
     if check_if_file_exists(&branch_path) {
         /*if prev_remote_hash == client_protocol::ZERO_HASH {
             return Err(Box::new(io::Error::new(
