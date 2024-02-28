@@ -8,7 +8,7 @@ use sqlx::FromRow;
 use serde::{Serialize, Deserialize};
 use rocket_okapi::okapi::schemars;
 use rocket_okapi::okapi::schemars::JsonSchema;
-use crate::commands::helpers::check_if_repo_exists;
+use crate::commands::helpers::{check_if_branch_belongs_to_repo, check_if_repo_exists};
 
 // TODO make a constructor for this, so it validates data or whatever, is it cleaner?
 // TODO we should use traits to support more than 1 model.
@@ -24,9 +24,11 @@ pub struct AppState {
 #[derive(Debug, Default)]
 pub struct PullRequestOptions {
     pub _id: Option<i32>,
+    pub title: Option<String>,
+    pub body: Option<String>,
     pub repo: Option<String>,
-    pub head: Option<String>,
     pub base: Option<String>,
+    pub head: Option<String>,
     pub commit_after_merge: Option<String>,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>
 }
@@ -37,9 +39,11 @@ pub struct PullRequestOptions {
 #[derive(Debug,FromRow,Serialize,Deserialize, JsonSchema)]
 pub struct PullRequest {
     pub _id: Option<i32>,
+    pub title: String,
+    pub body: Option<String>,
     pub repo: String,
-    pub head: String,
     pub base: String,
+    pub head: String,
     #[schemars(example = "sample_commit")]
     pub commit_after_merge: Option<String>,
     #[schemars(example = "sample_date")]
@@ -52,8 +56,10 @@ pub struct PullRequest {
 ///
 #[derive(Debug,FromRow,Serialize,Deserialize, JsonSchema)]
 pub struct PullRequestBody {
-    pub head: String,
+    pub title: String,
+    pub body: Option<String>,
     pub base: String,
+    pub head: String,
 }
 
 fn sample_commit() -> &'static str {
@@ -65,10 +71,11 @@ fn sample_date() -> chrono::DateTime<chrono::Utc> {
 
 impl PullRequest {
     pub fn new(request_body: PullRequestBody, repo: String) -> Result<Self, Box<dyn Error>> {
-        if request_body.base.is_empty() || request_body.head.is_empty() {
+        // TODO handle errors more elegantly
+        if request_body.title.is_empty() || request_body.base.is_empty() || request_body.head.is_empty() || repo.is_empty() {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
-                "Pull request body has to have populated base and head in request body",
+                "Pull request body has to have populated title, base, head, and repo in request",
             )))
         }
         if request_body.head == request_body.base {
@@ -78,18 +85,18 @@ impl PullRequest {
             )))
         }
 
-        if let Err(_) =  check_if_repo_exists(repo.as_str()) {
-            return Err(Box::new(io::Error::new(
-                io::ErrorKind::Other,
-                "Error repo does not exist, pull request creation aborted.",
-            )))
-        }
-        //TODO check if head and base are inside repo
+        check_if_repo_exists(repo.as_str())?;
+
+        check_if_branch_belongs_to_repo(request_body.base.as_str(), repo.as_str())?;
+        check_if_branch_belongs_to_repo(request_body.head.as_str(), repo.as_str())?;
+
         Ok(PullRequest {
             _id: None,
+            title: request_body.title,
+            body: request_body.body,
             repo,
-            head: request_body.head,
             base: request_body.base,
+            head: request_body.head,
             commit_after_merge: None,
             created_at: None
         })
