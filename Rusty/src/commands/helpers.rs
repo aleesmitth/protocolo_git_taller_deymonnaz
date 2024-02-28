@@ -822,7 +822,7 @@ pub fn check_if_branch_belongs_to_repo(branch_name: &str, repo_name: &str) -> Re
 /// Receives a branch name and return a result indicating if the branch already exists or not
 pub fn check_if_branch_exists(branch_name: &str) -> Result<(), Box<dyn Error>> {
     let branch_path = get_branch_path(branch_name);
-    if !check_if_file_exists(&PathHandler::get_relative_path(&branch_path)) {
+    if !check_if_file_exists(&branch_path) {
         return Err(Box::new(io::Error::new(
             io::ErrorKind::Other,
             "Error: Specified branch does not exist.",
