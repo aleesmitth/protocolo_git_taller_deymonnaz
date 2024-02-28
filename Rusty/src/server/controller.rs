@@ -1,3 +1,4 @@
+use std::env;
 use rocket::tokio::task::spawn_blocking;
 use rocket::{get, post, put};
 use crate::commands::git_commands;
@@ -6,6 +7,7 @@ use crate::server::models::*;
 use rocket::serde::json::Json;
 use rocket_okapi::openapi;
 use rocket::State;
+use crate::constants::RELATIVE_PATH;
 
 
 use super::models::create;
@@ -120,9 +122,12 @@ pub fn put_merge(_state: &State<AppState>, repo: String, pull_name: String) -> S
 pub async fn init_repo(repo: &str) -> String {
     let repo_name_clone = repo.to_string(); // Clone the string
     let _vec = spawn_blocking(move || {
+        // TODO this is bad
+        let base_repo_path = env::var(RELATIVE_PATH).unwrap_or_else(|_| String::new());
         if let Err(e) = git_commands::Init::new().execute(Some(vec![&repo_name_clone])) {
             println!("e {}",e);
         }
+        env::set_var(RELATIVE_PATH, &base_repo_path);
     }).await;
     format!("result: {:?}", _vec)
 }

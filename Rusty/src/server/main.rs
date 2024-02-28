@@ -1,5 +1,5 @@
 extern crate rocket;
-use rusty::{commands::git_commands::RELATIVE_PATH, server::models::AppState};
+use rusty::{constants::RELATIVE_PATH, server::models::AppState};
 //use rusty::server::server_protocol::ServerProtocol;
 use rusty::server::controller::*;
 use rusty::server::database::Database;

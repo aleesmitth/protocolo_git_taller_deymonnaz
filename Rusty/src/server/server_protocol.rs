@@ -4,7 +4,7 @@ use crate::commands::git_commands::PathHandler;
 use crate::commands::git_commands::UnpackObjects;
 use crate::commands::helpers;
 use crate::commands::protocol_utils;
-use crate::commands::git_commands::RELATIVE_PATH;
+use crate::constants::RELATIVE_PATH;
 use std::env;
 
 use std::{error::Error, fs::File, io, io::Read, io::Write, net::TcpListener, net::TcpStream};
@@ -79,18 +79,27 @@ impl ServerProtocol {
         println!("Directory already exists.");
     }*/
         // Set the modified value back to the environment variable
+        // TODO important, you can't do this because env variables are shared among threads
         env::set_var(RELATIVE_PATH, &current_repo_path);
 
 
 
         match request_array[0] {
-            UPLOAD_PACK => ServerProtocol::upload_pack(stream)?,
-            RECEIVE_PACK => ServerProtocol::receive_pack(stream)?,
+            UPLOAD_PACK => {
+                if let Err(err) = ServerProtocol::upload_pack(stream) {
+                    eprintln!("Error handling UPLOAD_PACK: {}", err);
+                }
+            },
+            RECEIVE_PACK => {
+                if let Err(err) = ServerProtocol::receive_pack(stream) {
+                    eprintln!("Error handling RECEIVE_PACK: {}", err);
+                }
+            },
             _ => {}
         }
 
         env::set_var(RELATIVE_PATH, &base_repo_path);
-        println!("end handling connection");
+        println!("end handling connection, relative path reseted.");
         Ok(())
     }
 
