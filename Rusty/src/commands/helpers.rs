@@ -10,14 +10,15 @@ use crypto::digest::Digest;
 use crypto::sha1::Sha1;
 use libflate::zlib::{Decoder, Encoder};
 
-use super::{git_commands::PathHandler, structs::{ObjectType, self}};
+use super::{git_commands::PathHandler, structs::ObjectType};
 
-const OBJECT: &str = ".git/objects";
-const R_HEADS: &str = ".git/refs/heads";
-// const HEAD_FILE: &str = ".git/HEAD";
-const INDEX_FILE: &str = ".git/index";
-const CONFIG_FILE: &str = ".git/config";
-const R_REMOTES: &str = ".git/refs/remotes";
+// const OBJECT: &str = ".git/objects";
+// const R_HEADS: &str = ".git/refs/heads";
+// // const HEAD_FILE: &str = ".git/HEAD";
+// const INDEX_FILE: &str = ".git/index";
+// const CONFIG_FILE: &str = ".git/config";
+// const R_REMOTES: &str = ".git/refs/remotes";
+use crate::constants::{OBJECT, R_HEADS, INDEX_FILE, CONFIG_FILE, R_REMOTES, TREE_FILE_MODE, TREE_SUBTREE_MODE};
 
 /// Returns length of a file's content
 pub fn get_file_length(path: &str) -> Result<u64, Box<dyn Error>> {
@@ -759,10 +760,10 @@ pub fn reconstruct_working_tree(commit_hash: String) -> Result<HashMap<String, S
 
     for (file_mode, file_name, file_hash) in tree_content {
         match file_mode.as_str() {
-            structs::TREE_FILE_MODE => {
+            TREE_FILE_MODE => {
                 working_tree.insert(file_name, file_hash);
             }
-            structs::TREE_SUBTREE_MODE => {
+            TREE_SUBTREE_MODE => {
                 working_tree.extend(reconstruct_working_tree(file_hash)?);
             }
             _ => {}

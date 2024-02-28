@@ -1,85 +1,20 @@
 use std::fmt::Write as Write_FMT;
-use std::fs::ReadDir;
 use std::{
     collections::HashSet, env, error::Error, fs, io, io::BufRead, io::ErrorKind, io::Read,
-    io::Seek, io::SeekFrom, io::Write, str,
+    io::Seek, io::SeekFrom, io::Write, str, fs::ReadDir,
 };
 
 extern crate libflate;
-use crypto::digest::Digest;
-use crypto::sha1::Sha1;
 use libflate::zlib::Decoder;
-const GIT: &str = ".git";
-const OBJECT: &str = ".git/objects";
-const PACK: &str = ".git/pack";
-const PARENT: &str = "parent";
-
-const TREE_FILE_MODE: &str = "100644";
-const TREE_SUBTREE_MODE: &str = "040000";
-const DELETE_FLAG: &str = "-d";
-const RENAME_FLAG: &str = "-m";
-const TYPE_FLAG: &str = "-t";
-const WRITE_FLAG: &str = "-w";
-const SIZE_FLAG: &str = "-s";
-const MESSAGE_FLAG: &str = "-m";
-const VERIFY_FLAG: &str = "-v";
-const LIST_FLAG: &str = "-l";
-
-// flags for ls-files. also DELETE_FLAG is being used
-const CACHED_FLAG: &str = "-c";
-const IGNORE_FLAG: &str = "-i";
-const STAGE_FLAG: &str = "-s";
-const MODIFIED_FLAG: &str = "-m";
-
-// flags for ls-tree
-const DIRECT_FLAG: &str = "-d";
-const RECURSE_FLAG: &str = "-r";
-const LONG_FLAG: &str = "-l";
-
-const EXCLUDE_LOG_ENTRY: char = '^';
-const HEAD: &str = "HEAD";
-const REBASE_HEAD: &str = ".git/REBASE_HEAD";
-const ADD_FLAG: &str = "add";
-const REMOVE_FLAG: &str = "rm";
-pub const R_HEADS: &str = ".git/refs/heads";
-// const HEAD_FILE: &str = ".git/HEAD";
-const R_TAGS: &str = ".git/refs/tags";
-const R_REMOTES: &str = ".git/refs/remotes";
-const DEFAULT_BRANCH_NAME: &str = "master";
-const INDEX_FILE: &str = ".git/index";
-const CONFIG_FILE: &str = ".git/config";
-pub const RELATIVE_PATH: &str = "RELATIVE_PATH";
-const DEFAULT_REMOTE_REPOSITORY: &str = "origin";
-const RECEIVED_PACK_FILE: &str = ".git/pack/received_pack_file.pack";
-const VARINT_ENCODING_BITS: u8 = 7;
-const VARINT_CONTINUE_FLAG: u8 = 1 << VARINT_ENCODING_BITS;
-const TYPE_BITS: u8 = 3;
-const TYPE_BYTE_SIZE_BITS: u8 = VARINT_ENCODING_BITS - TYPE_BITS;
-const COPY_INSTRUCTION_FLAG: u8 = 1 << 7;
-const COPY_OFFSET_BYTES: u8 = 4;
-const COPY_SIZE_BYTES: u8 = 3;
-const COPY_ZERO_SIZE: usize = 0x10000;
-// const TYPE_BITS: usize = 3;
-// const TYPE_MASK: usize = (1 << TYPE_BITS) - 1;
-
-//CODES FOR COLORS IN TEXT
-const COLOR_GREEN_CODE: &str = "\x1b[32m";
-const COLOR_YELLOW_CODE: &str = "\x1b[33m";
-const COLOR_RED_CODE: &str = "\x1b[31m";
-const COLOR_RESET_CODE: &str = "\x1b[0m";
+use crypto::{digest::Digest, sha1::Sha1};
 
 use crate::client;
 use crate::client::client_protocol::ClientProtocol;
 use crate::commands::helpers::get_file_length;
-use crate::commands::structs::HashObjectCreator;
-use crate::commands::structs::Head;
-use crate::commands::structs::ObjectType;
-use crate::commands::structs::PackObjectType;
-use crate::commands::structs::StagingArea;
-
 use crate::commands::helpers;
-use crate::commands::structs::IndexFileEntryState;
-use crate::commands::structs::WorkingDirectory;
+
+use crate::commands::structs::*;
+use crate::constants::*;
 // TODO MOVER A OTRA CARPETA. NO TIENE SENTIDO commands::commands::PathHandler
 pub struct PathHandler;
 
@@ -893,11 +828,9 @@ impl Command for Remote {
             (_, true, Some(name), _) => self.remove_remote(name)?,
             _ => {
                 if add_flag {
-                    println!("To add a new remote specify remote name and url")
+                    println!("To add a new remote specify remote's name and url")
                 } else if remove_flag {
-                    println!("To remove a new remote specify remote name")
-                } else {
-                    println!("Use the add or remove flag for remotes")
+                    println!("To remove a remote specify the remote's name")
                 }
             }
         }

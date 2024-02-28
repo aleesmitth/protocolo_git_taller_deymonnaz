@@ -1,13 +1,6 @@
 use std::{collections::HashMap, error::Error, fmt, fs, io, io::Write, path::Path, path::PathBuf, env};
-const OBJECT: &str = ".git/objects";
-const INDEX_FILE: &str = ".git/index";
-pub const TREE_SUBTREE_MODE: &str = "040000";
-pub const TREE_FILE_MODE: &str = "100644";
-const DEFAULT_HEAD_LINE: &str = "ref: refs/heads/";
-const HEAD_FILE: &str = ".git/HEAD";
-//const DEFAULT_REMOTE: &str = "origin";
 
-//use gtk::gdk::keys::constants::L;
+use crate::constants::{OBJECT, INDEX_FILE, TREE_SUBTREE_MODE, TREE_FILE_MODE, DEFAULT_HEAD_LINE, HEAD_FILE};
 
 use crate::commands::helpers;
 use chrono::{DateTime, Local};
