@@ -95,6 +95,10 @@ pub async fn read(options: &PullRequestOptions, pool: &sqlx::PgPool) -> Result<V
                     .bind(head)
                     .bind(repo);
             }
+        } else if let Some(_id) = &options._id {
+            query = sqlx::query_as::<_, PullRequest>("SELECT * FROM pull_requests WHERE repo = $1 AND _id = $2")
+                .bind(repo)
+                .bind(_id);
         } else {
             query = sqlx::query_as::<_, PullRequest>("SELECT * FROM pull_requests WHERE repo = $1")
                 .bind(repo);

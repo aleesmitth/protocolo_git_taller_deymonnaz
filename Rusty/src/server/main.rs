@@ -71,13 +71,13 @@ async fn run_rocket(db_pool: PgPool) -> Result<(), rocket::Error> {
         .mount(
             "/",
             openapi_get_routes![
-                test_api,
                 init_repo,
                 post_pull_request,
                 get_repo_pull_request,
                 get_pull_request,
                 put_merge,
                 get_pull_request_commits,
+                test_api,
             ],
         )
         .mount(
