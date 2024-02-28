@@ -4,6 +4,7 @@ use crate::commands::git_commands::PathHandler;
 use crate::commands::git_commands::UnpackObjects;
 use crate::commands::helpers;
 use crate::commands::protocol_utils;
+use crate::constants::{REQUEST_LENGTH_CERO, REQUEST_DELIMITER_DONE, WANT_REQUEST, NAK_RESPONSE, UNPACK_CONFIRMATION};
 use std::env;
 
 use std::{error::Error, fs::File, io, io::Read, io::Write, net::TcpListener, net::TcpStream};
@@ -111,15 +112,15 @@ impl ServerProtocol {
             stream.write_all(line_to_send.as_bytes())?;
         }
 
-        let _ = stream.write_all(protocol_utils::REQUEST_LENGTH_CERO.as_bytes());
+        let _ = stream.write_all(REQUEST_LENGTH_CERO.as_bytes());
 
         let mut reader = std::io::BufReader::new(stream.try_clone()?);
         let requests_received: Vec<String> =
-            protocol_utils::read_until(&mut reader, protocol_utils::REQUEST_DELIMITER_DONE, false)?;
+            protocol_utils::read_until(&mut reader, REQUEST_DELIMITER_DONE, false)?;
         for request_received in requests_received.clone() {
             let request_array: Vec<&str> = request_received.split_whitespace().collect();
             // println!("request in array: {:?}", request_array);
-            if request_array[0] != protocol_utils::WANT_REQUEST {
+            if request_array[0] != WANT_REQUEST {
                 //TODO not want request, handle error gracefully
                 println!(
                     "Error: expected want request but got: {:?}",
@@ -145,7 +146,7 @@ impl ServerProtocol {
         }
 
         let _ = stream.write_all(
-            protocol_utils::format_line_to_send(protocol_utils::NAK_RESPONSE.to_string())
+            protocol_utils::format_line_to_send(NAK_RESPONSE.to_string())
                 .as_bytes(),
         );
         println!("sent NAK");
@@ -199,11 +200,11 @@ impl ServerProtocol {
             stream.write_all(line_to_send.as_bytes())?;
         }
 
-        let _ = stream.write_all(protocol_utils::REQUEST_LENGTH_CERO.as_bytes());
+        let _ = stream.write_all(REQUEST_LENGTH_CERO.as_bytes());
 
         let mut reader = std::io::BufReader::new(stream.try_clone()?);
         let requests_received: Vec<String> =
-            protocol_utils::read_until(&mut reader, protocol_utils::REQUEST_LENGTH_CERO, true)?;
+            protocol_utils::read_until(&mut reader, REQUEST_LENGTH_CERO, true)?;
         let mut refs_to_update: Vec<(String, String, String)> = Vec::new();
         for request_received in requests_received {
             if let [prev_remote_hash, new_remote_hash, branch_name] = request_received
@@ -242,7 +243,7 @@ impl ServerProtocol {
         {
             println!("packfile unpacked");
             let unpack_confirmation = protocol_utils::format_line_to_send(
-                protocol_utils::UNPACK_CONFIRMATION.to_string(),
+                UNPACK_CONFIRMATION.to_string(),
             );
             println!("{}", unpack_confirmation);
             stream.write_all(unpack_confirmation.as_bytes())?;
