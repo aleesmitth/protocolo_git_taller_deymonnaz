@@ -887,10 +887,19 @@ impl Command for Remote {
                 }
             }
         }
+
         match (add_flag, remove_flag, name, url) {
             (true, _, Some(name), Some(url)) => self.add_new_remote(name, url)?,
             (_, true, Some(name), _) => self.remove_remote(name)?,
-            _ => {}
+            _ => {
+                if add_flag {
+                    println!("To add a new remote specify remote name and url")
+                } else if remove_flag {
+                    println!("To remove a new remote specify remote name")
+                } else {
+                    println!("Use the add or remove flag for remotes")
+                }
+            }
         }
         Ok(String::new())
     }
@@ -1420,7 +1429,7 @@ impl Push {
 
 impl Command for Push {
     fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
-        let mut remote_url = helpers::get_remote_url(DEFAULT_REMOTE_REPOSITORY)?;
+        let mut remote_url = String::new();
         
         let mut _remote_name = DEFAULT_REMOTE_REPOSITORY;
         let _branch = Head::get_current_branch_name()?;
@@ -1439,7 +1448,9 @@ impl Command for Push {
                 }
             }
         }
-
+        if remote_url.is_empty() {
+            remote_url = helpers::get_remote_url(DEFAULT_REMOTE_REPOSITORY)?;
+        }
         ClientProtocol::new().receive_pack(remote_url.to_string())?;
 
         Ok(String::new())
