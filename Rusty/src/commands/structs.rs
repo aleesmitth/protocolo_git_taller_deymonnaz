@@ -144,7 +144,7 @@ impl HashObjectCreator {
 
         for line in index_file_lines {
             let split_line: Vec<&str> = line.split(';').collect();
-            // println!("split line: {:?}", split_line);
+            println!("split line: {:?}", split_line);
             let path = Path::new(split_line[0]);
             let hash = split_line[1];
 
@@ -419,17 +419,16 @@ impl StagingArea {
         let index_file_content =
             helpers::read_file_content(&PathHandler::get_relative_path(INDEX_FILE))?;
         let mut lines: Vec<String> = index_file_content.lines().map(|s| s.to_string()).collect();
-        let mut new_index_file_content = String::new();
-
+        let mut new_index_file_content: Vec<String> = Vec::new();
+        
         for line in lines.iter_mut() {
             line.pop();
             line.push_str(IndexFileEntryState::Cached.to_string().as_str());
-            new_index_file_content.push_str(line);
-            new_index_file_content.push('\n'); // Add a newline between lines
+            new_index_file_content.push(line.to_string());
         }
 
         let mut index_file = fs::File::create(PathHandler::get_relative_path(INDEX_FILE))?;
-        index_file.write_all(new_index_file_content.as_bytes())?;
+        index_file.write_all(new_index_file_content.join("\n").as_bytes())?;
         Ok(())
     }
 
@@ -474,7 +473,7 @@ impl StagingArea {
         let new_index_content = new_index_lines.join("\n");
         let mut index_file = fs::File::create(PathHandler::get_relative_path(INDEX_FILE))?;
         _ = index_file.write_all(new_index_content.as_bytes())?;
-
+        println!("new content:\n{}", new_index_content);
         Ok(())
     }
 }

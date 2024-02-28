@@ -690,14 +690,14 @@ impl Command for Status {
                 if current_object_hash != hash_string && index_file_line[2] == "0" {
                     no_changes = false;
                     line = format!("modified: {} (Unstaged)", index_file_line[0]);
+                } else {
+                    no_changes = false;
+                    line = format!("new file: {} (Staged)", index_file_line[0]);
                 }
-            } else {
-                no_changes = false;
-                line = format!("new file: {} (Staged)", index_file_line[0]);
-            }
             println!("{}", line);
             line_result.push_str(&line);
             line_result.push('\n');
+            }
         }
         if no_changes {
             line = "nothing to commit, working tree clean".to_string();
