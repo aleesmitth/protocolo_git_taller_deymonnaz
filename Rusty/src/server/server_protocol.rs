@@ -4,7 +4,6 @@ use crate::commands::git_commands::PathHandler;
 use crate::commands::git_commands::UnpackObjects;
 use crate::commands::helpers;
 use crate::commands::protocol_utils;
-use crate::constants::RELATIVE_PATH;
 use std::env;
 
 use std::{error::Error, fs::File, io, io::Read, io::Write, net::TcpListener, net::TcpStream};
@@ -60,7 +59,7 @@ impl ServerProtocol {
         let trimmed_path_name = result_string.strip_suffix(".git").unwrap_or(result_string.as_str());
 
         // Retrieve the current value
-        let base_repo_path = env::var(RELATIVE_PATH).unwrap_or_else(|_| String::new());
+        let base_repo_path = PathHandler::get_relative_path("");
         let mut current_repo_path = base_repo_path.clone();
 
         // Concatenate a new string
@@ -80,7 +79,7 @@ impl ServerProtocol {
     }*/
         // Set the modified value back to the environment variable
         // TODO important, you can't do this because env variables are shared among threads
-        env::set_var(RELATIVE_PATH, &current_repo_path);
+        PathHandler::set_relative_path(&current_repo_path);
 
 
 
@@ -98,7 +97,7 @@ impl ServerProtocol {
             _ => {}
         }
 
-        env::set_var(RELATIVE_PATH, &base_repo_path);
+        PathHandler::set_relative_path(&base_repo_path);
         println!("end handling connection, relative path reseted.");
         Ok(())
     }

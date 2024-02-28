@@ -1,16 +1,19 @@
 use std::env;
+use std::error::Error;
 use rocket::tokio::task::spawn_blocking;
 use rocket::{get, post, put};
 use crate::commands::git_commands;
-use crate::commands::git_commands::Command;
+use crate::commands::git_commands::{Command, PathHandler};
 use crate::server::models::*;
 use rocket::serde::json::Json;
 use rocket_okapi::openapi;
 use rocket::State;
-use crate::constants::RELATIVE_PATH;
+use rocket::http::Status;
+use crate::commands::helpers::check_if_repo_exists;
+use rocket::response::status::NotFound;
 
 
-use super::models::create;
+use super::database::{create, read};
 
 #[openapi(skip)]
 #[get("/")]
@@ -42,11 +45,11 @@ pub async fn get_repo_pull_request(state: &State<AppState>, repo: String) -> Str
 ///
 /// Returns the specified pull request that's in the specified repo.
 #[openapi(tag = "Pull Requests")]
-#[get("/repos/<repo>/pulls/<pull_name>")]
-pub async fn get_pull_request(state: &State<AppState>, repo: String, pull_name: String) -> String {
+#[get("/repos/<repo>/pulls/<pull_number>")]
+pub async fn get_pull_request(state: &State<AppState>, repo: String, pull_number: i32) -> String {
     let mut options = PullRequestOptions::default();
     options.repo = Some(repo);
-    options.name = Some(pull_name);
+    options._id = Some(pull_number);
     match read(&options, &state.db_pool).await {
         Ok(pull_requests) => {
             // 4. Return an appropriate response
@@ -63,11 +66,11 @@ pub async fn get_pull_request(state: &State<AppState>, repo: String, pull_name: 
 ///
 /// Returns all the commits from the specified pull request that's in the specified repo.
 #[openapi(tag = "Pull Requests")]
-#[get("/repos/<repo>/pulls/<pull_name>/commits")]
-pub async fn get_pull_request_commits(state: &State<AppState>, repo: String, pull_name: String) -> String {
+#[get("/repos/<repo>/pulls/<pull_number>/commits")]
+pub async fn get_pull_request_commits(state: &State<AppState>, repo: String, pull_number: i32) -> String {
     let mut options = PullRequestOptions::default();
     options.repo = Some(repo);
-    options.name = Some(pull_name);
+    options._id = Some(pull_number);
     match read(&options, &state.db_pool).await {
         Ok(pull_requests) => {
             // only one pull request should've been returned
@@ -108,55 +111,62 @@ pub async fn get_pull_request_commits(state: &State<AppState>, repo: String, pul
 ///
 /// Merges a pull request into the base branch.
 #[openapi(tag = "Pull Requests")]
-#[put("/repos/<repo>/pulls/<pull_name>/merge", format = "application/json")]
-pub fn put_merge(_state: &State<AppState>, repo: String, pull_name: String) -> String {
+#[put("/repos/<repo>/pulls/<pull_number>/merge", format = "application/json")]
+pub fn put_merge(_state: &State<AppState>, repo: String, pull_number: i32) -> String {
     let mut options = PullRequestOptions::default();
     options.repo = Some(repo);
-    options.name = Some(pull_name);
+    options._id = Some(pull_number);
     "TODO implement end point".to_string()
 }
 
 /// # git init a repo for testing only
 #[openapi(tag = "Pull Requests")]
 #[get("/init/<repo>")]
-pub async fn init_repo(repo: &str) -> String {
+pub async fn init_repo(repo: &str) -> Result<String, NotFound<String>> {
     let repo_name_clone = repo.to_string(); // Clone the string
-    let _vec = spawn_blocking(move || {
-        // TODO this is bad
-        let base_repo_path = env::var(RELATIVE_PATH).unwrap_or_else(|_| String::new());
-        if let Err(e) = git_commands::Init::new().execute(Some(vec![&repo_name_clone])) {
-            println!("e {}",e);
-        }
-        env::set_var(RELATIVE_PATH, &base_repo_path);
+
+    let result = spawn_blocking(move || {
+        let base_repo_path = PathHandler::get_relative_path("");
+        let result = git_commands::Init::new().execute(Some(vec![&repo_name_clone]))
+            .map(|_| "Repository initialized successfully".to_string())
+            .map_err(|e| e.to_string());
+        PathHandler::set_relative_path(&base_repo_path);
+        result
     }).await;
-    format!("result: {:?}", _vec)
+
+    match result {
+        // all good
+        Ok(Ok(message)) => Ok(message),
+        // internal error in the code executed inside the thread
+        Ok(Err(e)) => Err(NotFound(e.to_string())),
+        // any thread related error
+        _ => Err(NotFound(Status::NotFound.to_string())),
+    }
 }
 
 /// # Create a pull request
 #[openapi(tag = "Pull Requests")]
 #[post("/repos/<repo>/pulls", format = "application/json", data = "<pr>")]
-pub async fn post_pull_request(state: &State<AppState>, repo: String, pr: Json<PullRequest>) -> String {
-    // 1. Extract data from the Json<PullRequestData> parameter
+pub async fn post_pull_request(state: &State<AppState>, repo: String, pr: Json<PullRequestBody>) -> Result<String, NotFound<String>> {
+    // 1. Extract data from the Json<PullRequestBody> parameter
     let pull_request_data = pr.into_inner();
 
-    // 2. Validate the extracted data
-    if pull_request_data.name.is_empty() {
-        return format!("Error: Pull request name cannot be empty.{}" ,repo);
-    }
-    match create(&pull_request_data, &state.db_pool).await {
+    let pull_request_resource = match PullRequest::new(pull_request_data, repo) {
+        Ok(resource) => resource,
+        Err(e) => {
+            // Handle the error
+            println!("Error creating pull request resource: {}", e);
+            // Optionally, return or propagate the error
+            return Err(NotFound(e.to_string())); // Assuming you are in a function that returns Result
+        }
+    };
+
+    match create(&pull_request_resource, &state.db_pool).await {
         Ok(pull_request_id) => {
-            /*let _vec = spawn_blocking(move || {
-                if let Err(e) = git_commands::Merge::new().execute(Some(vec!["segunda_branch"])) {
-                    println!("e {}",e);
-                }
-            });
-            format!("result: {:?}", _vec);*/
-            // 4. Return an appropriate response
-            format!("Pull request created successfully with Id: {}", pull_request_id)
+            Ok(format!("Pull request created successfully with Id: {}", pull_request_id))
         }
         Err(err) => {
-            // Handle the error appropriately (log it, return an error response, etc.)
-            format!("Error creating pull request: {:?}", err)
+            Err(NotFound(format!("Error creating pull request: {:?}", err)))
         }
     }
 }

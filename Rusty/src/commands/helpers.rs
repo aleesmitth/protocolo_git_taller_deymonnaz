@@ -18,7 +18,7 @@ use super::{git_commands::PathHandler, structs::ObjectType};
 // const INDEX_FILE: &str = ".git/index";
 // const CONFIG_FILE: &str = ".git/config";
 // const R_REMOTES: &str = ".git/refs/remotes";
-use crate::constants::{OBJECT, R_HEADS, INDEX_FILE, CONFIG_FILE, R_REMOTES, TREE_FILE_MODE, TREE_SUBTREE_MODE};
+use crate::constants::{OBJECT, R_HEADS, INDEX_FILE, CONFIG_FILE, R_REMOTES, TREE_FILE_MODE, TREE_SUBTREE_MODE, GIT};
 
 /// Returns length of a file's content
 pub fn get_file_length(path: &str) -> Result<u64, Box<dyn Error>> {
@@ -772,7 +772,40 @@ pub fn reconstruct_working_tree(commit_hash: String) -> Result<HashMap<String, S
     Ok(working_tree)
 }
 
-/// Receives a branch name and return a bool indicating if the branch already exists or not
+/// Receives a repo name and return a result indicating if the repo already exists or not
+pub fn check_if_repo_exists(repo_name: &str) -> Result<(), Box<dyn Error>> {
+    if repo_name.is_empty() {
+        return Err(Box::new(io::Error::new(
+            io::ErrorKind::Other,
+            "Error: repo name can't be blank, it does not exist.",
+        )))
+    }
+    let string_full_path = PathHandler::get_relative_path(&repo_name);
+    let full_path = Path::new(&string_full_path);
+
+    // Check if the given directory exists
+    return if full_path.is_dir() {
+        println!("Directory '{:?}' exists.", full_path.clone());
+        println!("checking if it's a git repo...");
+        let git_dir = full_path.join(GIT);
+        if git_dir.is_dir() {
+            println!("Subdirectory '.git' exists inside '{:?}'.", git_dir);
+            Ok(())
+        } else {
+            Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "Subdirectory '.git' does not exist.",
+            )))
+        }
+    } else {
+        Err(Box::new(io::Error::new(
+            io::ErrorKind::Other,
+            "Directory does not exist.",
+        )))
+    }
+}
+
+/// Receives a branch name and return a result indicating if the branch already exists or not
 pub fn check_if_branch_exists(branch_name: &str) -> Result<(), Box<dyn Error>> {
     let branch_path = get_branch_path(branch_name);
     if !check_if_file_exists(&PathHandler::get_relative_path(&branch_path)) {

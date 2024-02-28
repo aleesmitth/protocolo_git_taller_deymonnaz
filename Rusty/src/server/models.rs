@@ -2,11 +2,13 @@ use chrono;
 use sqlx::PgPool;
 use std::error::Error;
 use std::io;
+use rocket::response::status::NotFound;
 use sqlx::Row;
 use sqlx::FromRow;
 use serde::{Serialize, Deserialize};
 use rocket_okapi::okapi::schemars;
 use rocket_okapi::okapi::schemars::JsonSchema;
+use crate::commands::helpers::check_if_repo_exists;
 
 // TODO make a constructor for this, so it validates data or whatever, is it cleaner?
 // TODO we should use traits to support more than 1 model.
@@ -16,107 +18,80 @@ pub struct AppState {
     pub db_pool: PgPool,
 }
 
+///
+/// Struct used to retrieve a PullRequest from the database
+///
 #[derive(Debug, Default)]
 pub struct PullRequestOptions {
     pub _id: Option<i32>,
-    pub name: Option<String>,
     pub repo: Option<String>,
     pub head: Option<String>,
     pub base: Option<String>,
     pub commit_after_merge: Option<String>,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>
 }
+
+///
+/// main PullRequest resource
+///
 #[derive(Debug,FromRow,Serialize,Deserialize, JsonSchema)]
 pub struct PullRequest {
     pub _id: Option<i32>,
-    pub name: String,
     pub repo: String,
     pub head: String,
     pub base: String,
-    #[schemars(example = "example")]
+    #[schemars(example = "sample_commit")]
     pub commit_after_merge: Option<String>,
-    #[schemars(example = "example_date")]
+    #[schemars(example = "sample_date")]
     pub created_at: Option<chrono::DateTime<chrono::Utc>>
 }
 
-fn example() -> &'static str {
-    "test"
+
+///
+/// Struct used to receive requests with body from HTTP
+///
+#[derive(Debug,FromRow,Serialize,Deserialize, JsonSchema)]
+pub struct PullRequestBody {
+    pub head: String,
+    pub base: String,
 }
-fn example_date() -> chrono::DateTime<chrono::Utc> {
+
+fn sample_commit() -> &'static str {
+    "ec2b86e15c8deec7b041e622bca5cd9f258888c9"
+}
+fn sample_date() -> chrono::DateTime<chrono::Utc> {
     chrono::Utc::now()
 }
 
 impl PullRequest {
-    pub fn new(name: String, repo: String, head: String, base: String) -> Result<Self, Box<dyn Error>> {
-        if head == base {
+    pub fn new(request_body: PullRequestBody, repo: String) -> Result<Self, Box<dyn Error>> {
+        if request_body.base.is_empty() || request_body.head.is_empty() {
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "Pull request body has to have populated base and head in request body",
+            )))
+        }
+        if request_body.head == request_body.base {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
                 "Can't create a PullRequest with head same as base",
             )))
         }
 
-        //TODO check if repo exists
+        if let Err(_) =  check_if_repo_exists(repo.as_str()) {
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "Error repo does not exist, pull request creation aborted.",
+            )))
+        }
         //TODO check if head and base are inside repo
         Ok(PullRequest {
             _id: None,
-            name,
             repo,
-            head,
-            base,
+            head: request_body.head,
+            base: request_body.base,
             commit_after_merge: None,
             created_at: None
         })
     }
-}
-// TODO check for errors, refactor this and use table name in a .env var or constant
-// TODO refactor to use transactions instead of the pool directly
-pub async fn create(pull_request: &PullRequest, pool: &sqlx::PgPool) -> Result<i32, Box<dyn Error>> {
-    let query = "INSERT INTO pull_requests (name, repo, head, base, commit_after_merge) VALUES ($1, $2, $3, $4, $5) RETURNING _id";
-    let row = sqlx::query(query)
-        .bind(&pull_request.name)
-        .bind(&pull_request.repo)
-        .bind(&pull_request.head)
-        .bind(&pull_request.base)
-        .bind(&pull_request.commit_after_merge)
-        .fetch_one(pool)
-        .await?;
-
-    Ok(row.get("_id"))
-}
-
-pub async fn update(pull_request: &PullRequest, pool: &sqlx::PgPool) -> Result<(), Box<dyn Error>> {
-    let query = "UPDATE pull_requests SET name = $1, repo = $2, head = $3, base = $4, commit_after_merge = $5 WHERE _id = $6";
-    sqlx::query(query)
-        .bind(&pull_request.name)
-        .bind(&pull_request.repo)
-        .bind(&pull_request.head)
-        .bind(&pull_request.base)
-        .bind(&pull_request.commit_after_merge)
-        .bind(pull_request._id.unwrap_or(1))
-        .execute(pool)
-        .await?;
-
-    Ok(())
-}
-
-pub async fn read(options: &PullRequestOptions, pool: &sqlx::PgPool) -> Result<Vec<PullRequest>, Box<dyn Error>> {
-    let mut query = sqlx::query_as::<_, PullRequest>("SELECT * FROM pull_requests");
-
-    if let Some(repo) = &options.repo {
-        if let Some(name) = &options.name {
-            query = sqlx::query_as::<_, PullRequest>("SELECT * FROM pull_requests WHERE name = $1 AND repo = $2")
-                .bind(name)
-                .bind(repo);
-        } else {
-            query = sqlx::query_as::<_, PullRequest>("SELECT * FROM pull_requests WHERE repo = $1")
-                .bind(repo);
-        }
-    } else if let Some(_id) = &options._id {
-        query = sqlx::query_as::<_, PullRequest>("SELECT * FROM pull_requests WHERE _id = $1").bind(_id);
-    }
-
-    let prs = query.fetch_all(pool).await?;
-
-
-    Ok(prs)
 }

@@ -19,12 +19,12 @@ use crate::constants::*;
 pub struct PathHandler;
 
 impl PathHandler {
-    pub fn get_relative_path(original_path: &str) -> String {
+    pub fn get_relative_path(append_path: &str) -> String {
         if let Ok(relative_path) = env::var(RELATIVE_PATH) {
             // Concatenate with a const string
-            return format!("{}{}", relative_path, original_path);
+            return format!("{}{}", relative_path, append_path);
         }
-        original_path.to_string()
+        append_path.to_string()
     }
 
     pub fn set_relative_path(path: &str) {

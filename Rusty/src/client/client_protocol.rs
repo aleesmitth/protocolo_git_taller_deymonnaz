@@ -33,7 +33,7 @@ impl ClientProtocol {
         // println!("connect complete");
 
         let request = protocol_utils::format_line_to_send(
-            "git-receive-pack /myrepo123/.git\0host=127.0.0.1\0".to_string(),
+            "git-receive-pack /myrepo12345/.git\0host=127.0.0.1\0".to_string(),
         );
         // println!("request {}", request);
 
