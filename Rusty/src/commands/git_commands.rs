@@ -653,53 +653,45 @@ impl Command for Status {
     /// modified, staged, or unstaged.
     fn execute(&self, _args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let last_commit_hash: String = Head::get_head_commit()?;
-        let mut no_changes = true;
-        let tree_content: Vec<(String, String, String)> = Vec::new();
+        let mut tree_content: Vec<(String, String, String)> = Vec::new();
         if !last_commit_hash.is_empty() {
-            let last_commit = Head::get_head_commit()?;
-            let tree_hash = helpers::get_commit_tree(&last_commit)?;
-            let _tree_content: Vec<(String, String, String)> =
-                helpers::read_tree_content(&tree_hash)?;
+            let tree_hash = helpers::get_commit_tree(&last_commit_hash)?;
+            tree_content = helpers::read_tree_content(&tree_hash)?;
         }
 
         let index_file_content =
             helpers::read_file_content(&PathHandler::get_relative_path(INDEX_FILE))?;
         let index_objects: Vec<String> =
             index_file_content.lines().map(|s| s.to_string()).collect();
-
         let mut line_result = String::new();
         let mut line = String::new();
-
         for pos in 0..(index_objects.len()) {
             let index_file_line: Vec<&str> = index_objects[pos].split(';').collect();
             if pos < tree_content.len() {
                 let (_, _, hash_string) = tree_content[pos].clone();
-                if hash_string != index_file_line[1] && index_file_line[2] == "2" {
-                    no_changes = false;
-                    line = format!("modified: {} (Staged)", index_file_line[0]);
-                    line_result.push_str(&line);
-                    println!("{}", line);
-                    continue;
-                }
                 let current_object_content = helpers::read_file_content(index_file_line[0])?;
                 let current_object_hash = HashObjectCreator::generate_object_hash(
                     ObjectType::Blob,
                     get_file_length(index_file_line[0])?,
                     &current_object_content,
                 );
-                if current_object_hash != hash_string && index_file_line[2] == "0" {
-                    no_changes = false;
+
+                if hash_string != index_file_line[1] && index_file_line[2] == "2" {
+                    line = format!("modified: {} (Staged)", index_file_line[0]);
+                } else if current_object_hash != hash_string && index_file_line[2] == "0" {
                     line = format!("modified: {} (Unstaged)", index_file_line[0]);
-                } else {
-                    no_changes = false;
+                } else if hash_string != index_file_line[1] {
                     line = format!("new file: {} (Staged)", index_file_line[0]);
                 }
-            println!("{}", line);
-            line_result.push_str(&line);
-            line_result.push('\n');
+            }
+
+            if !line.is_empty() {
+                println!("{}", line);
+                line_result.push_str(&line);
+                line_result.push('\n');
             }
         }
-        if no_changes {
+        if line_result.is_empty() {
             line = "nothing to commit, working tree clean".to_string();
             line_result.push_str(&line);
             line_result.push('\n');

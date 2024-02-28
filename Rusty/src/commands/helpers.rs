@@ -2,10 +2,7 @@ use std::{collections::HashMap, error::Error, fs, io, io::Read, io::Write, path:
 extern crate crypto;
 extern crate libflate;
 
-use crate::{
-    client::client_protocol,
-    commands::{git_commands::Log, structs::{HashObjectCreator, Head}},
-};
+use crate::commands::{git_commands::Log, structs::{HashObjectCreator, Head}};
 use crypto::digest::Digest;
 use crypto::sha1::Sha1;
 use libflate::zlib::{Decoder, Encoder};
@@ -18,7 +15,7 @@ use super::{git_commands::PathHandler, structs::ObjectType};
 // const INDEX_FILE: &str = ".git/index";
 // const CONFIG_FILE: &str = ".git/config";
 // const R_REMOTES: &str = ".git/refs/remotes";
-use crate::constants::{OBJECT, R_HEADS, INDEX_FILE, CONFIG_FILE, R_REMOTES, TREE_FILE_MODE, TREE_SUBTREE_MODE, GIT};
+use crate::constants::{OBJECT, R_HEADS, INDEX_FILE, CONFIG_FILE, R_REMOTES, TREE_FILE_MODE, TREE_SUBTREE_MODE, GIT, ZERO_HASH};
 
 /// Returns length of a file's content
 pub fn get_file_length(path: &str) -> Result<u64, Box<dyn Error>> {
@@ -550,7 +547,7 @@ pub fn validate_ref_update_request(
     let branch_path = format!(".git/{}", branch_ref);
     
     if check_if_file_exists(&branch_path) {
-        /*if prev_remote_hash == client_protocol::ZERO_HASH {
+        /*if prev_remote_hash == ZERO_HASH {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
                 "Error: Trying to initialize existing ref",
@@ -564,7 +561,7 @@ pub fn validate_ref_update_request(
                 "Error: New hash is different from ref's current hash",
             )));
         }*/
-    } else if prev_remote_hash != client_protocol::ZERO_HASH {
+    } else if prev_remote_hash != ZERO_HASH {
         return Err(Box::new(io::Error::new(
             io::ErrorKind::Other,
             "Error: Ref was not found",
@@ -785,7 +782,7 @@ pub fn check_if_repo_exists(repo_name: &str) -> Result<(), Box<dyn Error>> {
 
     // Check if the given directory exists
     return if full_path.is_dir() {
-        println!("Directory '{:?}' exists.", full_path.clone());
+        println!("Directory '{:?}' exists.", full_path);
         println!("checking if it's a git repo...");
         let git_dir = full_path.join(GIT);
         if git_dir.is_dir() {

@@ -1,5 +1,4 @@
-use rusty::commands::git_commands;
-use rusty::commands::git_commands::Command;
+use rusty::commands::git_commands::*;
 use std::{env, io};
 
 /// This function takes a slice of strings and converts it into a vector of string slices.
@@ -26,38 +25,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.len() >= 2 {
         let command = &args[1];
         match command.as_str() {
-            "init" => git_commands::Init::new().execute(None)?,
-            "branch" => git_commands::Branch::new().execute(parse_arguments(&args[2..]))?,
-            "checkout" => git_commands::Checkout::new().execute(parse_arguments(&args[2..]))?,
-            "cat-file" => git_commands::CatFile::new().execute(parse_arguments(&args[2..]))?,
+            "init" => Init::new().execute(None)?,
+            "branch" => Branch::new().execute(parse_arguments(&args[2..]))?,
+            "checkout" => Checkout::new().execute(parse_arguments(&args[2..]))?,
+            "cat-file" => CatFile::new().execute(parse_arguments(&args[2..]))?,
             "hash-object" => {
-                git_commands::HashObject::new().execute(parse_arguments(&args[2..]))?
+                HashObject::new().execute(parse_arguments(&args[2..]))?
             }
-            "add" => git_commands::Add::new().execute(parse_arguments(&args[2..]))?,
-            "rm" => git_commands::Rm::new().execute(parse_arguments(&args[2..]))?,
-            "commit" => git_commands::Commit::new().execute(parse_arguments(&args[2..]))?,
-            "status" => git_commands::Status::new().execute(None)?,
-            "log" => git_commands::Log::new().execute(parse_arguments(&args[2..]))?,
-            "remote" => git_commands::Remote::new().execute(parse_arguments(&args[2..]))?,
+            "add" => Add::new().execute(parse_arguments(&args[2..]))?,
+            "rm" => Rm::new().execute(parse_arguments(&args[2..]))?,
+            "commit" => Commit::new().execute(parse_arguments(&args[2..]))?,
+            "status" => Status::new().execute(None)?,
+            "log" => Log::new().execute(parse_arguments(&args[2..]))?,
+            "remote" => Remote::new().execute(parse_arguments(&args[2..]))?,
             "pack-objects" => {
-                git_commands::PackObjects::new().execute(parse_arguments(&args[2..]))?
+                PackObjects::new().execute(parse_arguments(&args[2..]))?
             }
-            "fetch" => git_commands::Fetch::new().execute(parse_arguments(&args[2..]))?,
-            "merge" => git_commands::Merge::new().execute(parse_arguments(&args[2..]))?,
-            "clone" => git_commands::Clone::new().execute(parse_arguments(&args[2..]))?,
-            "pull" => git_commands::Pull::new().execute(parse_arguments(&args[2..]))?,
-            "push" => git_commands::Push::new().execute(parse_arguments(&args[2..]))?,
-            "ls-tree" => git_commands::LsTree::new().execute(parse_arguments(&args[2..]))?,
-            "ls-files" => git_commands::LsFiles::new().execute(parse_arguments(&args[2..]))?,
-            "tag" => git_commands::Tag::new().execute(parse_arguments(&args[2..]))?,
+            "fetch" => Fetch::new().execute(parse_arguments(&args[2..]))?,
+            "merge" => Merge::new().execute(parse_arguments(&args[2..]))?,
+            "clone" => Clone::new().execute(parse_arguments(&args[2..]))?,
+            "pull" => Pull::new().execute(parse_arguments(&args[2..]))?,
+            "push" => Push::new().execute(parse_arguments(&args[2..]))?,
+            "ls-tree" => LsTree::new().execute(parse_arguments(&args[2..]))?,
+            "ls-files" => LsFiles::new().execute(parse_arguments(&args[2..]))?,
+            "tag" => Tag::new().execute(parse_arguments(&args[2..]))?,
             "check-ignore" => {
-                git_commands::CheckIgnore::new().execute(parse_arguments(&args[2..]))?
+                CheckIgnore::new().execute(parse_arguments(&args[2..]))?
             }
-            "show-ref" => git_commands::ShowRef::new().execute(parse_arguments(&args[2..]))?,
+            "show-ref" => ShowRef::new().execute(parse_arguments(&args[2..]))?,
             "unpack-objects" => {
-                git_commands::UnpackObjects::new().execute(parse_arguments(&args[2..]))?
+                UnpackObjects::new().execute(parse_arguments(&args[2..]))?
             }
-            "rebase" => git_commands::Rebase::new().execute(parse_arguments(&args[2..]))?,
+            "rebase" => Rebase::new().execute(parse_arguments(&args[2..]))?,
 
             _ => {
                 return Err(Box::new(io::Error::new(

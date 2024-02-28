@@ -1,10 +1,7 @@
-use crate::commands::git_commands::Command;
-use crate::commands::git_commands::PackObjects;
-use crate::commands::git_commands::PathHandler;
 use crate::commands::protocol_utils;
 use crate::commands::structs::Head;
-
-pub const ZERO_HASH: &str = "0000000000000000000000000000000000000000";
+use crate::commands::git_commands::{Command, PackObjects, PathHandler};
+use crate::constants::{ZERO_HASH, REQUEST_DELIMITER_DONE, REQUEST_LENGTH_CERO, WANT_REQUEST, NAK_RESPONSE};
 
 use std::{
     error::Error, fs, io::Read, io::Write, net::Shutdown, net::TcpStream, str, thread,
@@ -46,7 +43,7 @@ impl ClientProtocol {
         let mut refs_in_remote: Vec<(String, String)> = Vec::new();
         let mut reader = std::io::BufReader::new(stream.try_clone()?);
         let response_received: Vec<String> =
-            protocol_utils::read_until(&mut reader, protocol_utils::REQUEST_DELIMITER_DONE, true)?;
+            protocol_utils::read_until(&mut reader, REQUEST_DELIMITER_DONE, true)?;
 
         // println!("response received {:?}", response_received);
         for line in response_received.clone() {
@@ -85,7 +82,7 @@ impl ClientProtocol {
 
         stream.write_all(push_line.as_bytes())?;
 
-        let _ = stream.write_all(protocol_utils::REQUEST_LENGTH_CERO.as_bytes());
+        let _ = stream.write_all(REQUEST_LENGTH_CERO.as_bytes());
         // println!("sent 0000");
 
         let pack_checksum = PackObjects::new().execute(Some(vec![&last_commit_hash]))?;
@@ -127,7 +124,7 @@ impl ClientProtocol {
         let mut refs_in_remote: Vec<(String, String)> = Vec::new();
         let mut reader = std::io::BufReader::new(stream.try_clone()?);
         let response_received: Vec<String> =
-            protocol_utils::read_until(&mut reader, protocol_utils::REQUEST_DELIMITER_DONE, true)?;
+            protocol_utils::read_until(&mut reader, REQUEST_DELIMITER_DONE, true)?;
 
         // println!("response received {:?}", response_received);
         for line in response_received {
@@ -150,23 +147,23 @@ impl ClientProtocol {
         for (ref_hash, _ref_name) in &refs_in_remote {
             let want_request = protocol_utils::format_line_to_send(format!(
                 "{} {}\n",
-                protocol_utils::WANT_REQUEST,
+                WANT_REQUEST,
                 ref_hash
             ));
             // println!("want_request sent: {}\nfor ref: {}", want_request.clone(), ref_name);
             stream.write_all(want_request.as_bytes())?;
         }
-        let _ = stream.write_all(protocol_utils::REQUEST_LENGTH_CERO.as_bytes());
+        let _ = stream.write_all(REQUEST_LENGTH_CERO.as_bytes());
         // println!("sent 0000");
         let _ = stream.write_all(
-            protocol_utils::format_line_to_send(protocol_utils::REQUEST_DELIMITER_DONE.to_string())
+            protocol_utils::format_line_to_send(REQUEST_DELIMITER_DONE.to_string())
                 .as_bytes(),
         );
         // println!("sent done");
         stream.flush()?;
 
         let _read_lines: Vec<String> =
-            protocol_utils::read_until(&mut reader, protocol_utils::NAK_RESPONSE, false)?;
+            protocol_utils::read_until(&mut reader, NAK_RESPONSE, false)?;
         // println!("received NAK");
 
         let mut buffer = Vec::new();

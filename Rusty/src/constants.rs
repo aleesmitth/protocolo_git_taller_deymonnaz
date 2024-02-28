@@ -58,3 +58,12 @@ pub const COLOR_RED_CODE: &str = "\x1b[31m";
 pub const COLOR_RESET_CODE: &str = "\x1b[0m";
 
 pub const DEFAULT_HEAD_LINE: &str = "ref: refs/heads/";
+
+// consts used for server/client protocol
+pub const ZERO_HASH: &str = "0000000000000000000000000000000000000000";
+pub const LENGTH_BYTES: usize = 4;
+pub const REQUEST_DELIMITER_DONE: &str = "done\n";
+pub const REQUEST_LENGTH_CERO: &str = "0000";
+pub const NAK_RESPONSE: &str = "NAK\n";
+pub const WANT_REQUEST: &str = "want";
+pub const UNPACK_CONFIRMATION: &str = "unpack ok\n";
