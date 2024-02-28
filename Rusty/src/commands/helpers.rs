@@ -805,6 +805,23 @@ pub fn check_if_repo_exists(repo_name: &str) -> Result<(), Box<dyn Error>> {
     }
 }
 
+/// Receives a branch name and a repo name, returns a result indicating if the branch already exists in the repo or not
+pub fn check_if_branch_belongs_to_repo(branch_name: &str, repo_name: &str) -> Result<(), Box<dyn Error>> {
+    let branch_path = get_branch_path(branch_name);
+    let repo_branch_path = if repo_name.is_empty() {
+        branch_path
+    } else {
+        format!("{}/{}", repo_name, branch_path)
+    };
+    if !check_if_file_exists(&repo_branch_path) {
+        return Err(Box::new(io::Error::new(
+            io::ErrorKind::Other,
+            "Error: Specified branch does not exist in this repo.",
+        )))
+    }
+    Ok(())
+}
+
 /// Receives a branch name and return a result indicating if the branch already exists or not
 pub fn check_if_branch_exists(branch_name: &str) -> Result<(), Box<dyn Error>> {
     let branch_path = get_branch_path(branch_name);

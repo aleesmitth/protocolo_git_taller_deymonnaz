@@ -59,11 +59,13 @@ impl Database{
 // TODO check for errors, refactor this and use table name in a .env var or constant
 // TODO refactor to use transactions instead of the pool directly
 pub async fn create(pull_request: &PullRequest, pool: &sqlx::PgPool) -> Result<i32, Box<dyn Error>> {
-    let query = "INSERT INTO pull_requests (repo, head, base) VALUES ($1, $2, $3) RETURNING _id";
+    let query = "INSERT INTO pull_requests (title, body, repo, base, head) VALUES ($1, $2, $3, $4, $5) RETURNING _id";
     let row = sqlx::query(query)
+        .bind(&pull_request.title)
+        .bind(&pull_request.body)
         .bind(&pull_request.repo)
-        .bind(&pull_request.head)
         .bind(&pull_request.base)
+        .bind(&pull_request.head)
         .fetch_one(pool)
         .await?;
 
@@ -71,12 +73,13 @@ pub async fn create(pull_request: &PullRequest, pool: &sqlx::PgPool) -> Result<i
 }
 
 pub async fn update(pull_request: &PullRequest, pool: &sqlx::PgPool) -> Result<(), Box<dyn Error>> {
-    let query = "UPDATE pull_requests SET repo = $1, head = $2, base = $3 WHERE _id = $4";
+    let query = "UPDATE pull_requests SET title = $1, body = $2, repo = $3, base = $4, head = $5 WHERE repo = $3 AND base = $4 AND head = $5";
     sqlx::query(query)
+        .bind(&pull_request.title)
+        .bind(&pull_request.body)
         .bind(&pull_request.repo)
-        .bind(&pull_request.head)
         .bind(&pull_request.base)
-        .bind(pull_request._id.unwrap_or(1))
+        .bind(&pull_request.head)
         .execute(pool)
         .await?;
 
