@@ -108,27 +108,39 @@ pub async fn get_pull_request_commits(state: &State<AppState>, repo: String, pul
 
 /// # Merge a pull request
 ///
+// #[get("/repos/<repo>/pulls/<pull_number>/merge", format = "application/json", data = "<pr>")]
 /// Merges a pull request into the base branch.
 #[openapi(tag = "Pull Requests")]
-#[put("/repos/<repo>/pulls/<pull_number>/merge", format = "application/json")]
+#[get("/repos/<repo>/pulls/<pull_number>/x")]
 pub async fn put_merge(state: &State<AppState>, repo: String, pull_number: i32) -> Result<String, NotFound<String>> {
+    println!("inside put");
     let mut options = PullRequestOptions::default();
-    options.repo = Some(repo);
+    options.repo = Some(repo.clone());
     options._id = Some(pull_number);
 
     let pull_requests = match read(&options, &state.db_pool).await {
         Ok(pull_requests) => pull_requests,
-        Err(err) => return Err(NotFound(err.to_string()))
+        Err(err) => {
+            println!("error reading pr");
+            return Err(NotFound(err.to_string()))
+        }
     };
+    println!("pull request: {:?}", pull_requests);
     if pull_requests.is_empty(){
         return Err(NotFound("Pull request came back empty".to_string()))
     }
+    println!("merging");
     let merge = spawn_blocking(move || {
+        let base_repo_path = PathHandler::get_relative_path("");
+
+        PathHandler::set_relative_path(&format!("{}{}/", base_repo_path, repo));
         let merge = Merge::new().execute(Some(vec![&pull_requests[0].head, &pull_requests[0].base]))
             .map(|_| "Merge completed successfully".to_string())
-            .map_err(|e| e.to_string());
+            .map_err(|e| "Error in merge".to_string());
+        PathHandler::set_relative_path(&base_repo_path);
         merge
     }).await;
+    println!("merged");
     match merge {
         // all good
         Ok(Ok(message)) => Ok(message),

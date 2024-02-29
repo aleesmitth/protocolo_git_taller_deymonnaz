@@ -79,7 +79,6 @@ impl Command for Init {
             // Concatenate a '/' character and call the methods
             PathHandler::set_relative_path(&PathHandler::get_relative_path(&format!("{}/", repo_name)));
         }
-
         if helpers::check_if_directory_exists(&PathHandler::get_relative_path(GIT)) {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
@@ -2031,11 +2030,13 @@ impl Merge {
 
 impl Command for Merge {
     fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
+        println!("in merge");
+        PathHandler::set_relative_path(&PathHandler::get_relative_path("repo/"));
         let arg_slice = args.unwrap_or_default();
 
         let mut head_commit = Head::get_head_commit()?;
         let branch_to_merge = arg_slice[0];
-
+        println!("0");
         if arg_slice.len() == 2 {
             let current_branch = arg_slice[1];
             if branch_to_merge == current_branch {
@@ -2056,13 +2057,13 @@ impl Command for Merge {
         }
 
         let mut branch_to_merge_path = helpers::get_branch_path(branch_to_merge);
-        if !helpers::check_if_file_exists(&PathHandler::get_relative_path(&branch_to_merge_path)) {
+        if !helpers::check_if_file_exists(&branch_to_merge_path) {
             // This means the branch is a remote branch
             branch_to_merge_path = format!("{}/{}", R_REMOTES, branch_to_merge);
         }
-
+        println!("branch to merge: {}", branch_to_merge_path);
         let merging_commit_hash = helpers::get_branch_last_commit(&PathHandler::get_relative_path(&branch_to_merge_path))?;
-        
+        println!("2");
         // aca tengo merging commit y branch
         
         // let ancestor_commit = helpers::find_common_ancestor_commit(&head_commit, &merging_commit_hash)?;
@@ -2076,14 +2077,18 @@ impl Command for Merge {
         // StagingArea::new().change_index_file(files_without_conflict)?;
 
         solving_bug(head_commit.clone(), merging_commit_hash.clone())?;
-        
+        println!("safter solving bug");
         // hasta aca es compartido
 
         let new_commit_hash = HashObjectCreator::create_commit_object(None, vec![head_commit, merging_commit_hash])?;
+        println!("3");
+        
         helpers::update_branch_hash(&Head::get_current_branch_name()?, &new_commit_hash)?;
+        println!("4");
         let commit_tree = helpers::get_commit_tree(&new_commit_hash)?;
+        println!("5");
         WorkingDirectory::update_working_directory_to(&commit_tree)?;
-
+        println!("6");
         Ok(String::new())
     }
 }
@@ -2091,13 +2096,17 @@ impl Command for Merge {
 pub fn solving_bug(commit_merging_into: String, commit_to_merge: String) -> Result<(), Box<dyn Error>> {
     // aca estoy determinando los archivos y working tree nuevo, asi que nombre por ese lado
     let ancestor_commit = helpers::find_common_ancestor_commit(&commit_merging_into, &commit_to_merge)?;
-
+    println!("a");
     let ancestor_working_tree = helpers::reconstruct_working_tree(ancestor_commit)?;
+    println!("b");
     let current_working_tree = helpers::reconstruct_working_tree(commit_merging_into)?;
+    println!("c");
     let merging_working_tree = helpers::reconstruct_working_tree(commit_to_merge.clone())?;
-
+    println!("d");
     let files_without_conflict = helpers::find_files_without_conflict(ancestor_working_tree, current_working_tree, merging_working_tree)?;
+    println!("e");
     WorkingDirectory::clean_working_directory()?;
+    println!("f");
     StagingArea::new().change_index_file(files_without_conflict)?;
 
     Ok(())

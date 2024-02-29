@@ -21,8 +21,10 @@ impl Head {
 
     /// Returns the ref the HEAD points to
     pub fn get_current_branch_ref() -> Result<String, Box<dyn Error>> {
+        println!("ref: {}", &PathHandler::get_relative_path(HEAD_FILE));
         let head_file_content =
             helpers::read_file_content(&PathHandler::get_relative_path(HEAD_FILE))?;
+            println!("after reading");
         let split_head_content: Vec<String> = head_file_content
             .split_whitespace()
             .map(String::from)
@@ -53,6 +55,7 @@ impl Head {
     /// Returns the last commit of the current branch
     pub fn get_head_commit() -> Result<String, Box<dyn Error>> {
         let current_branch_path = Self::get_current_branch_path()?;
+        println!("{}", current_branch_path);
         let commit_hash =
             helpers::read_file_content(&PathHandler::get_relative_path(&current_branch_path))?;
         Ok(commit_hash)
@@ -530,7 +533,7 @@ pub struct WorkingDirectory;
 
 impl WorkingDirectory {
     fn remove_file_and_empty_parent_directories(file_path: &Path) -> Result<(), Box<dyn Error>> {
-        fs::remove_file(file_path)?;
+        let _ = fs::remove_file(file_path);
 
         let mut current_dir = file_path.parent();
 
@@ -539,9 +542,17 @@ impl WorkingDirectory {
             if parent == Path::new("") {
                 break;
             }
-            if fs::read_dir(parent)?.next().is_none() {
-                fs::remove_dir(parent)?;
-                current_dir = parent.parent();
+            if let Ok(mut dir_entries) = fs::read_dir(parent) {
+                println!("entreies: {:?}", dir_entries);
+                // println!("{:?}", dir_entries.next());
+                let next_dir_entry = dir_entries.next();
+                if next_dir_entry.is_none() || next_dir_entry ==  {
+                    println!("remove dir");
+                    let _ = fs::remove_dir(parent);
+                    current_dir = parent.parent();
+                    println!("current: {:?}", current_dir);
+                }
+                
             } else {
                 break;
             }
@@ -559,7 +570,7 @@ impl WorkingDirectory {
         for line in lines.iter() {
             let split_line: Vec<String> = line.split(';').map(String::from).collect();
             let file_path_str = PathHandler::get_relative_path(&split_line[0].clone());
-            // println!("path to delete: {}", file_path_str);
+            println!("path to delete: {}", file_path_str);
             let file_path = PathBuf::from(file_path_str);
             Self::remove_file_and_empty_parent_directories(&file_path)?;
         }

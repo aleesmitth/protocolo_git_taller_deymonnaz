@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.len() >= 2 {
         let command = &args[1];
         match command.as_str() {
-            "init" => Init::new().execute(None)?,
+            "init" => Init::new().execute(parse_arguments(&args[2..]))?,
             "branch" => Branch::new().execute(parse_arguments(&args[2..]))?,
             "checkout" => Checkout::new().execute(parse_arguments(&args[2..]))?,
             "cat-file" => CatFile::new().execute(parse_arguments(&args[2..]))?,
