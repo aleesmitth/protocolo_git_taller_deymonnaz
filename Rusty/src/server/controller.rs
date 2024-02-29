@@ -2,14 +2,13 @@ use std::env;
 use std::error::Error;
 use rocket::tokio::task::spawn_blocking;
 use rocket::{get, post, put};
-use crate::commands::git_commands;
+use crate::commands::git_commands::{self, Merge};
 use crate::commands::git_commands::{Command, PathHandler};
 use crate::server::models::*;
 use rocket::serde::json::Json;
 use rocket_okapi::openapi;
 use rocket::State;
 use rocket::http::Status;
-use crate::commands::helpers::check_if_repo_exists;
 use rocket::response::status::NotFound;
 
 
@@ -112,11 +111,33 @@ pub async fn get_pull_request_commits(state: &State<AppState>, repo: String, pul
 /// Merges a pull request into the base branch.
 #[openapi(tag = "Pull Requests")]
 #[put("/repos/<repo>/pulls/<pull_number>/merge", format = "application/json")]
-pub fn put_merge(_state: &State<AppState>, repo: String, pull_number: i32) -> String {
+pub async fn put_merge(state: &State<AppState>, repo: String, pull_number: i32) -> Result<String, NotFound<String>> {
     let mut options = PullRequestOptions::default();
     options.repo = Some(repo);
     options._id = Some(pull_number);
-    "TODO implement end point".to_string()
+
+    let pull_requests = match read(&options, &state.db_pool).await {
+        Ok(pull_requests) => pull_requests,
+        Err(err) => return Err(NotFound(err.to_string()))
+    };
+    if pull_requests.is_empty(){
+        return Err(NotFound("Pull request came back empty".to_string()))
+    }
+    let merge = spawn_blocking(move || {
+        let merge = Merge::new().execute(Some(vec![&pull_requests[0].head, &pull_requests[0].base]))
+            .map(|_| "Merge completed successfully".to_string())
+            .map_err(|e| e.to_string());
+        merge
+    }).await;
+    match merge {
+        // all good
+        Ok(Ok(message)) => Ok(message),
+        // internal error in the code executed inside the thread
+        Ok(Err(e)) => Err(NotFound(e.to_string())),
+        // any thread related error
+        _ => Err(NotFound(Status::NotFound.to_string())),
+    }
+    
 }
 
 /// # git init a repo for testing only

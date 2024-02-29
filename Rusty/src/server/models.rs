@@ -2,8 +2,6 @@ use chrono;
 use sqlx::PgPool;
 use std::error::Error;
 use std::io;
-use rocket::response::status::NotFound;
-use sqlx::Row;
 use sqlx::FromRow;
 use serde::{Serialize, Deserialize};
 use rocket_okapi::okapi::schemars;
@@ -49,7 +47,6 @@ pub struct PullRequest {
     #[schemars(example = "sample_date")]
     pub created_at: Option<chrono::DateTime<chrono::Utc>>
 }
-
 
 ///
 /// Struct used to receive requests with body from HTTP
