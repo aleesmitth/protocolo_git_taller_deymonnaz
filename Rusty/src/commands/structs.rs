@@ -140,17 +140,19 @@ impl HashObjectCreator {
         let mut subdirectories: HashMap<String, Vec<Vec<u8>>> = HashMap::new();
 
         let index_file_lines: Vec<&str> = index_file_content.split('\n').collect();
-        println!("index_file_lines: {:?}", index_file_lines);
+        let mut staged_files = false;
 
         for line in index_file_lines {
             let split_line: Vec<&str> = line.split(';').collect();
-            println!("split line: {:?}", split_line);
+            if split_line[2] == IndexFileEntryState::Cached.to_string() {
+                continue;
+            }
+            staged_files = true;
             let path = Path::new(split_line[0]);
             let hash = split_line[1];
 
             let mut current_dir = path.parent();
             let mut file_directory = String::new();
-            //println!("current_dir: {:?}", current_dir);
             if let Some(directory) = current_dir {
                 file_directory = directory.to_string_lossy().to_string();
             }
@@ -158,20 +160,15 @@ impl HashObjectCreator {
             let _split_path: Vec<&str> = index_file_content.split('/').collect();
             let mut file_name = String::new();
 
-            // println!("_split_path: {:?}", _split_path);
             if let Some(name) = path.file_name().and_then(|name| name.to_str()) {
-                // println!("File name: {}", name);
-                // println!("File path: {:?}", path);
                 file_name = name.to_string();
             }
             let hash = helpers::convert_hash_to_decimal_bytes(hash)?;
-            // let hash_string = String::from_utf8_lossy(&helpers::convert_hash_to_decimal_bytes(hash)?);
             let file_entry = format!("{} {}\0", TREE_FILE_MODE, file_name);
             let mut final_entry = Vec::new();
             final_entry.extend_from_slice(file_entry.as_bytes());
             final_entry.extend_from_slice(&hash);
-            // println!("tree entry: {}", file_entry);
-            //println!("file_entry: {:?}", file_entry);
+
             if let Some(_parent) = current_dir {
                 subdirectories
                     .entry(file_directory)
@@ -181,10 +178,8 @@ impl HashObjectCreator {
 
             while let Some(parent) = current_dir {
                 current_dir = parent.parent();
-                //println!("current_dir adentro del while: {:?}", current_dir);
                 let subdirectory_entry;
                 if let Some(directory) = current_dir {
-                    //println!("current_dir adentro del while , adentro del iflet: {:?}", directory);
                     subdirectory_entry = directory.to_string_lossy().to_string();
                     subdirectories
                         .entry(subdirectory_entry)
@@ -195,7 +190,6 @@ impl HashObjectCreator {
         }
         let mut super_tree_hash = String::new();
         for (parent_directory, entries) in &subdirectories {
-            // println!("[create_tree_object]parent_directory: {:?}", parent_directory);
             let sub_tree_content =
                 Self::process_files_and_subdirectories(&mut subdirectories.clone(), entries)?;
             let tree_hash = Self::write_object_file_bytes(
@@ -204,9 +198,11 @@ impl HashObjectCreator {
                 sub_tree_content.len(),
             )?;
             if parent_directory == "/" || parent_directory.is_empty() {
-                // println!("[create_tree_object]inside if: {:?}", parent_directory);
                 super_tree_hash = tree_hash;
             }
+        }
+        if !staged_files {
+            return Ok(String::new())
         }
         Ok(super_tree_hash)
     }
@@ -256,6 +252,11 @@ impl HashObjectCreator {
     // mejor division de tareas ahi
     pub fn create_commit_object(message: Option<&str>, parents: Vec<String>) -> Result<String, Box<dyn Error>> {
         let tree_hash = HashObjectCreator::create_tree_object()?;
+        if tree_hash.is_empty() {
+            // This means there was nothing staged, so no commit should be created.
+            println!("no changes added to commit (use 'git add')");
+            return Ok(String::new())
+        }
         let commit_content = Self::generate_commit_content(tree_hash, message, parents)?;
         println!("commit content: {}", commit_content);
         let commit_object_hash = HashObjectCreator::write_object_file(
