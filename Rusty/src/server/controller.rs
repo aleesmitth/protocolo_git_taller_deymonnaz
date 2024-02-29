@@ -53,7 +53,7 @@ pub async fn get_pull_request(state: &State<AppState>, repo: String, pull_number
     match read(&options, &state.db_pool).await {
         Ok(pull_requests) => {
             // 4. Return an appropriate response
-            format!("Pull request: {:?}", pull_requests)
+            format!("{:?}", pull_requests)
         }
         Err(err) => {
             // Handle the error appropriately (log it, return an error response, etc.)
