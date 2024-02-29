@@ -542,17 +542,9 @@ impl WorkingDirectory {
             if parent == Path::new("") {
                 break;
             }
-            if let Ok(mut dir_entries) = fs::read_dir(parent) {
-                println!("entreies: {:?}", dir_entries);
-                // println!("{:?}", dir_entries.next());
-                let next_dir_entry = dir_entries.next();
-                if next_dir_entry.is_none() || next_dir_entry ==  {
-                    println!("remove dir");
-                    let _ = fs::remove_dir(parent);
-                    current_dir = parent.parent();
-                    println!("current: {:?}", current_dir);
-                }
-                
+            if fs::read_dir(parent)?.next().is_none() {
+                let _ = fs::remove_dir(parent)?;
+                current_dir = parent.parent();
             } else {
                 break;
             }
