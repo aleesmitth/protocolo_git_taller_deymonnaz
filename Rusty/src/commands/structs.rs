@@ -549,6 +549,8 @@ impl WorkingDirectory {
         Ok(())
     }
 
+    /// Goes through the files in the index file and deletes them from the working directory.
+    /// These files will still be stored as blob objects, and can be created again if needed.
     pub fn clean_working_directory() -> Result<(), Box<dyn Error>> {
         let index_file_content =
             helpers::read_file_content(&PathHandler::get_relative_path(INDEX_FILE))?;
@@ -565,6 +567,8 @@ impl WorkingDirectory {
         Ok(())
     }
 
+    /// Creates the files and directories corresponding to the working tree that a tree
+    /// object has saved.
     pub fn update_working_directory_to(new_tree: &str) -> Result<(), Box<dyn Error>> {
         let _ = Self::create_files_for_directory(new_tree, &PathHandler::get_relative_path(""));
 
