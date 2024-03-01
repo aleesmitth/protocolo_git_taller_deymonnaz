@@ -130,6 +130,9 @@ pub async fn put_merge(state: &State<AppState>, repo: String, pull_number: i32) 
     if pull_requests.is_empty(){
         return Err(NotFound("Pull request came back empty".to_string()))
     }
+    if pull_requests[0].commit_after_merge.is_some(){
+        return Err(NotFound("Pull request already merged".to_string()))
+    }
 
     println!("merging");
     let merge = spawn_blocking(move || {
