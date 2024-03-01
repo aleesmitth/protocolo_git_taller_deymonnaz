@@ -2110,7 +2110,7 @@ pub fn change_commit_object_parent(commit_object_to_change: String, new_parent: 
         }
     }
 
-    let mut commit_file = fs::File::create(&helpers::get_object_path(&commit_object_to_change))?;
+    let mut commit_file = fs::File::create(helpers::get_object_path(&commit_object_to_change))?;
     commit_file.write_all(new_file_content.join("\n").as_bytes())?;
 
     Ok(())
@@ -2159,7 +2159,7 @@ impl Command for Rebase {
             println!("commit: {}", commit);
             // para el primer commit a rebasear: change parent commit a head
             if first_commit {
-                change_commit_object_parent(commit.clone(), Head::get_head_commit()?);
+                let _ = change_commit_object_parent(commit.clone(), Head::get_head_commit()?);
                 first_commit = false;
             }
             println!("{}Applying:{} {}", COLOR_RED_CODE, COLOR_RESET_CODE, commit);
@@ -2174,7 +2174,7 @@ impl Command for Rebase {
                 }
                 Err(_) => {
                     let mut rebase_head = fs::File::create(REBASE_HEAD)?;
-                    _ = rebase_head.write_all(commit.as_bytes())?;
+                    rebase_head.write_all(commit.as_bytes())?;
                 }
             }
             // match Merge::new().execute(Some(vec![&branch_name])) {

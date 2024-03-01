@@ -5,7 +5,6 @@ use crate::commands::git_commands::UnpackObjects;
 use crate::commands::helpers;
 use crate::commands::protocol_utils;
 use crate::constants::{REQUEST_LENGTH_CERO, REQUEST_DELIMITER_DONE, WANT_REQUEST, NAK_RESPONSE, UNPACK_CONFIRMATION};
-use std::env;
 
 use std::{error::Error, fs::File, io, io::Read, io::Write, net::TcpListener, net::TcpStream};
 const RECEIVE_PACK: &str = "git-receive-pack";
@@ -49,8 +48,8 @@ impl ServerProtocol {
             .and_then(|s| s.split_whitespace().nth(1)) // Extract the second part after the space
             .map_or_else(|| "/".to_string(), String::from);
 
-        let trimmed_string_path = if second_part_of_request.starts_with('/') {
-            &second_part_of_request[1..]
+        let trimmed_string_path = if let Some(stripped) = second_part_of_request.strip_prefix('/') {
+            stripped
         } else {
             second_part_of_request.as_str()
         };

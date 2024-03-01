@@ -1,5 +1,3 @@
-use std::env;
-use std::error::Error;
 use rocket::tokio::task::spawn_blocking;
 use rocket::{get, post, put};
 use crate::commands::git_commands::{self, Merge};
@@ -28,8 +26,8 @@ pub async fn test_api(_state: &State<AppState>) -> String {
 #[openapi(tag = "Pull Requests")]
 #[get("/repos/<repo>/pulls")]
 pub async fn get_repo_pull_request(state: &State<AppState>, repo: String) -> String {
-    let mut options = PullRequestOptions::default();
-    options.repo = Some(repo);
+    let options = PullRequestOptions { repo: Some(repo), ..Default::default() };
+
     match read(&options, &state.db_pool).await {
         Ok(pull_requests) => {
             // 4. Return an appropriate response
@@ -48,9 +46,8 @@ pub async fn get_repo_pull_request(state: &State<AppState>, repo: String) -> Str
 #[openapi(tag = "Pull Requests")]
 #[get("/repos/<repo>/pulls/<pull_number>")]
 pub async fn get_pull_request(state: &State<AppState>, repo: String, pull_number: i32) -> String {
-    let mut options = PullRequestOptions::default();
-    options.repo = Some(repo);
-    options._id = Some(pull_number);
+    let options = PullRequestOptions { repo: Some(repo.clone()), _id: Some(pull_number), ..Default::default() };
+
     match read(&options, &state.db_pool).await {
         Ok(pull_requests) => {
             // 4. Return an appropriate response
@@ -69,9 +66,8 @@ pub async fn get_pull_request(state: &State<AppState>, repo: String, pull_number
 #[openapi(tag = "Pull Requests")]
 #[get("/repos/<repo>/pulls/<pull_number>/commits")]
 pub async fn get_pull_request_commits(state: &State<AppState>, repo: String, pull_number: i32) -> Result<String, NotFound<String>> {
-    let mut options = PullRequestOptions::default();
-    options.repo = Some(repo.clone());
-    options._id = Some(pull_number);
+    let options = PullRequestOptions { repo: Some(repo.clone()), _id: Some(pull_number), ..Default::default() };
+
     match read(&options, &state.db_pool).await {
         Ok(pull_requests) => {
             // only one pull request should've been returned
@@ -85,22 +81,22 @@ pub async fn get_pull_request_commits(state: &State<AppState>, repo: String, pul
                 let merge_log = Log::new().execute(Some(vec![&commit]));
                 PathHandler::set_relative_path(&base_repo_path);
                 match merge_log {
-                    Ok(log) => return Ok(format!("-- PullRequest Merge Log --\n{}\n", log)),
-                    Err(err) => return Err(NotFound(format!("Error fetching merge commit log: {:?}", err)))
+                    Ok(log) => Ok(format!("-- PullRequest Merge Log --\n{}\n", log)),
+                    Err(err) => Err(NotFound(format!("Error fetching merge commit log: {:?}", err)))
                 }
             } else {
                 let head_last_commit = match get_branch_last_commit(&get_branch_path(&head)) {
                     Ok(commit) => commit,
                     Err(e) => {
                         PathHandler::set_relative_path(&base_repo_path);
-                        return Err(NotFound(format!("Error finding last commit of branch {}, {}", head, e.to_string())));
+                        return Err(NotFound(format!("Error finding last commit of branch {}, {}", head, e)));
                     }
                 };
                 let base_last_commit = match get_branch_last_commit(&get_branch_path(&base)) {
                     Ok(commit) => commit,
                     Err(e) => {
                         PathHandler::set_relative_path(&base_repo_path);
-                        return Err(NotFound(format!("Error finding last commit of branch {}, {}", base, e.to_string())));
+                        return Err(NotFound(format!("Error finding last commit of branch {}, {}", base, e)));
                     }
                 };
                 let logs_head = match Log::new().execute(Some(vec![&head_last_commit])) {
@@ -119,10 +115,10 @@ pub async fn get_pull_request_commits(state: &State<AppState>, repo: String, pul
                 };
 
                 PathHandler::set_relative_path(&base_repo_path);
-                return Ok(format!("{}{}", logs_head, logs_base))
+                Ok(format!("{}{}", logs_head, logs_base))
             }
         }
-        Err(err) => return Err(NotFound(format!("Error fetching pull request: {:?}", err)))
+        Err(err) => Err(NotFound(format!("Error fetching pull request: {:?}", err)))
     }
 }
 
@@ -133,10 +129,7 @@ pub async fn get_pull_request_commits(state: &State<AppState>, repo: String, pul
 #[openapi(tag = "Pull Requests")]
 #[put("/repos/<repo>/pulls/<pull_number>")]
 pub async fn put_merge(state: &State<AppState>, repo: String, pull_number: i32) -> Result<String, NotFound<String>> {
-    println!("inside put");
-    let mut options = PullRequestOptions::default();
-    options.repo = Some(repo.clone());
-    options._id = Some(pull_number);
+    let options = PullRequestOptions { repo: Some(repo.clone()), _id: Some(pull_number), ..Default::default() };
 
     let pull_requests = match read(&options, &state.db_pool).await {
         Ok(pull_requests) => pull_requests,
@@ -169,7 +162,7 @@ pub async fn put_merge(state: &State<AppState>, repo: String, pull_number: i32) 
             merged_pull_request.commit_after_merge = Some(new_commit.clone());
             match update(&merged_pull_request, &state.db_pool).await {
                 Ok(_) => Ok(new_commit),
-                Err(err) => return Err(NotFound("Error updating the PR in the database after merge".to_string()))
+                Err(_) => Err(NotFound("Error updating the PR in the database after merge".to_string()))
             }
 
         },

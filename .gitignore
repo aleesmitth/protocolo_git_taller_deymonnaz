@@ -16,3 +16,7 @@ Cargo.lock
 .idea
 
 .env
+
+Rusty/repo/
+
+Rusty/src/server/myrepo12345

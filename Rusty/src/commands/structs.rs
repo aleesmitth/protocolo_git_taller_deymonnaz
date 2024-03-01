@@ -476,7 +476,7 @@ impl StagingArea {
         }
         let new_index_content = new_index_lines.join("\n");
         let mut index_file = fs::File::create(PathHandler::get_relative_path(INDEX_FILE))?;
-        _ = index_file.write_all(new_index_content.as_bytes())?;
+        index_file.write_all(new_index_content.as_bytes())?;
         println!("new content:\n{}", new_index_content);
         Ok(())
     }
@@ -543,7 +543,7 @@ impl WorkingDirectory {
                 break;
             }
             if fs::read_dir(parent)?.next().is_none() {
-                let _ = fs::remove_dir(parent)?;
+                let _ = fs::remove_dir(parent);
                 current_dir = parent.parent();
             } else {
                 break;

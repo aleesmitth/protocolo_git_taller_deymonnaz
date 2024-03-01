@@ -9,13 +9,6 @@ use crypto::sha1::Sha1;
 use libflate::zlib::{Decoder, Encoder};
 
 use super::{git_commands::PathHandler, structs::ObjectType};
-
-// const OBJECT: &str = ".git/objects";
-// const R_HEADS: &str = ".git/refs/heads";
-// // const HEAD_FILE: &str = ".git/HEAD";
-// const INDEX_FILE: &str = ".git/index";
-// const CONFIG_FILE: &str = ".git/config";
-// const R_REMOTES: &str = ".git/refs/remotes";
 use crate::constants::{OBJECT, R_HEADS, INDEX_FILE, CONFIG_FILE, R_REMOTES, TREE_FILE_MODE, TREE_SUBTREE_MODE, GIT, ZERO_HASH};
 
 /// Returns length of a file's content
@@ -364,7 +357,7 @@ pub fn update_branch_hash(branch_name: &str, new_commit_hash: &str) -> Result<()
 /// Returns the commit the specified branch points to
 pub fn get_branch_last_commit(branch_path: &str) -> Result<String, Box<dyn Error>> {
     println!("path: {}", PathHandler::get_relative_path(branch_path));
-    let mut file: fs::File = fs::File::open(&PathHandler::get_relative_path(branch_path))?;
+    let mut file: fs::File = fs::File::open(PathHandler::get_relative_path(branch_path))?;
     let mut content = String::new();
     file.read_to_string(&mut content)?;
     Ok(content)
@@ -779,11 +772,11 @@ pub fn check_if_repo_exists(repo_name: &str) -> Result<(), Box<dyn Error>> {
             "Error: repo name can't be blank, it does not exist.",
         )))
     }
-    let string_full_path = PathHandler::get_relative_path(&repo_name);
+    let string_full_path = PathHandler::get_relative_path(repo_name);
     let full_path = Path::new(&string_full_path);
 
     // Check if the given directory exists
-    return if full_path.is_dir() {
+    if full_path.is_dir() {
         println!("Directory '{:?}' exists.", full_path);
         println!("checking if it's a git repo...");
         let git_dir = full_path.join(GIT);
@@ -830,7 +823,7 @@ pub fn get_client_current_working_repo() -> Result<String, Box<dyn Error>> {
             }
         }
     }
-    return Err(Box::new(io::Error::new(
+    Err(Box::new(io::Error::new(
         io::ErrorKind::Other,
         "Error: current client working repo couldn't be found.",
     )))

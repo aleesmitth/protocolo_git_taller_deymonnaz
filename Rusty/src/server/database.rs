@@ -1,16 +1,19 @@
 extern crate rocket;
-//use rusty::server::server_protocol::ServerProtocol;
 use std::env;
 use std::error::Error;
-//use rocket::tokio::task::spawn_blocking;
-//use std::thread;
 use dotenv::dotenv;
 use std::process::Command;
 use sqlx::Row;
 
-use crate::server::models::{self, PullRequest, PullRequestOptions};
+use crate::server::models::{PullRequest, PullRequestOptions};
 
 pub struct Database;
+
+impl Default for Database {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Database{
     pub fn new() -> Self {
