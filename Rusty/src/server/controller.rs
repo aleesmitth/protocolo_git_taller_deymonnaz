@@ -111,7 +111,7 @@ pub async fn get_pull_request_commits(state: &State<AppState>, repo: String, pul
 // #[get("/repos/<repo>/pulls/<pull_number>/merge", format = "application/json", data = "<pr>")]
 /// Merges a pull request into the base branch.
 #[openapi(tag = "Pull Requests")]
-#[get("/repos/<repo>/pulls/<pull_number>/x")]
+#[put("/repos/<repo>/pulls/<pull_number>")]
 pub async fn put_merge(state: &State<AppState>, repo: String, pull_number: i32) -> Result<String, NotFound<String>> {
     println!("inside put");
     let mut options = PullRequestOptions::default();
