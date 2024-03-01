@@ -8,7 +8,8 @@ use crypto::digest::Digest;
 use crypto::sha1::Sha1;
 use libflate::zlib::{Decoder, Encoder};
 
-use super::{git_commands::PathHandler, structs::ObjectType};
+use super::git_commands::PathHandler;
+use super::structs::{ObjectType, StagingArea, WorkingDirectory};
 use crate::constants::{OBJECT, R_HEADS, INDEX_FILE, CONFIG_FILE, R_REMOTES, TREE_FILE_MODE, TREE_SUBTREE_MODE, GIT, ZERO_HASH};
 
 /// Returns length of a file's content
@@ -838,6 +839,44 @@ pub fn check_if_branch_exists(branch_name: &str) -> Result<(), Box<dyn Error>> {
             "Error: Specified branch does not exist.",
         )))
     }
+    Ok(())
+}
+
+/// Given two commits it finds which files can be merged without generating a conflict. 
+/// It then cleans the working directory of the old and not merged files and updates the 
+/// index file to the new working tree.
+pub fn determine_new_working_tree(commit_merging_into: String, commit_to_merge: String) -> Result<(), Box<dyn Error>> {
+    let ancestor_commit = find_common_ancestor_commit(&commit_merging_into, &commit_to_merge)?;
+    let ancestor_working_tree = reconstruct_working_tree(ancestor_commit)?;
+    let current_working_tree = reconstruct_working_tree(commit_merging_into)?;
+    let merging_working_tree = reconstruct_working_tree(commit_to_merge.clone())?;
+    let files_without_conflict = find_files_without_conflict(ancestor_working_tree, current_working_tree, merging_working_tree)?;
+    WorkingDirectory::clean_working_directory()?;
+    StagingArea::new().change_index_file(files_without_conflict)?;
+
+    Ok(())
+}
+
+/// Given a commits hash and a new parent commit hash, it updates the first's one parent commit to 
+/// the one provided by parameter
+pub fn change_commit_object_parent(commit_object_to_change: String, new_parent: String) -> Result<(), Box<dyn Error>> {
+    let commit_file_content = read_file_content(&get_object_path(&commit_object_to_change))?;
+    let split_commit_content: Vec<String> = commit_file_content.split('\n').map(String::from).collect();
+    let mut new_file_content: Vec<String> = Vec::new();
+
+    for line in split_commit_content {
+        let split_line: Vec<String> = line.split(' ').map(String::from).collect();
+        if split_line[1] == "parent" {
+            let new_line = format!("parent {}", new_parent);
+            new_file_content.push(new_line);
+        } else {
+            new_file_content.push(line)
+        }
+    }
+
+    let mut commit_file = fs::File::create(get_object_path(&commit_object_to_change))?;
+    commit_file.write_all(new_file_content.join("\n").as_bytes())?;
+
     Ok(())
 }
 

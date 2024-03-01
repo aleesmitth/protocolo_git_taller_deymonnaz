@@ -2057,21 +2057,8 @@ impl Command for Merge {
             branch_to_merge_path = format!("{}/{}", R_REMOTES, branch_to_merge);
         }
         let merging_commit_hash = helpers::get_branch_last_commit(&branch_to_merge_path)?;
-        // aca tengo merging commit y branch
-        
-        // let ancestor_commit = helpers::find_common_ancestor_commit(&head_commit, &merging_commit_hash)?;
 
-        // let ancestor_working_tree = helpers::reconstruct_working_tree(ancestor_commit)?;
-        // let current_working_tree = helpers::reconstruct_working_tree(head_commit.clone())?;
-        // let merging_working_tree = helpers::reconstruct_working_tree(merging_commit_hash.clone())?;
-
-        // let files_without_conflict = helpers::find_files_without_conflict(ancestor_working_tree, current_working_tree, merging_working_tree)?;
-        // WorkingDirectory::clean_working_directory()?;
-        // StagingArea::new().change_index_file(files_without_conflict)?;
-
-        solving_bug(head_commit.clone(), merging_commit_hash.clone())?;
-
-        // hasta aca es compartido
+        helpers::determine_new_working_tree(head_commit.clone(), merging_commit_hash.clone())?;
 
         let new_commit_hash = HashObjectCreator::create_commit_object(None, vec![head_commit, merging_commit_hash])?;
         helpers::update_branch_hash(&Head::get_current_branch_name()?, &new_commit_hash)?;
@@ -2080,40 +2067,6 @@ impl Command for Merge {
 
         Ok(new_commit_hash)
     }
-}
-
-pub fn solving_bug(commit_merging_into: String, commit_to_merge: String) -> Result<(), Box<dyn Error>> {
-    // aca estoy determinando los archivos y working tree nuevo, asi que nombre por ese lado
-    let ancestor_commit = helpers::find_common_ancestor_commit(&commit_merging_into, &commit_to_merge)?;
-    let ancestor_working_tree = helpers::reconstruct_working_tree(ancestor_commit)?;
-    let current_working_tree = helpers::reconstruct_working_tree(commit_merging_into)?;
-    let merging_working_tree = helpers::reconstruct_working_tree(commit_to_merge.clone())?;
-    let files_without_conflict = helpers::find_files_without_conflict(ancestor_working_tree, current_working_tree, merging_working_tree)?;
-    WorkingDirectory::clean_working_directory()?;
-    StagingArea::new().change_index_file(files_without_conflict)?;
-
-    Ok(())
-}
-
-pub fn change_commit_object_parent(commit_object_to_change: String, new_parent: String) -> Result<(), Box<dyn Error>> {
-    let commit_file_content = helpers::read_file_content(&helpers::get_object_path(&commit_object_to_change))?;
-    let split_commit_content: Vec<String> = commit_file_content.split('\n').map(String::from).collect();
-    let mut new_file_content: Vec<String> = Vec::new();
-
-    for line in split_commit_content {
-        let split_line: Vec<String> = line.split(' ').map(String::from).collect();
-        if split_line[1] == "parent" {
-            let new_line = format!("parent {}", new_parent);
-            new_file_content.push(new_line);
-        } else {
-            new_file_content.push(line)
-        }
-    }
-
-    let mut commit_file = fs::File::create(helpers::get_object_path(&commit_object_to_change))?;
-    commit_file.write_all(new_file_content.join("\n").as_bytes())?;
-
-    Ok(())
 }
 
 pub struct Rebase;
@@ -2159,15 +2112,15 @@ impl Command for Rebase {
             println!("commit: {}", commit);
             // para el primer commit a rebasear: change parent commit a head
             if first_commit {
-                let _ = change_commit_object_parent(commit.clone(), Head::get_head_commit()?);
+                let _ = helpers::change_commit_object_parent(commit.clone(), Head::get_head_commit()?);
                 first_commit = false;
             }
             println!("{}Applying:{} {}", COLOR_RED_CODE, COLOR_RESET_CODE, commit);
             let branch_name = format!("rebase_{}", rebasing_branch_name);
             let _ = Branch::new().create_new_branch(&branch_name);
             helpers::update_branch_hash(&branch_name, &commit.clone())?;
-            // tengo commit a mergear y su branch
-            match solving_bug(Head::get_head_commit()?, commit.clone()) {
+
+            match helpers::determine_new_working_tree(Head::get_head_commit()?, commit.clone()) {
                 Ok(_) => {
                     let _ = Branch::new().execute(Some(vec![DELETE_FLAG, &branch_name]))?;
                     helpers::update_branch_hash(&Head::get_current_branch_name()?, commit)?;
@@ -2177,15 +2130,6 @@ impl Command for Rebase {
                     rebase_head.write_all(commit.as_bytes())?;
                 }
             }
-            // match Merge::new().execute(Some(vec![&branch_name])) {
-            //     Ok(_) => {
-            //         let _ = Branch::new().execute(Some(vec![DELETE_FLAG, &branch_name]))?;
-            //     }
-            //     Err(_) => {
-            //         let mut rebase_head = fs::File::create(REBASE_HEAD)?;
-            //         _ = rebase_head.write_all(commit.as_bytes())?;
-            //     }
-            // }
         }
         Ok(String::new())
     }
