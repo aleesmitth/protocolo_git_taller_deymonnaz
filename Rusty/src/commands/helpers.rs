@@ -1,6 +1,7 @@
 use std::{collections::HashMap, error::Error, fs, io, io::Read, io::Write, path::Path, fmt};
 extern crate crypto;
 extern crate libflate;
+use std::env;
 
 use crate::commands::{git_commands::Log, structs::{HashObjectCreator, Head}};
 use crypto::digest::Digest;
@@ -818,6 +819,21 @@ pub fn check_if_branch_belongs_to_repo(branch_name: &str, repo_name: &str) -> Re
         )))
     }
     Ok(())
+}
+/// Receives a branch name and return a result indicating if the branch already exists or not
+pub fn get_client_current_working_repo() -> Result<String, Box<dyn Error>> {
+    if let Ok(current_dir) = env::current_dir() {
+        if let Some(parent) = current_dir.file_name() {
+            if let Some(parent_str) = parent.to_str() {
+                println!("curr_repo: {}", parent_str);
+                return Ok(parent_str.to_string());
+            }
+        }
+    }
+    return Err(Box::new(io::Error::new(
+        io::ErrorKind::Other,
+        "Error: current client working repo couldn't be found.",
+    )))
 }
 
 /// Receives a branch name and return a result indicating if the branch already exists or not

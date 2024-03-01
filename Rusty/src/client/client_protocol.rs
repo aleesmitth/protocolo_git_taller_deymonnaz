@@ -7,6 +7,8 @@ use std::{
     error::Error, fs, io::Read, io::Write, net::Shutdown, net::TcpStream, str, thread,
     time::Duration,
 };
+use crate::commands::helpers::get_client_current_working_repo;
+
 pub struct ClientProtocol;
 
 impl Default for ClientProtocol {
@@ -28,9 +30,9 @@ impl ClientProtocol {
     pub fn receive_pack(&mut self, remote_url: String) -> Result<(), Box<dyn Error>> {
         let mut stream = ClientProtocol::connect(&remote_url)?;
         // println!("connect complete");
-
+        let current_repo = get_client_current_working_repo()?;
         let request = protocol_utils::format_line_to_send(
-            "git-receive-pack /myrepo12345/.git\0host=127.0.0.1\0".to_string(),
+            format!("git-receive-pack /{}/.git\0host=127.0.0.1\0", current_repo).to_string(),
         );
         // println!("request {}", request);
 

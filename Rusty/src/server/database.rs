@@ -34,8 +34,8 @@ impl Database{
             println!("Script execution failed");
         }
 
-        // let url = env::var("DATABASE_URL").expect("DATABASE_URL not set");
-        let url = "postgres://postgres:password@127.0.0.1:5432/dog";
+        let url = env::var("DATABASE_URL").expect("DATABASE_URL not set");
+        //let url = "postgres://postgres:password@127.0.0.1:5432/dog";
         println!("url: {}", url);
         let pool = sqlx::postgres::PgPool::connect(&url).await?;
         sqlx::migrate!("./migrations").run(&pool).await?;
