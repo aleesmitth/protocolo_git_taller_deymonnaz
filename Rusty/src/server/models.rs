@@ -34,7 +34,7 @@ pub struct PullRequestOptions {
 ///
 /// main PullRequest resource
 ///
-#[derive(Debug,FromRow,Serialize,Deserialize, JsonSchema)]
+#[derive(Debug,FromRow,Serialize,Deserialize, JsonSchema, Clone)]
 pub struct PullRequest {
     pub _id: Option<i32>,
     pub title: String,

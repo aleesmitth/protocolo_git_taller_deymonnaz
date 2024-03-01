@@ -12,7 +12,7 @@ use rocket::http::Status;
 use rocket::response::status::NotFound;
 
 
-use super::database::{create, read};
+use super::database::{create, read, update};
 
 #[openapi(skip)]
 #[get("/")]
@@ -125,17 +125,19 @@ pub async fn put_merge(state: &State<AppState>, repo: String, pull_number: i32) 
             return Err(NotFound(err.to_string()))
         }
     };
+    let mut merged_pull_request = pull_requests[0].clone();
     println!("pull request: {:?}", pull_requests);
     if pull_requests.is_empty(){
         return Err(NotFound("Pull request came back empty".to_string()))
     }
+
     println!("merging");
     let merge = spawn_blocking(move || {
         let base_repo_path = PathHandler::get_relative_path("");
 
         PathHandler::set_relative_path(&format!("{}{}/", base_repo_path, repo));
         let merge = Merge::new().execute(Some(vec![&pull_requests[0].head, &pull_requests[0].base]))
-            .map(|_| "Merge completed successfully".to_string())
+            .map(|result| result.to_string())
             .map_err(|e| e.to_string());
         PathHandler::set_relative_path(&base_repo_path);
         merge
@@ -143,7 +145,16 @@ pub async fn put_merge(state: &State<AppState>, repo: String, pull_number: i32) 
     println!("merged");
     match merge {
         // all good
-        Ok(Ok(message)) => Ok(message),
+        Ok(Ok(new_commit)) => {
+            merged_pull_request.commit_after_merge = Some(new_commit.clone());
+            match update(&merged_pull_request, &state.db_pool).await {
+                Ok(_) => Ok(new_commit),
+                Err(err) => {
+                    return Err(NotFound("Error updating the PR in the database after merge".to_string()))
+                }
+            }
+
+        },
         // internal error in the code executed inside the thread
         Ok(Err(e)) => Err(NotFound(e.to_string())),
         // any thread related error

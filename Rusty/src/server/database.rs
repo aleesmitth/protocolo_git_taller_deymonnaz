@@ -74,10 +74,11 @@ pub async fn create(pull_request: &PullRequest, pool: &sqlx::PgPool) -> Result<i
 }
 
 pub async fn update(pull_request: &PullRequest, pool: &sqlx::PgPool) -> Result<(), Box<dyn Error>> {
-    let query = "UPDATE pull_requests SET title = $1, body = $2, repo = $3, base = $4, head = $5 WHERE repo = $3 AND base = $4 AND head = $5";
+    let query = "UPDATE pull_requests SET title = $1, body = $2, commit_after_merge = $3 WHERE repo = $4 AND base = $5 AND head = $6";
     sqlx::query(query)
         .bind(&pull_request.title)
         .bind(&pull_request.body)
+        .bind(&pull_request.commit_after_merge)
         .bind(&pull_request.repo)
         .bind(&pull_request.base)
         .bind(&pull_request.head)
