@@ -1556,7 +1556,6 @@ impl Command for Log {
     ///
     /// # Arguments
     ///
-    /// * `_head` - A mutable reference to the `Head` structure (not used in this implementation).
     /// * `args` - An optional slice of arguments passed to the command.
     ///
     /// # Returns
@@ -1616,7 +1615,6 @@ impl Command for Log {
                     writeln!(acc, "{} {}\n", key, value).expect("Error writing to String");
                     acc
                 });
-        // Return a successful result (an empty string in this case)
         Ok(result)
     }
 }
@@ -2043,7 +2041,7 @@ impl Command for Merge {
                 )))
             }
             helpers::check_if_branch_exists(current_branch)?;
-            head_commit = helpers::get_branch_last_commit(&PathHandler::get_relative_path(&helpers::get_branch_path(current_branch)))?;
+            head_commit = helpers::get_branch_last_commit(&helpers::get_branch_path(current_branch))?;
         }
 
         if branch_to_merge == Head::get_current_branch_name()? {
@@ -2058,7 +2056,7 @@ impl Command for Merge {
             // This means the branch is a remote branch
             branch_to_merge_path = format!("{}/{}", R_REMOTES, branch_to_merge);
         }
-        let merging_commit_hash = helpers::get_branch_last_commit(&PathHandler::get_relative_path(&branch_to_merge_path))?;
+        let merging_commit_hash = helpers::get_branch_last_commit(&branch_to_merge_path)?;
         // aca tengo merging commit y branch
         
         // let ancestor_commit = helpers::find_common_ancestor_commit(&head_commit, &merging_commit_hash)?;

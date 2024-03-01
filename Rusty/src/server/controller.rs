@@ -10,6 +10,8 @@ use rocket_okapi::openapi;
 use rocket::State;
 use rocket::http::Status;
 use rocket::response::status::NotFound;
+use git_commands::Log;
+use crate::commands::helpers::{get_branch_last_commit, get_branch_path};
 
 
 use super::database::{create, read, update};
@@ -66,9 +68,9 @@ pub async fn get_pull_request(state: &State<AppState>, repo: String, pull_number
 /// Returns all the commits from the specified pull request that's in the specified repo.
 #[openapi(tag = "Pull Requests")]
 #[get("/repos/<repo>/pulls/<pull_number>/commits")]
-pub async fn get_pull_request_commits(state: &State<AppState>, repo: String, pull_number: i32) -> String {
+pub async fn get_pull_request_commits(state: &State<AppState>, repo: String, pull_number: i32) -> Result<String, NotFound<String>> {
     let mut options = PullRequestOptions::default();
-    options.repo = Some(repo);
+    options.repo = Some(repo.clone());
     options._id = Some(pull_number);
     match read(&options, &state.db_pool).await {
         Ok(pull_requests) => {
@@ -77,32 +79,50 @@ pub async fn get_pull_request_commits(state: &State<AppState>, repo: String, pul
             let head = pull_requests[0].head.clone();
             let base = pull_requests[0].base.clone();
             let commit_after_merge = pull_requests[0].commit_after_merge.clone();
+            let base_repo_path = PathHandler::get_relative_path("");
+            PathHandler::set_relative_path(&format!("{}{}/", base_repo_path, repo));
             if let Some(commit) = commit_after_merge {
-                match git_commands::Log::new().execute(Some(vec![&commit])) {
-                    Ok(log) => format!("Commit log: {}", log),
-                    Err(err) => format!("Error fetching logs: {:?}", err)
+                let merge_log = Log::new().execute(Some(vec![&commit]));
+                PathHandler::set_relative_path(&base_repo_path);
+                match merge_log {
+                    Ok(log) => return Ok(format!("-- PullRequest Merge Log --\n{}\n", log)),
+                    Err(err) => return Err(NotFound(format!("Error fetching merge commit log: {:?}", err)))
                 }
             } else {
-                // TODO return los logs de head y base por separado
-                let log_head: Vec<&str> = head.split(':').collect();
-                if let Ok(hash_log_head) = git_commands::Log::new().execute(Some(vec![&log_head[1]])){
-                    if let Ok(log_base) =  git_commands::Log::new().execute(Some(vec![&base])){
-                        format!("Head log: {:?}\n Base log: {}", hash_log_head, log_base)
+                let head_last_commit = match get_branch_last_commit(&get_branch_path(&head)) {
+                    Ok(commit) => commit,
+                    Err(e) => {
+                        PathHandler::set_relative_path(&base_repo_path);
+                        return Err(NotFound(format!("Error finding last commit of branch {}, {}", head, e.to_string())));
                     }
-                    else {
-                        "Error fetching logs".to_string()
+                };
+                let base_last_commit = match get_branch_last_commit(&get_branch_path(&base)) {
+                    Ok(commit) => commit,
+                    Err(e) => {
+                        PathHandler::set_relative_path(&base_repo_path);
+                        return Err(NotFound(format!("Error finding last commit of branch {}, {}", base, e.to_string())));
                     }
-                }
-                else {
-                    "Error fetching logs".to_string()
-                }
-                
+                };
+                let logs_head = match Log::new().execute(Some(vec![&head_last_commit])) {
+                    Ok(log) => format!("-- PullRequest Head Log --\n{}\n", log),
+                    Err(err) => {
+                        PathHandler::set_relative_path(&base_repo_path);
+                        return Err(NotFound(format!("Error fetching PullRequest head log: {:?}", err)))
+                    }
+                };
+                let logs_base = match Log::new().execute(Some(vec![&base_last_commit])) {
+                    Ok(log) => format!("-- PullRequest Base Log --\n{}\n", log),
+                    Err(err) => {
+                        PathHandler::set_relative_path(&base_repo_path);
+                        return Err(NotFound(format!("Error fetching PullRequest head log: {:?}", err)))
+                    }
+                };
+
+                PathHandler::set_relative_path(&base_repo_path);
+                return Ok(format!("{}{}", logs_head, logs_base))
             }
         }
-        Err(err) => {
-            // Handle the error appropriately (log it, return an error response, etc.)
-            format!("Error fetching pull request: {:?}", err)
-        }
+        Err(err) => return Err(NotFound(format!("Error fetching pull request: {:?}", err)))
     }
 }
 
@@ -120,10 +140,7 @@ pub async fn put_merge(state: &State<AppState>, repo: String, pull_number: i32) 
 
     let pull_requests = match read(&options, &state.db_pool).await {
         Ok(pull_requests) => pull_requests,
-        Err(err) => {
-            println!("error reading pr");
-            return Err(NotFound(err.to_string()))
-        }
+        Err(err) => return Err(NotFound(err.to_string()))
     };
     let mut merged_pull_request = pull_requests[0].clone();
     println!("pull request: {:?}", pull_requests);
@@ -137,8 +154,8 @@ pub async fn put_merge(state: &State<AppState>, repo: String, pull_number: i32) 
     println!("merging");
     let merge = spawn_blocking(move || {
         let base_repo_path = PathHandler::get_relative_path("");
-
         PathHandler::set_relative_path(&format!("{}{}/", base_repo_path, repo));
+
         let merge = Merge::new().execute(Some(vec![&pull_requests[0].head, &pull_requests[0].base]))
             .map(|result| result.to_string())
             .map_err(|e| e.to_string());
@@ -152,9 +169,7 @@ pub async fn put_merge(state: &State<AppState>, repo: String, pull_number: i32) 
             merged_pull_request.commit_after_merge = Some(new_commit.clone());
             match update(&merged_pull_request, &state.db_pool).await {
                 Ok(_) => Ok(new_commit),
-                Err(err) => {
-                    return Err(NotFound("Error updating the PR in the database after merge".to_string()))
-                }
+                Err(err) => return Err(NotFound("Error updating the PR in the database after merge".to_string()))
             }
 
         },

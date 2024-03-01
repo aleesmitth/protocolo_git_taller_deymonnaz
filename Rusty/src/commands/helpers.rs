@@ -363,8 +363,8 @@ pub fn update_branch_hash(branch_name: &str, new_commit_hash: &str) -> Result<()
 
 /// Returns the commit the specified branch points to
 pub fn get_branch_last_commit(branch_path: &str) -> Result<String, Box<dyn Error>> {
-    println!("path: {}", branch_path);
-    let mut file: fs::File = fs::File::open(branch_path)?;
+    println!("path: {}", PathHandler::get_relative_path(branch_path));
+    let mut file: fs::File = fs::File::open(&PathHandler::get_relative_path(branch_path))?;
     let mut content = String::new();
     file.read_to_string(&mut content)?;
     Ok(content)
