@@ -136,7 +136,7 @@ pub async fn put_merge(state: &State<AppState>, repo: String, pull_number: i32) 
         PathHandler::set_relative_path(&format!("{}{}/", base_repo_path, repo));
         let merge = Merge::new().execute(Some(vec![&pull_requests[0].head, &pull_requests[0].base]))
             .map(|_| "Merge completed successfully".to_string())
-            .map_err(|e| "Error in merge".to_string());
+            .map_err(|e| e.to_string());
         PathHandler::set_relative_path(&base_repo_path);
         merge
     }).await;
