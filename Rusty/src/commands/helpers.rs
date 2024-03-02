@@ -287,30 +287,27 @@ pub fn get_remote_tracking_branches() -> Result<HashMap<String, (String, String)
 }
 
 /// Reads remote branches from remotes directory and returns a tuple with (branch_name, last_commit_hash)
-pub fn get_remote_branches() -> Result<Vec<(String, String)>, Box<dyn Error>> {
+pub fn get_remote_branches(remote_name: &str) -> Result<Vec<(String, String)>, Box<dyn Error>> {
     let mut branches_to_update: Vec<(String, String)> = Vec::new();
-
-    let remote_branches = fs::read_dir(R_REMOTES)?;
+    
+    let remote_branches_path = format!("{}/{}", R_REMOTES, remote_name);
+    let remote_branches = fs::read_dir(PathHandler::get_relative_path(&remote_branches_path))?;
 
     for branch in remote_branches {
         let branch = branch?;
         let branch_name = branch.file_name().to_string_lossy().to_string();
         let mut branch_path = branch.path();
 
-        branch_path.push(branch_name.clone());
-
-        let branch_hash = read_file_content(branch_path.to_str().ok_or("")?)?;
-
+        let branch_hash = read_file_content(&PathHandler::get_relative_path(branch_path.to_str().ok_or("")?))?;
         branches_to_update.push((branch_name, branch_hash))
     }
-
     Ok(branches_to_update)
 }
 
 pub fn update_branches(branches: Vec<(String, String)>) -> Result<(), Box<dyn Error>>{
     for (branch_name, hash) in branches {
         let branch_file = format!("{}/{}", R_HEADS, branch_name);
-        let mut branch_file = fs::File::create(branch_file)?;
+        let mut branch_file = fs::File::create(PathHandler::get_relative_path(&branch_file))?;
         branch_file.write_all(hash.as_bytes())?;
     }
 

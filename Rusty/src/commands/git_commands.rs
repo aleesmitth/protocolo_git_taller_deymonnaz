@@ -1325,7 +1325,7 @@ impl Command for Fetch {
 
         let refs = client::client_protocol::ClientProtocol::new()
             .fetch_from_remote_with_our_server(remote_url)?;
-        UnpackObjects::new().execute(Some(vec![RECEIVED_PACK_FILE]))?;
+        UnpackObjects::new().execute(Some(vec![&PathHandler::get_relative_path(RECEIVED_PACK_FILE)]))?;
         for (ref_hash, ref_name) in refs {
             
             self.add_remote_ref(&ref_hash, &ref_name, remote_name)?;
@@ -1448,7 +1448,7 @@ impl Command for Clone {
             Some(remote_repository) => {
                 Remote::new().execute(Some(vec!["add", "origin", remote_repository[0]]))?;
                 Fetch::new().execute(None)?;
-                let remote_branches = helpers::get_remote_branches()?;
+                let remote_branches = helpers::get_remote_branches(DEFAULT_REMOTE_REPOSITORY)?;
                 helpers::update_branches(remote_branches)?;
                 Pull::new().execute(Some(vec!["origin"]))?;
             }
