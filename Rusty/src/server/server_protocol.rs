@@ -8,7 +8,7 @@ use std::thread;
 use std::time::Duration;
 use std::collections::HashSet;
 use std::sync::{Mutex, Arc, Condvar};
-use crate::constants::{REQUEST_LENGTH_CERO, REQUEST_DELIMITER_DONE, WANT_REQUEST, NAK_RESPONSE, UNPACK_CONFIRMATION};
+use crate::constants::{REQUEST_LENGTH_CERO, REQUEST_DELIMITER_DONE, WANT_REQUEST, NAK_RESPONSE, UNPACK_CONFIRMATION, ALL_BRANCHES_LOCK};
 
 use std::{error::Error, fs::File, io, io::Read, io::Write, net::TcpListener, net::TcpStream};
 const RECEIVE_PACK: &str = "git-receive-pack";
@@ -32,7 +32,7 @@ impl ServerProtocol {
         Ok(TcpListener::bind(address)?)
     }
 
-    pub fn lock_branch(branch: &str, locked_branches: &Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {// Extract the Mutex and Condvar from the Arc
+    pub fn lock_branch(branch: &str, locked_branches: &Arc<(Mutex<HashSet<String>>, Condvar)>, all_branches_locked_by_me: bool) -> Result<(), Box<dyn Error>> {// Extract the Mutex and Condvar from the Arc
         // Extract the Mutex and Condvar from the Arc
         let (lock, cvar) = &**locked_branches;
 
@@ -49,7 +49,7 @@ impl ServerProtocol {
         };
 
         // Wait for the branch to be available
-        while locked_branches.contains(branch) {
+        while locked_branches.contains(branch) || (locked_branches.contains(ALL_BRANCHES_LOCK) && !all_branches_locked_by_me) {
             println!("Branch '{}' locked going to sleep, wait for CondVar notification. Lock of HashMap released", branch);
             // Release the lock before waiting and re-acquire it after waking up
             locked_branches = match cvar.wait(locked_branches) {
@@ -183,6 +183,10 @@ impl ServerProtocol {
 
     pub fn upload_pack(stream: &mut TcpStream, locked_branches: &Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
         println!("git-upload-pack");
+
+        println!("thread locks ALL_BRANCHES_LOCK {}", ALL_BRANCHES_LOCK);
+        ServerProtocol::lock_branch(ALL_BRANCHES_LOCK, locked_branches, false)?;
+
         let branches: Vec<String> = helpers::get_all_branches()?;
         for branch in &branches {
             let line_to_send = protocol_utils::format_line_to_send(branch.clone());
@@ -195,6 +199,7 @@ impl ServerProtocol {
         let mut reader = std::io::BufReader::new(stream.try_clone()?);
         let requests_received: Vec<String> =
             protocol_utils::read_until(&mut reader, REQUEST_DELIMITER_DONE, false)?;
+        let mut branches_used: Vec<String> = Vec::new();
         for request_received in requests_received.clone() {
             let request_array: Vec<&str> = request_received.split_whitespace().collect();
             // println!("request in array: {:?}", request_array);
@@ -210,18 +215,30 @@ impl ServerProtocol {
                 )));
             }
 
-            let is_valid_commit =
-                ServerProtocol::validate_is_latest_commit_any_branch(request_array[1], &branches);
-            if !is_valid_commit {
-                println!("invalid commit: {:?}", request_array);
-                return Err(Box::new(io::Error::new(
-                    io::ErrorKind::Other,
-                    "Error: Received invalid commit hash for want request",
-                )));
-            }
+            let valid_branches = match ServerProtocol::validate_is_latest_commit_any_branch(request_array[1], &branches) {
+                Ok(branches_used) => branches_used,
+                Err(e) => {
+                    println!("invalid commit: {:?}", request_array);
+                    return Err(Box::new(io::Error::new(
+                        io::ErrorKind::Other,
+                        format!("Error: Received invalid commit hash for want request {}", e.to_string()),
+                    )));
+                }
+            };
+
+            branches_used.extend(valid_branches);
 
             println!("valid want request.");
         }
+
+        for branch in &branches_used {
+            println!("thread locks {}", branch);
+            ServerProtocol::lock_branch(&branch, locked_branches, true)?;
+        }
+
+
+        println!("thread unlocks ALL_BRANCHES_LOCK {}", ALL_BRANCHES_LOCK);
+        ServerProtocol::unlock_branch(ALL_BRANCHES_LOCK, locked_branches)?;
 
         let _ = stream.write_all(
             protocol_utils::format_line_to_send(NAK_RESPONSE.to_string())
@@ -250,31 +267,44 @@ impl ServerProtocol {
         pack_file.read_to_end(&mut buffer)?;
 
         stream.write_all(&buffer)?;
+
+        for branch in &branches_used {
+            println!("thread unlocks branch {}", branch);
+            ServerProtocol::unlock_branch(branch, locked_branches)?;
+        }
+
         println!("sent pack file");
 
         Ok(())
     }
 
-    pub fn validate_is_latest_commit_any_branch(commit: &str, branches: &Vec<String>) -> bool {
+    pub fn validate_is_latest_commit_any_branch(commit: &str, branches: &Vec<String>) -> Result<Vec<String>, Box<dyn Error>> {
+        let mut valid_branches: Vec<String> = Vec::new();
         for branch in branches {
             // Split the string into words
             let branch_commit_and_name: Vec<&str> = branch.split_whitespace().collect();
             if let Some(first_word) = branch_commit_and_name.first() {
                 if first_word == &commit {
-                    return true;
+                    valid_branches.push(branch.to_string());
                 }
             }
         }
-        false
+
+        if !valid_branches.is_empty() {
+            return Ok(valid_branches)
+        }
+
+        Err(Box::new(io::Error::new(
+            io::ErrorKind::Other,
+            format!("Error: Commit {} is not the latest commit in any branch", commit),
+        )))
     }
 
     pub fn receive_pack(stream: &mut TcpStream, locked_branches: &Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
         println!("git-receive-pack");
-        /*ServerProtocol::lock_branch("testest123", locked_branches)?;
 
-        // Sleep for 2 seconds
-        thread::sleep(Duration::from_secs(240));
-        ServerProtocol::unlock_branch("testest123", locked_branches)?;*/
+        println!("thread locks ALL_BRANCHES_LOCK {}", ALL_BRANCHES_LOCK);
+        ServerProtocol::lock_branch(ALL_BRANCHES_LOCK, locked_branches, false)?;
 
         let branches: Vec<String> = helpers::get_all_branches()?;
         for branch in &branches {
@@ -289,12 +319,18 @@ impl ServerProtocol {
         let requests_received: Vec<String> =
             protocol_utils::read_until(&mut reader, REQUEST_LENGTH_CERO, true)?;
         let mut refs_to_update: Vec<(String, String, String)> = Vec::new();
+        let mut branches_used: Vec<String> = Vec::new();
         for request_received in requests_received {
             if let [prev_remote_hash, new_remote_hash, branch_name] = request_received
                 .split_whitespace()
                 .collect::<Vec<&str>>()
                 .as_slice()
             {
+
+                println!("thread locks {}", branch_name);
+                ServerProtocol::lock_branch(branch_name, locked_branches, true)?;
+                branches_used.push(branch_name.to_string());
+
                 helpers::validate_ref_update_request(
                     prev_remote_hash,
                     new_remote_hash,
@@ -307,6 +343,9 @@ impl ServerProtocol {
                 ));
             }
         }
+
+        println!("thread unlocks ALL_BRANCHES_LOCK {}", ALL_BRANCHES_LOCK);
+        ServerProtocol::unlock_branch(ALL_BRANCHES_LOCK, locked_branches)?;
 
         println!("reading pack file");
 
@@ -333,6 +372,10 @@ impl ServerProtocol {
         }
         helpers::update_hash_for_refs(refs_to_update)?;
 
+        for branch in &branches_used {
+            println!("thread unlocks {}", &branch);
+            ServerProtocol::unlock_branch(branch, locked_branches)?;
+        }
         Ok(())
     }
 }

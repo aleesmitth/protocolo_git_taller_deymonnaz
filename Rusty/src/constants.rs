@@ -67,3 +67,4 @@ pub const REQUEST_LENGTH_CERO: &str = "0000";
 pub const NAK_RESPONSE: &str = "NAK\n";
 pub const WANT_REQUEST: &str = "want";
 pub const UNPACK_CONFIRMATION: &str = "unpack ok\n";
+pub const ALL_BRANCHES_LOCK: &str = "all_branches_lock";
