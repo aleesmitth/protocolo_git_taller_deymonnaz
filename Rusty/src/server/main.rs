@@ -1,5 +1,7 @@
 extern crate rocket;
 use rusty::{constants::RELATIVE_PATH, server::models::AppState};
+use std::collections::HashSet;
+use std::sync::{Mutex, Arc, Condvar};
 //use rusty::server::server_protocol::ServerProtocol;
 use rusty::server::controller::*;
 use rusty::server::database::Database;
@@ -32,12 +34,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = ServerProtocol::bind("127.0.0.1:9418")?; // Default Git port
     println!("bind complete");
 
+    // Create a HashSet to store locked branch names
+    let locked_branches = Arc::new((Mutex::new(HashSet::new()), Condvar::new()));
+
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
+                let cloned_locked_branches = Arc::clone(&locked_branches);
                 let mut cloned_stream = stream.try_clone()?;
                 thread::spawn(move || {
-                    if let Err(err) = ServerProtocol::handle_client_conection(&mut cloned_stream) {
+                    if let Err(err) = ServerProtocol::handle_client_conection(&mut cloned_stream, cloned_locked_branches) {
                         println!("Error: {:?}", err);
                     }
                 });

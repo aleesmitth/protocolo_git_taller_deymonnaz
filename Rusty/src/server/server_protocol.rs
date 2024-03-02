@@ -4,6 +4,10 @@ use crate::commands::git_commands::PathHandler;
 use crate::commands::git_commands::UnpackObjects;
 use crate::commands::helpers;
 use crate::commands::protocol_utils;
+use std::thread;
+use std::time::Duration;
+use std::collections::HashSet;
+use std::sync::{Mutex, Arc, Condvar};
 use crate::constants::{REQUEST_LENGTH_CERO, REQUEST_DELIMITER_DONE, WANT_REQUEST, NAK_RESPONSE, UNPACK_CONFIRMATION};
 
 use std::{error::Error, fs::File, io, io::Read, io::Write, net::TcpListener, net::TcpStream};
@@ -28,7 +32,82 @@ impl ServerProtocol {
         Ok(TcpListener::bind(address)?)
     }
 
-    pub fn handle_client_conection(stream: &mut TcpStream) -> Result<(), Box<dyn Error>> {
+    pub fn lock_branch(branch: &str, locked_branches: &Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {// Extract the Mutex and Condvar from the Arc
+        // Extract the Mutex and Condvar from the Arc
+        let (lock, cvar) = &**locked_branches;
+
+        // Acquire the lock before checking or modifying the set of locked branches
+        let mut locked_branches = match lock.lock() {
+            Ok(lock) => lock,
+            Err(err) => {
+                // Handle the error, according to doc. Previous holder of mutex panicked
+                return Err(Box::new(io::Error::new(
+                    io::ErrorKind::Other,
+                    err.to_string(),
+                )));
+            }
+        };
+
+        // Wait for the branch to be available
+        while locked_branches.contains(branch) {
+            println!("Branch '{}' locked going to sleep, wait for CondVar notification. Lock of HashMap released", branch);
+            // Release the lock before waiting and re-acquire it after waking up
+            locked_branches = match cvar.wait(locked_branches) {
+                Ok(guard) => guard,
+                Err(err) => {
+                    // Handle the error, potentially logging or returning an error response
+                    return Err(Box::new(io::Error::new(
+                        io::ErrorKind::Other,
+                        err.to_string(),
+                    )));
+                }
+            };
+            // Perform your branch-specific operations here
+            println!("CondVar notification received, lock reacquired");
+        }
+
+        // Branch is not locked, so lock it
+        locked_branches.insert(branch.to_string());
+
+        // Release the lock outside the loop
+        drop(locked_branches);
+
+        println!("Branch inserted in HashMap: '{}'. Lock of HashMap released", branch);
+        Ok(())
+    }
+
+    pub fn unlock_branch(branch: &str, locked_branches: &Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
+        // Extract the Mutex and Condvar from the Arc
+        let (lock, cvar) = &**locked_branches;
+
+        // Acquire the lock before checking or modifying the set of locked branches
+        let mut locked_branches = match lock.lock() {
+            Ok(lock) => lock,
+            Err(err) => {
+                // Handle the error, according to doc. Previous holder of mutex panicked
+                return Err(Box::new(io::Error::new(
+                    io::ErrorKind::Other,
+                    err.to_string(),
+                )));
+            }
+        };
+
+        // Remove the branch if it exists
+        if locked_branches.remove(branch) {
+            // Notify other waiting threads that the condition (branch availability) has changed
+            cvar.notify_all();
+        }
+
+        // Release the lock
+        drop(locked_branches);
+
+        // Perform your branch-specific operations here
+        println!("Branch removed from HashMap: '{}'. Lock of HashMap released", branch);
+
+        Ok(())
+    }
+
+    pub fn handle_client_conection(stream: &mut TcpStream, locked_branches: Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
         let stream_clone = stream.try_clone()?;
         let mut reader = std::io::BufReader::new(stream_clone);
         println!("waiting for request...");
@@ -85,12 +164,12 @@ impl ServerProtocol {
 
         match request_array[0] {
             UPLOAD_PACK => {
-                if let Err(err) = ServerProtocol::upload_pack(stream) {
+                if let Err(err) = ServerProtocol::upload_pack(stream, &locked_branches) {
                     eprintln!("Error handling UPLOAD_PACK: {}", err);
                 }
             },
             RECEIVE_PACK => {
-                if let Err(err) = ServerProtocol::receive_pack(stream) {
+                if let Err(err) = ServerProtocol::receive_pack(stream, &locked_branches) {
                     eprintln!("Error handling RECEIVE_PACK: {}", err);
                 }
             },
@@ -102,7 +181,7 @@ impl ServerProtocol {
         Ok(())
     }
 
-    pub fn upload_pack(stream: &mut TcpStream) -> Result<(), Box<dyn Error>> {
+    pub fn upload_pack(stream: &mut TcpStream, locked_branches: &Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
         println!("git-upload-pack");
         let branches: Vec<String> = helpers::get_all_branches()?;
         for branch in &branches {
@@ -189,8 +268,13 @@ impl ServerProtocol {
         false
     }
 
-    pub fn receive_pack(stream: &mut TcpStream) -> Result<(), Box<dyn Error>> {
+    pub fn receive_pack(stream: &mut TcpStream, locked_branches: &Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
         println!("git-receive-pack");
+        /*ServerProtocol::lock_branch("testest123", locked_branches)?;
+
+        // Sleep for 2 seconds
+        thread::sleep(Duration::from_secs(240));
+        ServerProtocol::unlock_branch("testest123", locked_branches)?;*/
 
         let branches: Vec<String> = helpers::get_all_branches()?;
         for branch in &branches {
