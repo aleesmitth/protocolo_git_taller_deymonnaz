@@ -112,9 +112,9 @@ impl ClientProtocol {
     ) -> Result<Vec<(String, String)>, Box<dyn Error>> {
         let mut stream = ClientProtocol::connect(&remote_url)?;
 
-        // TODO a nuestro server no le importa el relative path por ahora, que pasa si tenemos mas de 1 repo en el sv? arreglar.
+        let current_repo = get_client_current_working_repo()?;
         let request = protocol_utils::format_line_to_send(
-            "git-upload-pack /projects/.git\0host=127.0.0.1\0".to_string(),
+            format!("git-upload-pack /{}/.git\0host=127.0.0.1\0", current_repo).to_string(),
         );
         // println!("{}", request);
 

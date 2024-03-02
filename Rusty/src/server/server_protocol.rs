@@ -199,7 +199,7 @@ impl ServerProtocol {
         let mut reader = std::io::BufReader::new(stream.try_clone()?);
         let requests_received: Vec<String> =
             protocol_utils::read_until(&mut reader, REQUEST_DELIMITER_DONE, false)?;
-        let mut branches_used: Vec<String> = Vec::new();
+        let mut branches_used: HashSet<String> = HashSet::new();
         for request_received in requests_received.clone() {
             let request_array: Vec<&str> = request_received.split_whitespace().collect();
             // println!("request in array: {:?}", request_array);
@@ -319,7 +319,7 @@ impl ServerProtocol {
         let requests_received: Vec<String> =
             protocol_utils::read_until(&mut reader, REQUEST_LENGTH_CERO, true)?;
         let mut refs_to_update: Vec<(String, String, String)> = Vec::new();
-        let mut branches_used: Vec<String> = Vec::new();
+        let mut branches_used: HashSet<String> = HashSet::new();
         for request_received in requests_received {
             if let [prev_remote_hash, new_remote_hash, branch_name] = request_received
                 .split_whitespace()
@@ -329,7 +329,7 @@ impl ServerProtocol {
 
                 println!("thread locks {}", branch_name);
                 ServerProtocol::lock_branch(branch_name, locked_branches, true)?;
-                branches_used.push(branch_name.to_string());
+                branches_used.insert(branch_name.to_string());
 
                 helpers::validate_ref_update_request(
                     prev_remote_hash,
