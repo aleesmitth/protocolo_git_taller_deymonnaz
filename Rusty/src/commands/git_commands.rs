@@ -1,4 +1,5 @@
 use std::fmt::Write as Write_FMT;
+use std::path;
 use std::{
     collections::HashSet, env, error::Error, fs, io, io::BufRead, io::ErrorKind, io::Read,
     io::Seek, io::SeekFrom, io::Write, str, fs::ReadDir,
@@ -16,6 +17,7 @@ use crate::commands::helpers;
 use crate::commands::structs::*;
 use crate::constants::*;
 // TODO MOVER A OTRA CARPETA. NO TIENE SENTIDO commands::commands::PathHandler
+#[derive(Clone)]
 pub struct PathHandler {
     path: String,
 }
@@ -88,6 +90,8 @@ impl Command for Init {
     fn execute(&self, args: Option<Vec<&str>>, path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
         let arg_slice = args.unwrap_or_default();
 
+        let mut path_handler = path_handler.clone();
+
         if let Some(&repo_name) = arg_slice.first() {
             if repo_name.contains('/') {
                 return Err(Box::new(io::Error::new(
@@ -97,7 +101,7 @@ impl Command for Init {
             }
 
             // Concatenate a '/' character and call the methods
-            //path_handler.set_relative_path(path_handler.get_relative_path(&format!("{}/", repo_name)));
+            path_handler.set_relative_path(path_handler.get_relative_path(&format!("{}", repo_name)));
         }
         if helpers::check_if_directory_exists(&path_handler.get_relative_path(GIT)) {
             return Err(Box::new(io::Error::new(
@@ -112,8 +116,8 @@ impl Command for Init {
         fs::create_dir(path_handler.get_relative_path(R_REMOTES))?;
 
         let mut _config_file = fs::File::create(path_handler.get_relative_path(CONFIG_FILE))?;
-        Branch::new().create_new_branch(DEFAULT_BRANCH_NAME, path_handler)?;
-        Head::change_head_branch(DEFAULT_BRANCH_NAME, path_handler)?;
+        Branch::new().create_new_branch(DEFAULT_BRANCH_NAME, &path_handler)?;
+        Head::change_head_branch(DEFAULT_BRANCH_NAME, &path_handler)?;
 
         let _index_file = fs::File::create(path_handler.get_relative_path(INDEX_FILE))?;
 
@@ -915,20 +919,10 @@ impl PackObjects {
         }
 
         // Print the bit representation of the final header
-        print_bits(&header);
+        // print_bits(&header);
 
         header
     }
-}
-
-fn print_bits(vector: &[u8]) {
-    for &byte in vector.iter() {
-        for i in (0..8).rev() {
-            let bit = (byte >> i) & 1;
-            print!("{}", bit);
-        }
-    }
-    println!(); // Print a newline after printing all bits
 }
 
 impl Command for PackObjects {
@@ -1208,7 +1202,6 @@ impl UnpackObjects {
                 // The object contents are zlib-compressed
                 let mut contents = Vec::with_capacity(size);
                 Decoder::new(pack_file)?.read_to_end(&mut contents)?;
-                println!("{} != {}", contents.len(), size);
                 if contents.len() != size {
                     return Err(Box::new(io::Error::new(
                         io::ErrorKind::Other,
@@ -1224,8 +1217,6 @@ impl UnpackObjects {
                     io::ErrorKind::NotFound,
                     "Invalid OffsetDelta offset",
                 ))?;
-                // Save and restore the offset since read_pack_offset() will change it
-                // let offset = Self::get_offset(pack_file)?; ver esto
                 let (base_object_type, base_object_content, _size) =
                     Self::read_pack_object(pack_file, base_offset, path_handler)?;
                 Self::seek(pack_file, offset)?;
