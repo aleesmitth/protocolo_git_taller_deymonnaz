@@ -43,7 +43,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let cloned_locked_branches = Arc::clone(&locked_branches);
                 let mut cloned_stream = stream.try_clone()?;
                 thread::spawn(move || {
-                    if let Err(err) = ServerProtocol::handle_client_conection(&mut cloned_stream, cloned_locked_branches) {
+                    if let Err(err) = ServerProtocol::handle_client_connection(&mut cloned_stream, cloned_locked_branches) {
                         println!("Error: {:?}", err);
                     }
                 });

@@ -107,7 +107,7 @@ impl ServerProtocol {
         Ok(())
     }
 
-    pub fn handle_client_conection(stream: &mut TcpStream, locked_branches: Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
+    pub fn handle_client_connection(stream: &mut TcpStream, locked_branches: Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
         let stream_clone = stream.try_clone()?;
         let mut reader = std::io::BufReader::new(stream_clone);
         println!("waiting for request...");
