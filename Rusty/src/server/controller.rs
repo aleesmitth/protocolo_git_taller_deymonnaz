@@ -10,6 +10,7 @@ use rocket::http::Status;
 use rocket::response::status::NotFound;
 use git_commands::Log;
 use crate::commands::helpers::{get_branch_last_commit, get_branch_path};
+use crate::constants::SERVER_BASE_PATH;
 
 
 use super::database::{create, read, update};
@@ -75,46 +76,48 @@ pub async fn get_pull_request_commits(state: &State<AppState>, repo: String, pul
             let head = pull_requests[0].head.clone();
             let base = pull_requests[0].base.clone();
             let commit_after_merge = pull_requests[0].commit_after_merge.clone();
-            let base_repo_path = PathHandler::get_relative_path("");
-            PathHandler::set_relative_path(&format!("{}{}/", base_repo_path, repo));
+            //let base_repo_path = PathHandler::get_relative_path("");
+            //PathHandler::set_relative_path(&format!("{}{}/", base_repo_path, repo));
+            let path_handler = PathHandler::new(format!("{}{}", SERVER_BASE_PATH, repo).to_string());
+
             if let Some(commit) = commit_after_merge {
-                let merge_log = Log::new().execute(Some(vec![&commit]));
-                PathHandler::set_relative_path(&base_repo_path);
+                let merge_log = Log::new().execute(Some(vec![&commit]), &path_handler);
+                //PathHandler::set_relative_path(&base_repo_path);
                 match merge_log {
                     Ok(log) => Ok(format!("-- PullRequest Merge Log --\n{}\n", log)),
                     Err(err) => Err(NotFound(format!("Error fetching merge commit log: {:?}", err)))
                 }
             } else {
-                let head_last_commit = match get_branch_last_commit(&get_branch_path(&head)) {
+                let head_last_commit = match get_branch_last_commit(&get_branch_path(&head), &path_handler) {
                     Ok(commit) => commit,
                     Err(e) => {
-                        PathHandler::set_relative_path(&base_repo_path);
+                        //PathHandler::set_relative_path(&base_repo_path);
                         return Err(NotFound(format!("Error finding last commit of branch {}, {}", head, e)));
                     }
                 };
-                let base_last_commit = match get_branch_last_commit(&get_branch_path(&base)) {
+                let base_last_commit = match get_branch_last_commit(&get_branch_path(&base), &path_handler) {
                     Ok(commit) => commit,
                     Err(e) => {
-                        PathHandler::set_relative_path(&base_repo_path);
+                        //PathHandler::set_relative_path(&base_repo_path);
                         return Err(NotFound(format!("Error finding last commit of branch {}, {}", base, e)));
                     }
                 };
-                let logs_head = match Log::new().execute(Some(vec![&head_last_commit])) {
+                let logs_head = match Log::new().execute(Some(vec![&head_last_commit]), &path_handler) {
                     Ok(log) => format!("-- PullRequest Head Log --\n{}\n", log),
                     Err(err) => {
-                        PathHandler::set_relative_path(&base_repo_path);
+                        //PathHandler::set_relative_path(&base_repo_path);
                         return Err(NotFound(format!("Error fetching PullRequest head log: {:?}", err)))
                     }
                 };
-                let logs_base = match Log::new().execute(Some(vec![&base_last_commit])) {
+                let logs_base = match Log::new().execute(Some(vec![&base_last_commit]), &path_handler) {
                     Ok(log) => format!("-- PullRequest Base Log --\n{}\n", log),
                     Err(err) => {
-                        PathHandler::set_relative_path(&base_repo_path);
+                        //PathHandler::set_relative_path(&base_repo_path);
                         return Err(NotFound(format!("Error fetching PullRequest head log: {:?}", err)))
                     }
                 };
 
-                PathHandler::set_relative_path(&base_repo_path);
+                //PathHandler::set_relative_path(&base_repo_path);
                 Ok(format!("{}{}", logs_head, logs_base))
             }
         }
@@ -146,13 +149,14 @@ pub async fn put_merge(state: &State<AppState>, repo: String, pull_number: i32) 
 
     println!("merging");
     let merge = spawn_blocking(move || {
-        let base_repo_path = PathHandler::get_relative_path("");
-        PathHandler::set_relative_path(&format!("{}{}/", base_repo_path, repo));
+        let path_handler = PathHandler::new(format!("{}{}", SERVER_BASE_PATH, repo).to_string());
+        //let base_repo_path = PathHandler::get_relative_path("");
+        //PathHandler::set_relative_path(&format!("{}{}/", base_repo_path, repo));
 
-        let merge = Merge::new().execute(Some(vec![&pull_requests[0].head, &pull_requests[0].base]))
+        let merge = Merge::new().execute(Some(vec![&pull_requests[0].head, &pull_requests[0].base]), &path_handler)
             .map(|result| result.to_string())
             .map_err(|e| e.to_string());
-        PathHandler::set_relative_path(&base_repo_path);
+        //PathHandler::set_relative_path(&base_repo_path);
         merge
     }).await;
     println!("merged");
@@ -180,12 +184,13 @@ pub async fn put_merge(state: &State<AppState>, repo: String, pull_number: i32) 
 pub async fn init_repo(repo: &str) -> Result<String, NotFound<String>> {
     let repo_name_clone = repo.to_string(); // Clone the string
 
+    let path_handler = PathHandler::new(format!("{}{}", SERVER_BASE_PATH, repo).to_string());
     let result = spawn_blocking(move || {
-        let base_repo_path = PathHandler::get_relative_path("");
-        let result = git_commands::Init::new().execute(Some(vec![&repo_name_clone]))
+        //let base_repo_path = PathHandler::get_relative_path("");
+        let result = git_commands::Init::new().execute(Some(vec![&repo_name_clone]), &path_handler)
             .map(|_| "Repository initialized successfully".to_string())
             .map_err(|e| e.to_string());
-        PathHandler::set_relative_path(&base_repo_path);
+        //PathHandler::set_relative_path(&base_repo_path);
         result
     }).await;
 
@@ -205,8 +210,8 @@ pub async fn init_repo(repo: &str) -> Result<String, NotFound<String>> {
 pub async fn post_pull_request(state: &State<AppState>, repo: String, pr: Json<PullRequestBody>) -> Result<String, NotFound<String>> {
     // 1. Extract data from the Json<PullRequestBody> parameter
     let pull_request_data = pr.into_inner();
-
-    let pull_request_resource = match PullRequest::new(pull_request_data, repo) {
+    let mut path_handler = PathHandler::new(SERVER_BASE_PATH.to_string());
+    let pull_request_resource = match PullRequest::new(pull_request_data, repo, &mut path_handler) {
         Ok(resource) => resource,
         Err(e) => {
             // Handle the error

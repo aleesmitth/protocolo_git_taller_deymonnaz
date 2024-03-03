@@ -6,6 +6,7 @@ use sqlx::FromRow;
 use serde::{Serialize, Deserialize};
 use rocket_okapi::okapi::schemars;
 use rocket_okapi::okapi::schemars::JsonSchema;
+use crate::commands::git_commands::PathHandler;
 use crate::commands::helpers::{check_if_branch_belongs_to_repo, check_if_repo_exists};
 
 // TODO make a constructor for this, so it validates data or whatever, is it cleaner?
@@ -14,6 +15,7 @@ use crate::commands::helpers::{check_if_branch_belongs_to_repo, check_if_repo_ex
 
 pub struct AppState {
     pub db_pool: PgPool,
+    pub relative_path_handler: PathHandler,
 }
 
 ///
@@ -67,7 +69,7 @@ fn sample_date() -> chrono::DateTime<chrono::Utc> {
 }
 
 impl PullRequest {
-    pub fn new(request_body: PullRequestBody, repo: String) -> Result<Self, Box<dyn Error>> {
+    pub fn new(request_body: PullRequestBody, repo: String, path_handler: &mut PathHandler) -> Result<Self, Box<dyn Error>> {
         // TODO handle errors more elegantly
         if request_body.title.is_empty() || request_body.base.is_empty() || request_body.head.is_empty() || repo.is_empty() {
             return Err(Box::new(io::Error::new(
@@ -82,10 +84,10 @@ impl PullRequest {
             )))
         }
 
-        check_if_repo_exists(repo.as_str())?;
-
-        check_if_branch_belongs_to_repo(request_body.base.as_str(), repo.as_str())?;
-        check_if_branch_belongs_to_repo(request_body.head.as_str(), repo.as_str())?;
+        check_if_repo_exists(repo.as_str(), path_handler)?;
+        path_handler.set_relative_path(path_handler.get_relative_path(&repo));
+        check_if_branch_belongs_to_repo(request_body.base.as_str(), repo.as_str(), path_handler)?;
+        check_if_branch_belongs_to_repo(request_body.head.as_str(), repo.as_str(), path_handler)?;
 
         Ok(PullRequest {
             _id: None,

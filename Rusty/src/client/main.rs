@@ -24,39 +24,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
     if args.len() >= 2 {
         let command = &args[1];
+        let mut path_handler = PathHandler::new(String::new());
         match command.as_str() {
-            "init" => Init::new().execute(parse_arguments(&args[2..]))?,
-            "branch" => Branch::new().execute(parse_arguments(&args[2..]))?,
-            "checkout" => Checkout::new().execute(parse_arguments(&args[2..]))?,
-            "cat-file" => CatFile::new().execute(parse_arguments(&args[2..]))?,
+            "init" => Init::new().execute(parse_arguments(&args[2..]), &path_handler)?,
+            "branch" => Branch::new().execute(parse_arguments(&args[2..]), &path_handler)?,
+            "checkout" => Checkout::new().execute(parse_arguments(&args[2..]), &path_handler)?,
+            "cat-file" => CatFile::new().execute(parse_arguments(&args[2..]), &path_handler)?,
             "hash-object" => {
-                HashObject::new().execute(parse_arguments(&args[2..]))?
+                HashObject::new().execute(parse_arguments(&args[2..]), &path_handler)?
             }
-            "add" => Add::new().execute(parse_arguments(&args[2..]))?,
-            "rm" => Rm::new().execute(parse_arguments(&args[2..]))?,
-            "commit" => Commit::new().execute(parse_arguments(&args[2..]))?,
-            "status" => Status::new().execute(None)?,
-            "log" => Log::new().execute(parse_arguments(&args[2..]))?,
-            "remote" => Remote::new().execute(parse_arguments(&args[2..]))?,
+            "add" => Add::new().execute(parse_arguments(&args[2..]), &path_handler)?,
+            "rm" => Rm::new().execute(parse_arguments(&args[2..]), &path_handler)?,
+            "commit" => Commit::new().execute(parse_arguments(&args[2..]), &path_handler)?,
+            "status" => Status::new().execute(None, &path_handler)?,
+            "log" => Log::new().execute(parse_arguments(&args[2..]), &path_handler)?,
+            "remote" => Remote::new().execute(parse_arguments(&args[2..]), &path_handler)?,
             "pack-objects" => {
-                PackObjects::new().execute(parse_arguments(&args[2..]))?
+                PackObjects::new().execute(parse_arguments(&args[2..]), &path_handler)?
             }
-            "fetch" => Fetch::new().execute(parse_arguments(&args[2..]))?,
-            "merge" => Merge::new().execute(parse_arguments(&args[2..]))?,
-            "clone" => Clone::new().execute(parse_arguments(&args[2..]))?,
-            "pull" => Pull::new().execute(parse_arguments(&args[2..]))?,
-            "push" => Push::new().execute(parse_arguments(&args[2..]))?,
-            "ls-tree" => LsTree::new().execute(parse_arguments(&args[2..]))?,
-            "ls-files" => LsFiles::new().execute(parse_arguments(&args[2..]))?,
-            "tag" => Tag::new().execute(parse_arguments(&args[2..]))?,
+            "fetch" => Fetch::new().execute(parse_arguments(&args[2..]), &path_handler)?,
+            "merge" => Merge::new().execute(parse_arguments(&args[2..]), &path_handler)?,
+            "clone" => Clone::new().execute(parse_arguments(&args[2..]), &path_handler)?,
+            "pull" => Pull::new().execute(parse_arguments(&args[2..]), &path_handler)?,
+            "push" => Push::new().execute(parse_arguments(&args[2..]), &path_handler)?,
+            "ls-tree" => LsTree::new().execute(parse_arguments(&args[2..]), &path_handler)?,
+            "ls-files" => LsFiles::new().execute(parse_arguments(&args[2..]), &path_handler)?,
+            "tag" => Tag::new().execute(parse_arguments(&args[2..]), &path_handler)?,
             "check-ignore" => {
-                CheckIgnore::new().execute(parse_arguments(&args[2..]))?
+                CheckIgnore::new().execute(parse_arguments(&args[2..]), &path_handler)?
             }
-            "show-ref" => ShowRef::new().execute(parse_arguments(&args[2..]))?,
+            "show-ref" => ShowRef::new().execute(parse_arguments(&args[2..]), &path_handler)?,
             "unpack-objects" => {
-                UnpackObjects::new().execute(parse_arguments(&args[2..]))?
+                UnpackObjects::new().execute(parse_arguments(&args[2..]), &path_handler)?
             }
-            "rebase" => Rebase::new().execute(parse_arguments(&args[2..]))?,
+            "rebase" => Rebase::new().execute(parse_arguments(&args[2..]), &path_handler)?,
 
             _ => {
                 return Err(Box::new(io::Error::new(

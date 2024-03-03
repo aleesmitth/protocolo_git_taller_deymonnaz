@@ -27,7 +27,7 @@ impl ClientProtocol {
         Ok(TcpStream::connect(address)?)
     }
 
-    pub fn receive_pack(&mut self, remote_url: String) -> Result<(), Box<dyn Error>> {
+    pub fn receive_pack(&mut self, remote_url: String, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
         let mut stream = ClientProtocol::connect(&remote_url)?;
         // println!("connect complete");
         let current_repo = get_client_current_working_repo()?;
@@ -56,8 +56,8 @@ impl ClientProtocol {
             }
         }
 
-        let current_branch_ref = Head::get_current_branch_ref()?;
-        let last_commit_hash: String = Head::get_head_commit()?.replace('\n', "");
+        let current_branch_ref = Head::get_current_branch_ref(path_handler)?;
+        let last_commit_hash: String = Head::get_head_commit(path_handler)?.replace('\n', "");
         // println!("last_commit: {}", last_commit_hash);
         // println!("refs in remote: {:?}", refs_in_remote);
         let mut push_line = String::new();
@@ -87,7 +87,7 @@ impl ClientProtocol {
         let _ = stream.write_all(REQUEST_LENGTH_CERO.as_bytes());
         // println!("sent 0000");
 
-        let pack_checksum = PackObjects::new().execute(Some(vec![&last_commit_hash]))?;
+        let pack_checksum = PackObjects::new().execute(Some(vec![&last_commit_hash]), path_handler)?;
         let pack_file_path = format!(".git/pack/pack-{}.pack", pack_checksum);
         // println!("{}", pack_file_path);
         let mut pack_file = fs::File::open(pack_file_path)?;
@@ -109,6 +109,7 @@ impl ClientProtocol {
     pub fn fetch_from_remote_with_our_server(
         &mut self,
         remote_url: String,
+        path_handler: &PathHandler,
     ) -> Result<Vec<(String, String)>, Box<dyn Error>> {
         let mut stream = ClientProtocol::connect(&remote_url)?;
 
@@ -172,7 +173,7 @@ impl ClientProtocol {
         stream.read_to_end(&mut buffer)?;
         // println!("buffer received: {:?}", buffer);
         // ACA PODRIA HACER EL CHECKSUM: asi ya verifica apenas me llega que esta bien y sino lanzo error
-        let mut file = fs::File::create(PathHandler::get_relative_path(
+        let mut file = fs::File::create(path_handler.get_relative_path(
             ".git/pack/received_pack_file.pack",
         ))?;
         file.write_all(&buffer)?;

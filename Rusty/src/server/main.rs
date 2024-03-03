@@ -1,5 +1,5 @@
 extern crate rocket;
-use rusty::{constants::RELATIVE_PATH, server::models::AppState};
+use rusty::{server::models::AppState};
 use std::collections::HashSet;
 use std::sync::{Mutex, Arc, Condvar};
 //use rusty::server::server_protocol::ServerProtocol;
@@ -13,12 +13,13 @@ use sqlx::PgPool;
 
 use rocket_okapi::settings::UrlObject;
 use rocket_okapi::{openapi_get_routes, rapidoc::*, swagger_ui::*};
-
+use rusty::commands::git_commands::PathHandler;
+use rusty::constants::SERVER_BASE_PATH;
 
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    env::set_var(RELATIVE_PATH, "src/server/");
+    //env::set_var(RELATIVE_PATH, "src/server/");
 
     let database = Database::new();
 
@@ -42,8 +43,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(stream) => {
                 let cloned_locked_branches = Arc::clone(&locked_branches);
                 let mut cloned_stream = stream.try_clone()?;
+                let mut path_handler = PathHandler::new(SERVER_BASE_PATH.to_string());
                 thread::spawn(move || {
-                    if let Err(err) = ServerProtocol::handle_client_connection(&mut cloned_stream, cloned_locked_branches) {
+                    if let Err(err) = ServerProtocol::handle_client_connection(&mut cloned_stream, &mut path_handler, cloned_locked_branches) {
                         println!("Error: {:?}", err);
                     }
                 });
@@ -58,7 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn run_rocket(db_pool: PgPool) -> Result<(), rocket::Error> {
-    let state = AppState { db_pool };
+    let state = AppState { db_pool, relative_path_handler: PathHandler::new("src/server/".to_string()) };
 
     /*let _rocket = rocket::build()
         .manage(state)

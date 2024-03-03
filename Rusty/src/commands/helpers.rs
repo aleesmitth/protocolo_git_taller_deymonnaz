@@ -81,9 +81,10 @@ pub fn update_file_with_hash(
     object_hash: &str,
     new_status: &str,
     file_path: &str,
+    path_handler: &PathHandler
 ) -> io::Result<()> {
     // Read the file into a vector of lines.
-    let file_contents = fs::read_to_string(PathHandler::get_relative_path(INDEX_FILE))?;
+    let file_contents = fs::read_to_string(path_handler.get_relative_path(INDEX_FILE))?;
 
     // Split the file contents into lines.
     let mut lines: Vec<String> = file_contents.lines().map(|s| s.to_string()).collect();
@@ -108,7 +109,7 @@ pub fn update_file_with_hash(
     let updated_contents = lines.join("\n");
 
     // Write the updated contents back to the file.
-    fs::write(PathHandler::get_relative_path(INDEX_FILE), updated_contents)?;
+    fs::write(path_handler.get_relative_path(INDEX_FILE), updated_contents)?;
 
     Ok(())
 }
@@ -150,15 +151,15 @@ pub fn remove_object_from_file(file_path: &str) -> io::Result<()> {
     Ok(())
 }
 
-pub fn get_all_branches() -> Result<Vec<String>, Box<dyn Error>> {
-    let current_branch_path = &Head::get_current_branch_path()?;
+pub fn get_all_branches(path_handler: &PathHandler) -> Result<Vec<String>, Box<dyn Error>> {
+    let current_branch_path = &Head::get_current_branch_path(path_handler)?;
 
     // Extract the directory path from the file path
     let dir_path = Path::new(&current_branch_path)
         .parent()
         .ok_or("Failed to get parent directory")?;
 
-    let entries = fs::read_dir(PathHandler::get_relative_path(&dir_path.to_string_lossy()))?;
+    let entries = fs::read_dir(path_handler.get_relative_path(&dir_path.to_string_lossy()))?;
 
     // Iterate over the entries
     let mut branches: Vec<String> = Vec::new();
@@ -208,8 +209,8 @@ pub fn generate_sha1_string_from_bytes(data: &[u8]) -> String {
     hasher.result_str()
 }
 
-pub fn read_object_to_bytes(hash: String) -> Result<(ObjectType, Vec<u8>, String), Box<dyn Error>> {
-    let mut file = fs::File::open(PathHandler::get_relative_path(&get_object_path(&hash)))?;
+pub fn read_object_to_bytes(hash: String, path_handler: &PathHandler) -> Result<(ObjectType, Vec<u8>, String), Box<dyn Error>> {
+    let mut file = fs::File::open(path_handler.get_relative_path(&get_object_path(&hash)))?;
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer)?;
     let file_data = decompress_file_content_to_bytes(buffer)?;
@@ -237,17 +238,17 @@ pub fn read_object_to_bytes(hash: String) -> Result<(ObjectType, Vec<u8>, String
     Ok((object_type, split_content[1].clone(), object_size))
 }
 
-pub fn read_object_to_string(hash: String) -> Result<(ObjectType, String, String), Box<dyn Error>> {
-    let (object_type, file_content, object_size) = read_object_to_bytes(hash)?;
+pub fn read_object_to_string(hash: String, path_handler: &PathHandler) -> Result<(ObjectType, String, String), Box<dyn Error>> {
+    let (object_type, file_content, object_size) = read_object_to_bytes(hash, path_handler)?;
 
     let content_to_string = String::from_utf8_lossy(&file_content).to_string();
 
     Ok((object_type, content_to_string, object_size))
 }
 
-pub fn get_remote_tracking_branches() -> Result<HashMap<String, (String, String)>, Box<dyn Error>> {
+pub fn get_remote_tracking_branches(path_handler: &PathHandler) -> Result<HashMap<String, (String, String)>, Box<dyn Error>> {
     // Read the content of the Git configuration file
-    let config_content = read_file_content(&PathHandler::get_relative_path(CONFIG_FILE))?;
+    let config_content = read_file_content(&path_handler.get_relative_path(CONFIG_FILE))?;
 
     // Initialize a HashMap to store branch names and their corresponding remotes
     let mut branches_and_remotes = HashMap::new();
@@ -287,27 +288,27 @@ pub fn get_remote_tracking_branches() -> Result<HashMap<String, (String, String)
 }
 
 /// Reads remote branches from remotes directory and returns a tuple with (branch_name, last_commit_hash)
-pub fn get_remote_branches(remote_name: &str) -> Result<Vec<(String, String)>, Box<dyn Error>> {
+pub fn get_remote_branches(remote_name: &str, path_handler: &PathHandler) -> Result<Vec<(String, String)>, Box<dyn Error>> {
     let mut branches_to_update: Vec<(String, String)> = Vec::new();
     
     let remote_branches_path = format!("{}/{}", R_REMOTES, remote_name);
-    let remote_branches = fs::read_dir(PathHandler::get_relative_path(&remote_branches_path))?;
+    let remote_branches = fs::read_dir(path_handler.get_relative_path(&remote_branches_path))?;
 
     for branch in remote_branches {
         let branch = branch?;
         let branch_name = branch.file_name().to_string_lossy().to_string();
         let branch_path = branch.path();
 
-        let branch_hash = read_file_content(&PathHandler::get_relative_path(branch_path.to_str().ok_or("")?))?;
+        let branch_hash = read_file_content(&path_handler.get_relative_path(branch_path.to_str().ok_or("")?))?;
         branches_to_update.push((branch_name, branch_hash))
     }
     Ok(branches_to_update)
 }
 
-pub fn update_branches(branches: Vec<(String, String)>) -> Result<(), Box<dyn Error>>{
+pub fn update_branches(branches: Vec<(String, String)>, path_handler: &PathHandler) -> Result<(), Box<dyn Error>>{
     for (branch_name, hash) in branches {
         let branch_file = format!("{}/{}", R_HEADS, branch_name);
-        let mut branch_file = fs::File::create(PathHandler::get_relative_path(&branch_file))?;
+        let mut branch_file = fs::File::create(path_handler.get_relative_path(&branch_file))?;
         branch_file.write_all(hash.as_bytes())?;
     }
 
@@ -318,8 +319,9 @@ pub fn update_local_branch_with_commit(
     remote_name: &str,
     branch_name: &str,
     remote_hash: &str,
+    path_handler: &PathHandler
 ) -> Result<(), Box<dyn Error>> {
-    let config_content = read_file_content(&PathHandler::get_relative_path(CONFIG_FILE))?;
+    let config_content = read_file_content(&path_handler.get_relative_path(CONFIG_FILE))?;
 
     let branch_header = format!("[branch '{}']", branch_name);
     let mut lines = config_content.lines().peekable();
@@ -335,7 +337,7 @@ pub fn update_local_branch_with_commit(
             }
             if let Some(remote) = remote {
                 if remote == remote_name {
-                    let _ = update_branch_hash(branch_name, remote_hash);
+                    let _ = update_branch_hash(branch_name, remote_hash, path_handler);
                 }
             }
         }
@@ -344,8 +346,8 @@ pub fn update_local_branch_with_commit(
 }
 
 /// Updates the commit which the specified branch points to
-pub fn update_branch_hash(branch_name: &str, new_commit_hash: &str) -> Result<(), Box<dyn Error>> {
-    let mut file = fs::File::create(PathHandler::get_relative_path(&get_branch_path(
+pub fn update_branch_hash(branch_name: &str, new_commit_hash: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
+    let mut file = fs::File::create(path_handler.get_relative_path(&get_branch_path(
         branch_name,
     )))?;
     file.write_all(new_commit_hash.as_bytes())?;
@@ -353,9 +355,9 @@ pub fn update_branch_hash(branch_name: &str, new_commit_hash: &str) -> Result<()
 }
 
 /// Returns the commit the specified branch points to
-pub fn get_branch_last_commit(branch_path: &str) -> Result<String, Box<dyn Error>> {
-    println!("path: {}", PathHandler::get_relative_path(branch_path));
-    let mut file: fs::File = fs::File::open(PathHandler::get_relative_path(branch_path))?;
+pub fn get_branch_last_commit(branch_path: &str, path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
+    println!("path: {}", path_handler.get_relative_path(branch_path));
+    let mut file: fs::File = fs::File::open(path_handler.get_relative_path(branch_path))?;
     let mut content = String::new();
     file.read_to_string(&mut content)?;
     Ok(content)
@@ -380,12 +382,13 @@ pub fn get_object_path(object_hash: &str) -> String {
 pub fn find_common_ancestor_commit(
     current_branch_commit: &str,
     merging_branch: &str,
+    path_handler: &PathHandler
 ) -> Result<String, Box<dyn Error>> {
     let mut current_branch_log = Vec::new();
-    let _ = Log::generate_log_entries(&mut current_branch_log, current_branch_commit.to_string());
+    let _ = Log::generate_log_entries(&mut current_branch_log, current_branch_commit.to_string(), path_handler);
 
     let mut merging_branch_log = Vec::new();
-    let _ = Log::generate_log_entries(&mut merging_branch_log, merging_branch.to_string());
+    let _ = Log::generate_log_entries(&mut merging_branch_log, merging_branch.to_string(), path_handler);
 
     for (commit, _message) in merging_branch_log {
         if current_branch_log.contains(&(commit.clone(), _message)) {
@@ -399,13 +402,14 @@ pub fn find_common_ancestor_commit(
 pub fn ancestor_commit_exists(
     current_commit_hash: &str,
     merging_commit_hash: &str,
+    path_handler: &PathHandler
 ) -> Result<bool, Box<dyn Error>> {
     let mut merging_branch_log = Vec::new();
     if current_commit_hash.is_empty() {
         return Ok(true);
     }
 
-    let _ = Log::generate_log_entries(&mut merging_branch_log, merging_commit_hash.to_string());
+    let _ = Log::generate_log_entries(&mut merging_branch_log, merging_commit_hash.to_string(), path_handler);
     for (commit, _message) in merging_branch_log {
         if commit == current_commit_hash {
             return Ok(true);
@@ -416,9 +420,9 @@ pub fn ancestor_commit_exists(
 
 /// Given a commit's hash it accesses its file and returns the hash of its associated
 /// tree object.
-pub fn get_commit_tree(commit_hash: &str) -> Result<String, Box<dyn Error>> {
+pub fn get_commit_tree(commit_hash: &str, path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
     let get_obj_path = get_object_path(commit_hash);
-    let get_obj_path_relative = PathHandler::get_relative_path(&get_obj_path);
+    let get_obj_path_relative = path_handler.get_relative_path(&get_obj_path);
 
     let read_file_content_to_bytes = read_file_content_to_bytes(&get_obj_path_relative)?;
     let decompressed_data = decompress_file_content(read_file_content_to_bytes)?;
@@ -441,8 +445,8 @@ pub fn get_commit_tree(commit_hash: &str) -> Result<String, Box<dyn Error>> {
 }
 
 /// Checks if the file in the given path exists and returns true or false
-pub fn check_if_file_exists(file_path: &str) -> bool {
-    if let Ok(metadata) = fs::metadata(PathHandler::get_relative_path(file_path)) {
+pub fn check_if_file_exists(file_path: &str, path_handler: &PathHandler) -> bool {
+    if let Ok(metadata) = fs::metadata(path_handler.get_relative_path(file_path)) {
         if metadata.is_file() {
             return true;
         }
@@ -471,9 +475,9 @@ pub fn hex_string_to_bytes(bytes: &[u8]) -> String {
 
 type TreeContent = (String, String, String);
 
-pub fn read_tree_content(tree_hash: &str) -> Result<Vec<TreeContent>, Box<dyn Error>> {
+pub fn read_tree_content(tree_hash: &str, path_handler: &PathHandler) -> Result<Vec<TreeContent>, Box<dyn Error>> {
     let compressed_content =
-        read_file_content_to_bytes(&PathHandler::get_relative_path(&get_object_path(tree_hash)))?;
+        read_file_content_to_bytes(&path_handler.get_relative_path(&get_object_path(tree_hash)))?;
     let tree_content = decompress_file_content_to_bytes(compressed_content)?;
     let split_content: Vec<Vec<u8>> = tree_content
         .splitn(2, |&c| c == 0)
@@ -535,11 +539,12 @@ pub fn validate_ref_update_request(
     prev_remote_hash: &str,
     _new_remote_hash: &str,
     branch_ref: &str,
+    path_handler: &PathHandler
 ) -> Result<(), Box<dyn Error>> {
     
     let branch_path = format!(".git/{}", branch_ref);
     
-    if check_if_file_exists(&branch_path) {
+    if check_if_file_exists(&branch_path, path_handler) {
         /*if prev_remote_hash == ZERO_HASH {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
@@ -565,11 +570,11 @@ pub fn validate_ref_update_request(
 }
 
 pub fn update_hash_for_refs(
-    refs_to_update: Vec<(String, String, String)>,
+    refs_to_update: Vec<(String, String, String)>, path_handler: &PathHandler
 ) -> Result<(), Box<dyn Error>> {
     for (_, new_remote_hash, branch_ref) in refs_to_update {
         let ref_path = format!(".git/{}", branch_ref);
-        let mut file = fs::File::create(PathHandler::get_relative_path(&ref_path))?;
+        let mut file = fs::File::create(path_handler.get_relative_path(&ref_path))?;
         file.write_all(new_remote_hash.as_bytes())?
     }
     Ok(())
@@ -591,14 +596,14 @@ pub fn find_modified_files(ancestor_working_tree: HashMap<String, String>, worki
 
 /// Given two working trees stored in HashMaps, it goes through their content and check if any conflict is found when merging.
 /// Returning a HashMap that contains the files without conflict name's and hashes;
-pub fn find_files_without_conflict(ancestor_working_tree: HashMap<String, String>, current_modified_files: HashMap<String, String>, mut merging_modified_files:  HashMap<String, String>) -> Result<HashMap<String, String>, Box<dyn Error>> {
+pub fn find_files_without_conflict(ancestor_working_tree: HashMap<String, String>, current_modified_files: HashMap<String, String>, mut merging_modified_files:  HashMap<String, String>, path_handler: &PathHandler) -> Result<HashMap<String, String>, Box<dyn Error>> {
     let mut files_without_conflict: HashMap<String, String> = HashMap::new();
     let mut files_with_conflict: Vec<(String, String)> = Vec::new(); // tal vez esto ni hace falta si los voy printeando
 
     for (file_name, file_hash) in current_modified_files {
         if let Some(merging_hash) = merging_modified_files.remove(&file_name) {
             if merging_hash != file_hash {
-                let merged_file = find_conflict_in_file(file_name.clone(), ancestor_working_tree.get(&file_name).ok_or("Ancestor file not found")?.to_string(), file_hash.clone(), merging_hash)?;
+                let merged_file = find_conflict_in_file(file_name.clone(), ancestor_working_tree.get(&file_name).ok_or("Ancestor file not found")?.to_string(), file_hash.clone(), merging_hash, path_handler)?;
                 if merged_file.is_empty() {
                     println!("CONFLICT: Merge conflict in {}", file_name);
                     files_with_conflict.push((file_name.clone(), file_hash));
@@ -617,7 +622,7 @@ pub fn find_files_without_conflict(ancestor_working_tree: HashMap<String, String
         files_without_conflict.insert(file_name, file_hash);
     }
 
-    StagingArea::new().change_index_file(files_without_conflict.clone(), files_with_conflict.clone())?;
+    StagingArea::new().change_index_file(files_without_conflict.clone(), files_with_conflict.clone(), path_handler)?;
 
     if !files_with_conflict.is_empty() {
         println!("Automatic merge failed; fix conflicts and then commit the result");
@@ -630,9 +635,9 @@ pub fn find_files_without_conflict(ancestor_working_tree: HashMap<String, String
     Ok(files_without_conflict)
 }
 
-pub fn find_conflict_in_file(file_name: String, ancestor_hash: String, first_object_hash: String, second_object_hash: String) -> Result<String, Box<dyn Error>> {
-    let changes_in_first_object = find_changes_in_file(file_name.clone(), ancestor_hash.clone(), first_object_hash.clone())?;
-    let changes_in_second_object = find_changes_in_file(file_name.clone(), ancestor_hash, second_object_hash.clone())?;
+pub fn find_conflict_in_file(file_name: String, ancestor_hash: String, first_object_hash: String, second_object_hash: String, path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
+    let changes_in_first_object = find_changes_in_file(file_name.clone(), ancestor_hash.clone(), first_object_hash.clone(), path_handler)?;
+    let changes_in_second_object = find_changes_in_file(file_name.clone(), ancestor_hash, second_object_hash.clone(), path_handler)?;
     let max_len = changes_in_first_object.len().max(changes_in_second_object.len());
 
     let mut final_merged_content: Vec<String> = Vec::new();
@@ -682,12 +687,12 @@ pub fn find_conflict_in_file(file_name: String, ancestor_hash: String, first_obj
     let merged_content_joined = final_merged_content.join("\n");
     
     if conflict_was_found {
-        let mut file_with_conflicts = fs::File::create(PathHandler::get_relative_path(&file_name))?;
+        let mut file_with_conflicts = fs::File::create(path_handler.get_relative_path(&file_name))?;
         file_with_conflicts.write_all(merged_content_joined.as_bytes())?;
         return Ok(String::new());
     }
     
-    let new_object_hash = HashObjectCreator::write_object_file(merged_content_joined.clone(), ObjectType::Blob, merged_content_joined.len() as u64)?;
+    let new_object_hash = HashObjectCreator::write_object_file(merged_content_joined.clone(), ObjectType::Blob, merged_content_joined.len() as u64, path_handler)?;
     Ok(new_object_hash)
 }
 
@@ -703,9 +708,9 @@ fn generate_marked_conflict_lines(first_branch_conflict_lines: Vec<String>, seco
     conflict_lines
 }
 
-pub fn find_changes_in_file(_file_name: String, ancestor_hash: String, branch_hash: String) -> Result<Vec<LineChange>, Box<dyn Error>> {
-    let (_, ancestor_object_content, _) = read_object_to_string(ancestor_hash)?;
-    let (_, changed_object_content, _) = read_object_to_string(branch_hash)?;
+pub fn find_changes_in_file(_file_name: String, ancestor_hash: String, branch_hash: String, path_handler: &PathHandler) -> Result<Vec<LineChange>, Box<dyn Error>> {
+    let (_, ancestor_object_content, _) = read_object_to_string(ancestor_hash, path_handler)?;
+    let (_, changed_object_content, _) = read_object_to_string(branch_hash, path_handler)?;
 
     let ancestor_object_lines: Vec<String> = ancestor_object_content.lines().map(|line| line.to_string()).collect();
     let changed_object_lines: Vec<String> = changed_object_content.lines().map(|line| line.to_string()).collect();
@@ -755,8 +760,8 @@ impl fmt::Display for LineChange {
 /// This function goes through the tree object associated to a commit object and
 /// adds all of the files in its working tree into a HashMap, where the file name (path)
 /// is the key and its corresponding object hash is the value stored.
-pub fn reconstruct_working_tree(commit_hash: String) -> Result<HashMap<String, String>, Box<dyn Error>> {
-    let tree_content = read_tree_content(&get_commit_tree(&commit_hash)?)?;
+pub fn reconstruct_working_tree(commit_hash: String, path_handler: &PathHandler) -> Result<HashMap<String, String>, Box<dyn Error>> {
+    let tree_content = read_tree_content(&get_commit_tree(&commit_hash, path_handler)?, path_handler)?;
     let mut working_tree: HashMap<String, String> = HashMap::new();
 
     for (file_mode, file_name, file_hash) in tree_content {
@@ -765,7 +770,7 @@ pub fn reconstruct_working_tree(commit_hash: String) -> Result<HashMap<String, S
                 working_tree.insert(file_name, file_hash);
             }
             TREE_SUBTREE_MODE => {
-                working_tree.extend(reconstruct_working_tree(file_hash)?);
+                working_tree.extend(reconstruct_working_tree(file_hash, path_handler)?);
             }
             _ => {}
         }
@@ -774,14 +779,14 @@ pub fn reconstruct_working_tree(commit_hash: String) -> Result<HashMap<String, S
 }
 
 /// Receives a repo name and return a result indicating if the repo already exists or not
-pub fn check_if_repo_exists(repo_name: &str) -> Result<(), Box<dyn Error>> {
+pub fn check_if_repo_exists(repo_name: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
     if repo_name.is_empty() {
         return Err(Box::new(io::Error::new(
             io::ErrorKind::Other,
             "Error: repo name can't be blank, it does not exist.",
         )))
     }
-    let string_full_path = PathHandler::get_relative_path(repo_name);
+    let string_full_path = path_handler.get_relative_path(repo_name);
     let full_path = Path::new(&string_full_path);
 
     // Check if the given directory exists
@@ -807,14 +812,14 @@ pub fn check_if_repo_exists(repo_name: &str) -> Result<(), Box<dyn Error>> {
 }
 
 /// Receives a branch name and a repo name, returns a result indicating if the branch already exists in the repo or not
-pub fn check_if_branch_belongs_to_repo(branch_name: &str, repo_name: &str) -> Result<(), Box<dyn Error>> {
+pub fn check_if_branch_belongs_to_repo(branch_name: &str, repo_name: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
     let branch_path = get_branch_path(branch_name);
     let repo_branch_path = if repo_name.is_empty() {
         branch_path
     } else {
         format!("{}/{}", repo_name, branch_path)
     };
-    if !check_if_file_exists(&repo_branch_path) {
+    if !check_if_file_exists(&repo_branch_path, path_handler) {
         return Err(Box::new(io::Error::new(
             io::ErrorKind::Other,
             "Error: Specified branch does not exist in this repo.",
@@ -839,9 +844,9 @@ pub fn get_client_current_working_repo() -> Result<String, Box<dyn Error>> {
 }
 
 /// Receives a branch name and return a result indicating if the branch already exists or not
-pub fn check_if_branch_exists(branch_name: &str) -> Result<(), Box<dyn Error>> {
+pub fn check_if_branch_exists(branch_name: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
     let branch_path = get_branch_path(branch_name);
-    if !check_if_file_exists(&branch_path) {
+    if !check_if_file_exists(&branch_path, path_handler) {
         return Err(Box::new(io::Error::new(
             io::ErrorKind::Other,
             "Error: Specified branch does not exist.",
@@ -853,14 +858,14 @@ pub fn check_if_branch_exists(branch_name: &str) -> Result<(), Box<dyn Error>> {
 /// Given two commits it finds which files can be merged without generating a conflict. 
 /// It then cleans the working directory of the old and not merged files and updates the 
 /// index file to the new working tree.
-pub fn determine_new_working_tree(commit_merging_into: String, commit_to_merge: String) -> Result<(), Box<dyn Error>> {
-    let ancestor_commit = find_common_ancestor_commit(&commit_merging_into, &commit_to_merge)?;
-    let ancestor_working_tree = reconstruct_working_tree(ancestor_commit)?;
-    let current_working_tree = reconstruct_working_tree(commit_merging_into)?;
-    let merging_working_tree = reconstruct_working_tree(commit_to_merge.clone())?;
-    let files_without_conflict = find_files_without_conflict(ancestor_working_tree, current_working_tree, merging_working_tree)?;
+pub fn determine_new_working_tree(commit_merging_into: String, commit_to_merge: String, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
+    let ancestor_commit = find_common_ancestor_commit(&commit_merging_into, &commit_to_merge, path_handler)?;
+    let ancestor_working_tree = reconstruct_working_tree(ancestor_commit, path_handler)?;
+    let current_working_tree = reconstruct_working_tree(commit_merging_into, path_handler)?;
+    let merging_working_tree = reconstruct_working_tree(commit_to_merge.clone(), path_handler)?;
+    let files_without_conflict = find_files_without_conflict(ancestor_working_tree, current_working_tree, merging_working_tree, path_handler)?;
 
-    WorkingDirectory::clean_working_directory()?;
+    WorkingDirectory::clean_working_directory(path_handler)?;
 
     Ok(())
 }
@@ -888,20 +893,20 @@ pub fn change_commit_object_parent(commit_object_to_change: String, new_parent: 
     Ok(())
 }
 
-pub fn create_merged_working_tree(head_commit: String, merging_commit: String) -> Result<String, Box<dyn Error>> {
-    StagingArea::new().stage_index_file()?;
-    let new_commit_hash = HashObjectCreator::create_commit_object(None, vec![head_commit, merging_commit])?;
+pub fn create_merged_working_tree(head_commit: String, merging_commit: String, path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
+    StagingArea::new().stage_index_file(path_handler)?;
+    let new_commit_hash = HashObjectCreator::create_commit_object(None, vec![head_commit, merging_commit], path_handler)?;
     
-    update_branch_hash(&Head::get_current_branch_name()?, &new_commit_hash)?;
+    update_branch_hash(&Head::get_current_branch_name(path_handler)?, &new_commit_hash, path_handler)?;
 
-    let commit_tree = get_commit_tree(&new_commit_hash)?;
-    WorkingDirectory::update_working_directory_to(&commit_tree)?;
+    let commit_tree = get_commit_tree(&new_commit_hash, path_handler)?;
+    WorkingDirectory::update_working_directory_to(&commit_tree, path_handler)?;
 
     Ok(new_commit_hash)
 }
 
-pub fn check_if_conflict_has_been_solved() -> Result<(), Box<dyn Error>> {
-    let index_file_content = read_file_content(&PathHandler::get_relative_path(INDEX_FILE))?;
+pub fn check_if_conflict_has_been_solved(path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
+    let index_file_content = read_file_content(&path_handler.get_relative_path(INDEX_FILE))?;
 
     let index_lines: Vec<String> = index_file_content.lines().map(|s| s.to_string()).collect();
 

@@ -38,7 +38,9 @@ pub const R_REMOTES: &str = ".git/refs/remotes";
 pub const DEFAULT_BRANCH_NAME: &str = "master";
 pub const INDEX_FILE: &str = ".git/index";
 pub const CONFIG_FILE: &str = ".git/config";
-pub const RELATIVE_PATH: &str = "RELATIVE_PATH";
+//pub const RELATIVE_PATH: &str = "RELATIVE_PATH";
+
+pub const SERVER_BASE_PATH: &str = "src/server/";
 pub const DEFAULT_REMOTE_REPOSITORY: &str = "origin";
 pub const RECEIVED_PACK_FILE: &str = ".git/pack/received_pack_file.pack";
 

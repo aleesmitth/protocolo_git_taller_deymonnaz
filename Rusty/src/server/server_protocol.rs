@@ -107,7 +107,7 @@ impl ServerProtocol {
         Ok(())
     }
 
-    pub fn handle_client_connection(stream: &mut TcpStream, locked_branches: Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
+    pub fn handle_client_connection(stream: &mut TcpStream, path_handler: &mut PathHandler, locked_branches: Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
         let stream_clone = stream.try_clone()?;
         let mut reader = std::io::BufReader::new(stream_clone);
         println!("waiting for request...");
@@ -137,6 +137,8 @@ impl ServerProtocol {
 
         let trimmed_path_name = result_string.strip_suffix(".git").unwrap_or(result_string.as_str());
 
+        path_handler.set_relative_path(path_handler.get_relative_path(trimmed_path_name));
+        /*
         // Retrieve the current value
         let base_repo_path = PathHandler::get_relative_path("");
         let mut current_repo_path = base_repo_path.clone();
@@ -159,35 +161,36 @@ impl ServerProtocol {
         // Set the modified value back to the environment variable
         // TODO important, you can't do this because env variables are shared among threads
         PathHandler::set_relative_path(&current_repo_path);
+         */
 
 
 
         match request_array[0] {
             UPLOAD_PACK => {
-                if let Err(err) = ServerProtocol::upload_pack(stream, &locked_branches) {
+                if let Err(err) = ServerProtocol::upload_pack(stream, path_handler, &locked_branches) {
                     eprintln!("Error handling UPLOAD_PACK: {}", err);
                 }
             },
             RECEIVE_PACK => {
-                if let Err(err) = ServerProtocol::receive_pack(stream, &locked_branches) {
+                if let Err(err) = ServerProtocol::receive_pack(stream, path_handler, &locked_branches) {
                     eprintln!("Error handling RECEIVE_PACK: {}", err);
                 }
             },
             _ => {}
         }
 
-        PathHandler::set_relative_path(&base_repo_path);
+        //PathHandler::set_relative_path(&base_repo_path);
         println!("end handling connection, relative path reseted.");
         Ok(())
     }
 
-    pub fn upload_pack(stream: &mut TcpStream, locked_branches: &Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
+    pub fn upload_pack(stream: &mut TcpStream, path_handler: &PathHandler, locked_branches: &Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
         println!("git-upload-pack");
 
         println!("thread locks ALL_BRANCHES_LOCK {}", ALL_BRANCHES_LOCK);
         ServerProtocol::lock_branch(ALL_BRANCHES_LOCK, locked_branches, false)?;
 
-        let branches: Vec<String> = helpers::get_all_branches()?;
+        let branches: Vec<String> = helpers::get_all_branches(path_handler)?;
         for branch in &branches {
             let line_to_send = protocol_utils::format_line_to_send(branch.clone());
             // println!("sending line: {:?}", line_to_send);
@@ -258,10 +261,10 @@ impl ServerProtocol {
         }
 
         let commits_str: Vec<&str> = commits.iter().map(|s| s.as_str()).collect();
-        let checksum = PackObjects::new().execute(Some(commits_str.clone()))?;
+        let checksum = PackObjects::new().execute(Some(commits_str.clone()), path_handler)?;
         println!("created pack file");
         let pack_file_path = format!(".git/pack/pack-{}.pack", checksum);
-        let mut pack_file = File::open(PathHandler::get_relative_path(&pack_file_path))?;
+        let mut pack_file = File::open(path_handler.get_relative_path(&pack_file_path))?;
         let mut buffer = Vec::new();
 
         pack_file.read_to_end(&mut buffer)?;
@@ -300,13 +303,13 @@ impl ServerProtocol {
         )))
     }
 
-    pub fn receive_pack(stream: &mut TcpStream, locked_branches: &Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
+    pub fn receive_pack(stream: &mut TcpStream, path_handler: &PathHandler, locked_branches: &Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
         println!("git-receive-pack");
 
         println!("thread locks ALL_BRANCHES_LOCK {}", ALL_BRANCHES_LOCK);
         ServerProtocol::lock_branch(ALL_BRANCHES_LOCK, locked_branches, false)?;
 
-        let branches: Vec<String> = helpers::get_all_branches()?;
+        let branches: Vec<String> = helpers::get_all_branches(path_handler)?;
         for branch in &branches {
             let line_to_send = protocol_utils::format_line_to_send(branch.clone());
             println!("sending line: {:?}", line_to_send);
@@ -335,6 +338,7 @@ impl ServerProtocol {
                     prev_remote_hash,
                     new_remote_hash,
                     branch_name,
+                    path_handler
                 )?;
                 refs_to_update.push((
                     prev_remote_hash.to_string(),
@@ -351,16 +355,16 @@ impl ServerProtocol {
 
         let mut buffer = Vec::new();
         stream.read_to_end(&mut buffer)?;
-        let mut file = File::create(PathHandler::get_relative_path(
+        let mut file = File::create(path_handler.get_relative_path(
             ".git/pack/received_pack_file.pack",
         ))?;
 
         file.write_all(&buffer)?;
 
         if UnpackObjects::new()
-            .execute(Some(vec![&PathHandler::get_relative_path(
+            .execute(Some(vec![&path_handler.get_relative_path(
                 ".git/pack/received_pack_file.pack",
-            )]))
+            )]), path_handler)
             .is_ok()
         {
             println!("packfile unpacked");
@@ -370,7 +374,7 @@ impl ServerProtocol {
             println!("{}", unpack_confirmation);
             stream.write_all(unpack_confirmation.as_bytes())?;
         }
-        helpers::update_hash_for_refs(refs_to_update)?;
+        helpers::update_hash_for_refs(refs_to_update, path_handler)?;
 
         for branch in &branches_used {
             println!("thread unlocks {}", &branch);
