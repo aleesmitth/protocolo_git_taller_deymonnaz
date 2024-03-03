@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
     if args.len() >= 2 {
         let command = &args[1];
-        let mut path_handler = PathHandler::new(String::new());
+        let path_handler = PathHandler::new(String::new());
         match command.as_str() {
             "init" => Init::new().execute(parse_arguments(&args[2..]), &path_handler)?,
             "branch" => Branch::new().execute(parse_arguments(&args[2..]), &path_handler)?,

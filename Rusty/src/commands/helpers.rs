@@ -356,7 +356,7 @@ pub fn update_branch_hash(branch_name: &str, new_commit_hash: &str, path_handler
 
 /// Returns the commit the specified branch points to
 pub fn get_branch_last_commit(branch_path: &str, path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
-    println!("path: {}", path_handler.get_relative_path(branch_path));
+    
     let mut file: fs::File = fs::File::open(path_handler.get_relative_path(branch_path))?;
     let mut content = String::new();
     file.read_to_string(&mut content)?;
@@ -814,12 +814,8 @@ pub fn check_if_repo_exists(repo_name: &str, path_handler: &PathHandler) -> Resu
 /// Receives a branch name and a repo name, returns a result indicating if the branch already exists in the repo or not
 pub fn check_if_branch_belongs_to_repo(branch_name: &str, repo_name: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
     let branch_path = get_branch_path(branch_name);
-    let repo_branch_path = if repo_name.is_empty() {
-        branch_path
-    } else {
-        format!("{}/{}", repo_name, branch_path)
-    };
-    if !check_if_file_exists(&repo_branch_path, path_handler) {
+
+    if !check_if_file_exists(&branch_path, path_handler) {
         return Err(Box::new(io::Error::new(
             io::ErrorKind::Other,
             "Error: Specified branch does not exist in this repo.",

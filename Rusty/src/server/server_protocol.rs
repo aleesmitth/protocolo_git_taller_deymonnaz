@@ -308,7 +308,9 @@ impl ServerProtocol {
 
         println!("thread locks ALL_BRANCHES_LOCK {}", ALL_BRANCHES_LOCK);
         ServerProtocol::lock_branch(ALL_BRANCHES_LOCK, locked_branches, false)?;
-
+        thread::sleep(Duration::from_secs(20));
+        ServerProtocol::unlock_branch(ALL_BRANCHES_LOCK, locked_branches)?;
+        
         let branches: Vec<String> = helpers::get_all_branches(path_handler)?;
         for branch in &branches {
             let line_to_send = protocol_utils::format_line_to_send(branch.clone());

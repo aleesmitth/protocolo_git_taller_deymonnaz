@@ -1367,7 +1367,12 @@ impl Push {
 impl Command for Push {
     fn execute(&self, args: Option<Vec<&str>>, path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
         let mut remote_url = String::new();
-        
+        if Head::get_head_commit(path_handler)?.is_empty(){
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "Error: Can not push without a commit",
+            )))
+        }
         let mut _remote_name = DEFAULT_REMOTE_REPOSITORY;
         let _branch = Head::get_current_branch_name(path_handler)?;
         if let Some(args) = args {
@@ -1520,7 +1525,7 @@ impl Log {
         } else {
             base_commit
         };
-
+        println!("{}", current_commit);
         if entries.iter().any(|(key, _)| key == &current_commit) {
             // don't process it again
             return Ok(String::new());
@@ -1553,14 +1558,14 @@ impl Log {
             entries.push((current_commit, message));
             return Ok(String::new());
         }
-
-        let parent_commit_trimmed = &parent_commit_split_line[1]; //aca esta bien pero rompe en caso base
-
+        
+        let parent_commit_trimmed = &parent_commit_split_line[1]; 
         message.push_str(&commit_lines[2..].join("\n"));
 
         entries.push((current_commit, message));
 
         Log::generate_log_entries(entries, parent_commit_trimmed.clone(), path_handler)?;
+        
         Ok(String::new())
     }
 }
@@ -1583,7 +1588,7 @@ impl Command for Log {
         // Initialize vectors to store log entries (included and excluded)
         let mut log_entries = Vec::new();
         let mut log_entries_excluded = Vec::new();
-
+        println!("arg_slice: {:?}", arg_slice);
         // Iterate through the provided arguments
         for arg in arg_slice {
             // Note the & in for &arg
