@@ -151,14 +151,9 @@ pub async fn put_merge(state: &State<AppState>, repo: String, pull_number: i32) 
     println!("Merging...");
     let merge = spawn_blocking(move || {
         let path_handler = PathHandler::new(format!("{}{}", SERVER_BASE_PATH, repo).to_string());
-        //let base_repo_path = PathHandler::get_relative_path("");
-        //PathHandler::set_relative_path(&format!("{}{}/", base_repo_path, repo));
-
-        let merge = Merge::new().execute(Some(vec![&pull_requests[0].head, &pull_requests[0].base]), &path_handler)
+        Merge::new().execute(Some(vec![&pull_requests[0].head, &pull_requests[0].base]), &path_handler)
             .map(|result| result.to_string())
-            .map_err(|e| e.to_string());
-        //PathHandler::set_relative_path(&base_repo_path);
-        merge
+            .map_err(|e| e.to_string())
     }).await;
     println!("Merged");
     match merge {
@@ -185,14 +180,13 @@ pub async fn put_merge(state: &State<AppState>, repo: String, pull_number: i32) 
 pub async fn init_repo(repo: &str) -> Result<String, NotFound<String>> {
     let repo_name_clone = repo.to_string(); // Clone the string
 
-    let path_handler = PathHandler::new(format!("{}", SERVER_BASE_PATH).to_string());
+    let path_handler = PathHandler::new(SERVER_BASE_PATH.to_string());
     let result = spawn_blocking(move || {
         //let base_repo_path = PathHandler::get_relative_path("");
-        let result = git_commands::Init::new().execute(Some(vec![&repo_name_clone]), &path_handler)
+        git_commands::Init::new().execute(Some(vec![&repo_name_clone]), &path_handler)
             .map(|_| "Repository initialized successfully".to_string())
-            .map_err(|e| e.to_string());
+            .map_err(|e| e.to_string())
         //PathHandler::set_relative_path(&base_repo_path);
-        result
     }).await;
 
     match result {

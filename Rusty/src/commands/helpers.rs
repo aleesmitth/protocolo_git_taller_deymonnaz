@@ -907,7 +907,7 @@ pub fn check_if_conflict_has_been_solved(path_handler: &PathHandler) -> Result<(
 
     for line in index_lines {
         let split_line: Vec<&str> = line.split(';').collect();
-        if split_line[2] == &IndexFileEntryState::Conflicted.to_string() {
+        if split_line[2] == IndexFileEntryState::Conflicted.to_string() {
             return Err(Box::new(io::Error::new(
                 io::ErrorKind::Other,
                 "Conflict in file has not been solved.",

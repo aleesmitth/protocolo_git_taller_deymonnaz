@@ -21,10 +21,8 @@ impl Head {
 
     /// Returns the ref the HEAD points to
     pub fn get_current_branch_ref(path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
-        println!("ref: {}", &path_handler.get_relative_path(HEAD_FILE));
         let head_file_content =
             helpers::read_file_content(&path_handler.get_relative_path(HEAD_FILE))?;
-            println!("after reading");
         let split_head_content: Vec<String> = head_file_content
             .split_whitespace()
             .map(String::from)
@@ -55,7 +53,6 @@ impl Head {
     /// Returns the last commit of the current branch
     pub fn get_head_commit(path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
         let current_branch_path = Self::get_current_branch_path(path_handler)?;
-        println!("{}", current_branch_path);
         let commit_hash =
             helpers::read_file_content(&path_handler.get_relative_path(&current_branch_path))?;
         Ok(commit_hash)

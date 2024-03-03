@@ -42,9 +42,9 @@ impl PathHandler {
             append_path.to_string()
         };
 
-        return if path.starts_with('/') {
+        if let Some(stripped) = path.strip_prefix('/') {
             // If the input starts with '/', return a new &str without it
-            (&path[1..]).to_string()
+            stripped.to_string()
         } else {
             // Otherwise, return the original input as is
             path
@@ -100,7 +100,7 @@ impl Command for Init {
             }
 
             // Concatenate a '/' character and call the methods
-            path_handler.set_relative_path(path_handler.get_relative_path(&format!("{}", repo_name)));
+            path_handler.set_relative_path(path_handler.get_relative_path(repo_name));
         }
         if helpers::check_if_directory_exists(&path_handler.get_relative_path(GIT)) {
             return Err(Box::new(io::Error::new(
@@ -702,9 +702,9 @@ impl Command for Status {
                     line = format!("modified: {} (Staged)", index_file_line[0]);
                 } else if current_object_hash != hash_string && index_file_line[2] == "0" {
                     line = format!("modified: {} (Unstaged)", index_file_line[0]);
-                } else if hash_string != index_file_line[1] {
-                    line = format!("new file: {} (Staged)", index_file_line[0]);
                 }
+            } else {
+                line = format!("new file: {} (Staged)", index_file_line[0]);
             }
 
             if !line.is_empty() {
@@ -1428,7 +1428,7 @@ impl Command for Pull {
                 remote_url = helpers::get_remote_url(DEFAULT_REMOTE_REPOSITORY)?;
             }
         }
-        Fetch::new().execute(Some(vec![&remote_url]), &path_handler)?;
+        Fetch::new().execute(Some(vec![&remote_url]), path_handler)?;
         let remote_branch = format!("{}/{}", remote_name, Head::get_current_branch_name(path_handler)?);
         
         if !helpers::check_if_file_exists(&format!("{}/{}", R_REMOTES, remote_branch), path_handler) {
@@ -1437,7 +1437,7 @@ impl Command for Pull {
                 "Error: There is no tracking information for the current branch.",
             )));
         }
-        Merge::new().execute(Some(vec![&remote_branch]), &path_handler)?;
+        Merge::new().execute(Some(vec![&remote_branch]), path_handler)?;
         Ok(String::new())
     }
 }
@@ -2053,7 +2053,7 @@ impl Command for Merge {
 
         if let Some(arg) = arg_slice.first() {
             if *arg == CONTINUE_FLAG {
-                if let Err(_) = helpers::check_if_conflict_has_been_solved(path_handler) {
+                if helpers::check_if_conflict_has_been_solved(path_handler).is_err() {
                     println!("Automatic merge failed; fix conflicts and then commit the result");
                     return Ok(String::new())
                 }
@@ -2099,7 +2099,7 @@ impl Command for Merge {
         }
         let merging_commit_hash = helpers::get_branch_last_commit(&branch_to_merge_path, path_handler)?;
 
-        if let Err(_) = helpers::determine_new_working_tree(head_commit.clone(), merging_commit_hash.clone(), path_handler) {
+        if helpers::determine_new_working_tree(head_commit.clone(), merging_commit_hash.clone(), path_handler).is_err() {
             let mut merge_head = fs::File::create(path_handler.get_relative_path(MERGE_HEAD))?;
             merge_head.write_all(merging_commit_hash.as_bytes())?;
             return Ok(String::new())
@@ -2167,7 +2167,7 @@ impl Command for Rebase {
 
             match helpers::determine_new_working_tree(Head::get_head_commit(path_handler)?, commit.clone(), path_handler) {
                 Ok(_) => {
-                    let _ = Branch::new().execute(Some(vec![DELETE_FLAG, &branch_name]), &path_handler)?;
+                    let _ = Branch::new().execute(Some(vec![DELETE_FLAG, &branch_name]), path_handler)?;
                     helpers::update_branch_hash(&Head::get_current_branch_name(path_handler)?, commit, path_handler)?;
                 }
                 Err(_) => {
