@@ -4,8 +4,6 @@ use crate::commands::git_commands::PathHandler;
 use crate::commands::git_commands::UnpackObjects;
 use crate::commands::helpers;
 use crate::commands::protocol_utils;
-use std::thread;
-use std::time::Duration;
 use std::collections::HashSet;
 use std::sync::{Mutex, Arc, Condvar};
 use crate::constants::{REQUEST_LENGTH_CERO, REQUEST_DELIMITER_DONE, WANT_REQUEST, NAK_RESPONSE, UNPACK_CONFIRMATION, ALL_BRANCHES_LOCK};
@@ -308,10 +306,17 @@ impl ServerProtocol {
 
         println!("thread locks ALL_BRANCHES_LOCK {}", ALL_BRANCHES_LOCK);
         ServerProtocol::lock_branch(ALL_BRANCHES_LOCK, locked_branches, false)?;
-        thread::sleep(Duration::from_secs(20));
-        ServerProtocol::unlock_branch(ALL_BRANCHES_LOCK, locked_branches)?;
         
-        let branches: Vec<String> = helpers::get_all_branches(path_handler)?;
+        let branches: Vec<String> = match helpers::get_all_branches(path_handler) {
+            Ok(branches) => branches,
+            Err(e) => {
+                let _ = ServerProtocol::unlock_branch(ALL_BRANCHES_LOCK, locked_branches);
+                return Err(Box::new(io::Error::new(
+                    io::ErrorKind::Other,
+                    e.to_string(),
+                )))
+            }
+        };
         for branch in &branches {
             let line_to_send = protocol_utils::format_line_to_send(branch.clone());
             println!("sending line: {:?}", line_to_send);

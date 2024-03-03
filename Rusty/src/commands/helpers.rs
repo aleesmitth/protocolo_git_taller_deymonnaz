@@ -812,7 +812,7 @@ pub fn check_if_repo_exists(repo_name: &str, path_handler: &PathHandler) -> Resu
 }
 
 /// Receives a branch name and a repo name, returns a result indicating if the branch already exists in the repo or not
-pub fn check_if_branch_belongs_to_repo(branch_name: &str, repo_name: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
+pub fn check_if_branch_belongs_to_repo(branch_name: &str, _repo_name: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
     let branch_path = get_branch_path(branch_name);
 
     if !check_if_file_exists(&branch_path, path_handler) {
@@ -828,7 +828,6 @@ pub fn get_client_current_working_repo() -> Result<String, Box<dyn Error>> {
     if let Ok(current_dir) = env::current_dir() {
         if let Some(parent) = current_dir.file_name() {
             if let Some(parent_str) = parent.to_str() {
-                println!("curr_repo: {}", parent_str);
                 return Ok(parent_str.to_string());
             }
         }
@@ -859,7 +858,7 @@ pub fn determine_new_working_tree(commit_merging_into: String, commit_to_merge: 
     let ancestor_working_tree = reconstruct_working_tree(ancestor_commit, path_handler)?;
     let current_working_tree = reconstruct_working_tree(commit_merging_into, path_handler)?;
     let merging_working_tree = reconstruct_working_tree(commit_to_merge.clone(), path_handler)?;
-    let files_without_conflict = find_files_without_conflict(ancestor_working_tree, current_working_tree, merging_working_tree, path_handler)?;
+    let _files_without_conflict = find_files_without_conflict(ancestor_working_tree, current_working_tree, merging_working_tree, path_handler)?;
 
     WorkingDirectory::clean_working_directory(path_handler)?;
 

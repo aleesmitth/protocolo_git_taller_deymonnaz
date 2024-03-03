@@ -12,15 +12,7 @@ fn parse_arguments(args: &[String]) -> Option<Vec<&str>> {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    //env::set_var(RELATIVE_PATH, "src/client/");
-    // Set an environment variable
-    // Retrieve the value of an environment variable
-    /*if let Ok(value) = env::var(commands::commands::RELATIVE_PATH) {
-        println!("MY_VARIABLE is set to: {}", value);
-        println!("relative path: {}",commands::commands::PathHandler::get_relative_path(commands::commands::R_HEADS));
-    } else {
-        println!("MY_VARIABLE is not set.");
-    }*/
+
     let args: Vec<String> = env::args().collect();
     if args.len() >= 2 {
         let command = &args[1];

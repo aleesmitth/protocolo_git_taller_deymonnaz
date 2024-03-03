@@ -79,9 +79,9 @@ pub async fn get_pull_request_commits(state: &State<AppState>, repo: String, pul
             //let base_repo_path = PathHandler::get_relative_path("");
             //PathHandler::set_relative_path(&format!("{}{}/", base_repo_path, repo));
             let path_handler = PathHandler::new(format!("{}{}", SERVER_BASE_PATH, repo).to_string());
-            println!("ACAAAAAAAA !!!! {:?}", path_handler.get_relative_path(""));
+            
             if let Some(commit) = commit_after_merge {
-                println!("ACA ENTRO EEEEE");
+
                 let merge_log = Log::new().execute(Some(vec![&commit]), &path_handler);
                 //PathHandler::set_relative_path(&base_repo_path);
                 match merge_log {
@@ -148,7 +148,7 @@ pub async fn put_merge(state: &State<AppState>, repo: String, pull_number: i32) 
         return Err(NotFound("Pull request already merged".to_string()))
     }
 
-    println!("merging");
+    println!("Merging...");
     let merge = spawn_blocking(move || {
         let path_handler = PathHandler::new(format!("{}{}", SERVER_BASE_PATH, repo).to_string());
         //let base_repo_path = PathHandler::get_relative_path("");
@@ -160,7 +160,7 @@ pub async fn put_merge(state: &State<AppState>, repo: String, pull_number: i32) 
         //PathHandler::set_relative_path(&base_repo_path);
         merge
     }).await;
-    println!("merged");
+    println!("Merged");
     match merge {
         // all good
         Ok(Ok(new_commit)) => {
