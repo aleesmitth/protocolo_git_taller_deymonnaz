@@ -351,7 +351,7 @@ impl Command for Checkout {
                     let head_tree = helpers::get_commit_tree(&head_commit)?;
                     WorkingDirectory::update_working_directory_to(&head_tree)?;
                     let working_tree = helpers::reconstruct_working_tree(head_commit)?;
-                    StagingArea::new().change_index_file(working_tree)?;
+                    StagingArea::new().change_index_file(working_tree, Vec::new())?;
                 }
             }
             None => {
@@ -2030,6 +2030,26 @@ impl Command for Merge {
     fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let arg_slice = args.unwrap_or_default();
 
+        if let Some(arg) = arg_slice.first() {
+            if *arg == CONTINUE_FLAG {
+                if let Err(_) = helpers::check_if_conflict_has_been_solved() {
+                    println!("Automatic merge failed; fix conflicts and then commit the result");
+                    return Ok(String::new())
+                }
+                if !helpers::check_if_file_exists(&PathHandler::get_relative_path(MERGE_HEAD)) {
+                    println!("There is no unresolved merge to continue.");
+                    return Ok(String::new())
+                }
+
+                let merging_hash = helpers::read_file_content(&PathHandler::get_relative_path(MERGE_HEAD))?;
+                println!("merging hash: {}", merging_hash);
+                fs::remove_file(PathHandler::get_relative_path(MERGE_HEAD))?;
+                
+                let new_commit_hash = helpers::create_merged_working_tree(Head::get_head_commit()?, merging_hash)?;
+                return Ok(new_commit_hash)
+            }
+        }
+
         let mut head_commit = Head::get_head_commit()?;
         let branch_to_merge = arg_slice[0];
         if arg_slice.len() == 2 {
@@ -2058,16 +2078,19 @@ impl Command for Merge {
         }
         let merging_commit_hash = helpers::get_branch_last_commit(&branch_to_merge_path)?;
 
-        helpers::determine_new_working_tree(head_commit.clone(), merging_commit_hash.clone())?;
+        if let Err(_) = helpers::determine_new_working_tree(head_commit.clone(), merging_commit_hash.clone()) {
+            let mut merge_head = fs::File::create(PathHandler::get_relative_path(MERGE_HEAD))?;
+            merge_head.write_all(merging_commit_hash.as_bytes())?;
+            return Ok(String::new())
+        }
 
-        let new_commit_hash = HashObjectCreator::create_commit_object(None, vec![head_commit, merging_commit_hash])?;
-        helpers::update_branch_hash(&Head::get_current_branch_name()?, &new_commit_hash)?;
-        let commit_tree = helpers::get_commit_tree(&new_commit_hash)?;
-        WorkingDirectory::update_working_directory_to(&commit_tree)?;
+        let new_commit_hash = helpers::create_merged_working_tree(head_commit, merging_commit_hash)?;
 
         Ok(new_commit_hash)
     }
 }
+
+
 
 pub struct Rebase;
 
@@ -2087,9 +2110,10 @@ impl Command for Rebase {
     fn execute(&self, args: Option<Vec<&str>>) -> Result<String, Box<dyn Error>> {
         let mut rebasing_branch_name = String::new();
         let rebasing_commit ;
+        
         match args {
             Some(arg) => {
-                if arg[0] == "--continue" && helpers::check_if_file_exists(REBASE_HEAD) {
+                if arg[0] == CONTINUE_FLAG && helpers::check_if_file_exists(REBASE_HEAD) {
                     rebasing_commit = helpers::read_file_content(REBASE_HEAD)?;
 
                 } else {
@@ -2126,7 +2150,7 @@ impl Command for Rebase {
                     helpers::update_branch_hash(&Head::get_current_branch_name()?, commit)?;
                 }
                 Err(_) => {
-                    let mut rebase_head = fs::File::create(REBASE_HEAD)?;
+                    let mut rebase_head = fs::File::create(PathHandler::get_relative_path(REBASE_HEAD))?;
                     rebase_head.write_all(commit.as_bytes())?;
                 }
             }

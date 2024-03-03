@@ -314,6 +314,7 @@ pub enum IndexFileEntryState {
     Staged,
     Modified,
     Deleted,
+    Conflicted,
 }
 
 impl IndexFileEntryState {
@@ -323,6 +324,7 @@ impl IndexFileEntryState {
             "1" => Some(IndexFileEntryState::Modified),
             "2" => Some(IndexFileEntryState::Staged),
             "3" => Some(IndexFileEntryState::Deleted),
+            "4" => Some(IndexFileEntryState::Conflicted),
             _ => None,
         }
     }
@@ -332,6 +334,7 @@ impl IndexFileEntryState {
             IndexFileEntryState::Modified => 1,
             IndexFileEntryState::Staged => 2,
             IndexFileEntryState::Deleted => 3,
+            IndexFileEntryState::Conflicted => 4,
         }
     }
 }
@@ -343,6 +346,7 @@ impl fmt::Display for IndexFileEntryState {
             IndexFileEntryState::Modified => "1",
             IndexFileEntryState::Staged => "2",
             IndexFileEntryState::Deleted => "3",
+            IndexFileEntryState::Conflicted => "4",
         };
         write!(f, "{}", string)
     }
@@ -436,6 +440,23 @@ impl StagingArea {
         Ok(())
     }
 
+    pub fn stage_index_file(&self) -> Result<(), Box<dyn Error>> {
+        let index_file_content =
+            helpers::read_file_content(&PathHandler::get_relative_path(INDEX_FILE))?;
+        let mut lines: Vec<String> = index_file_content.lines().map(|s| s.to_string()).collect();
+        let mut new_index_file_content: Vec<String> = Vec::new();
+        
+        for line in lines.iter_mut() {
+            line.pop();
+            line.push_str(IndexFileEntryState::Staged.to_string().as_str());
+            new_index_file_content.push(line.to_string());
+        }
+
+        let mut index_file = fs::File::create(PathHandler::get_relative_path(INDEX_FILE))?;
+        index_file.write_all(new_index_file_content.join("\n").as_bytes())?;
+        Ok(())
+    }
+
     pub fn get_entries_index_file(
         &self,
         state: IndexFileEntryState,
@@ -468,10 +489,14 @@ impl StagingArea {
     }
 
 
-    pub fn change_index_file(&self, working_tree: HashMap<String, String>) -> Result<(), Box<dyn Error>> {
+    pub fn change_index_file(&self, working_tree: HashMap<String, String>, conflicted_file: Vec<(String, String)>) -> Result<(), Box<dyn Error>> {
         let mut new_index_lines: Vec<String> = Vec::new();
         for (file_name, file_hash) in working_tree {
             let new_line = format!("{};{};{}", file_name, file_hash, IndexFileEntryState::Staged);
+            new_index_lines.push(new_line);
+        }
+        for (file_name, file_hash) in conflicted_file {
+            let new_line = format!("{};{};{}", file_name, file_hash, IndexFileEntryState::Conflicted);
             new_index_lines.push(new_line);
         }
         let new_index_content = new_index_lines.join("\n");

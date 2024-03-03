@@ -9,8 +9,8 @@ use crypto::sha1::Sha1;
 use libflate::zlib::{Decoder, Encoder};
 
 use super::git_commands::PathHandler;
-use super::structs::{ObjectType, StagingArea, WorkingDirectory};
-use crate::constants::{OBJECT, R_HEADS, INDEX_FILE, CONFIG_FILE, R_REMOTES, TREE_FILE_MODE, TREE_SUBTREE_MODE, GIT, ZERO_HASH};
+use super::structs::{IndexFileEntryState, ObjectType, WorkingDirectory, StagingArea};
+use crate::constants::{CONFIG_FILE, CONFLICT_BRANCH_CHANGE, CONFLICT_END, CONFLICT_START, GIT, INDEX_FILE, OBJECT, R_HEADS, R_REMOTES, TREE_FILE_MODE, TREE_SUBTREE_MODE, ZERO_HASH};
 
 /// Returns length of a file's content
 pub fn get_file_length(path: &str) -> Result<u64, Box<dyn Error>> {
@@ -296,7 +296,7 @@ pub fn get_remote_branches(remote_name: &str) -> Result<Vec<(String, String)>, B
     for branch in remote_branches {
         let branch = branch?;
         let branch_name = branch.file_name().to_string_lossy().to_string();
-        let mut branch_path = branch.path();
+        let branch_path = branch.path();
 
         let branch_hash = read_file_content(&PathHandler::get_relative_path(branch_path.to_str().ok_or("")?))?;
         branches_to_update.push((branch_name, branch_hash))
@@ -593,15 +593,15 @@ pub fn find_modified_files(ancestor_working_tree: HashMap<String, String>, worki
 /// Returning a HashMap that contains the files without conflict name's and hashes;
 pub fn find_files_without_conflict(ancestor_working_tree: HashMap<String, String>, current_modified_files: HashMap<String, String>, mut merging_modified_files:  HashMap<String, String>) -> Result<HashMap<String, String>, Box<dyn Error>> {
     let mut files_without_conflict: HashMap<String, String> = HashMap::new();
-    let mut files_with_conflict: Vec<String> = Vec::new(); // tal vez esto ni hace falta si los voy printeando
+    let mut files_with_conflict: Vec<(String, String)> = Vec::new(); // tal vez esto ni hace falta si los voy printeando
 
     for (file_name, file_hash) in current_modified_files {
         if let Some(merging_hash) = merging_modified_files.remove(&file_name) {
             if merging_hash != file_hash {
-                let merged_file = find_conflict_in_file(file_name.clone(), ancestor_working_tree.get(&file_name).ok_or("Ancestor file not found")?.to_string(), file_hash, merging_hash)?;
+                let merged_file = find_conflict_in_file(file_name.clone(), ancestor_working_tree.get(&file_name).ok_or("Ancestor file not found")?.to_string(), file_hash.clone(), merging_hash)?;
                 if merged_file.is_empty() {
                     println!("CONFLICT: Merge conflict in {}", file_name);
-                    files_with_conflict.push(file_name.clone());
+                    files_with_conflict.push((file_name.clone(), file_hash));
                 } else {
                     files_without_conflict.insert(file_name, merged_file);
                 }
@@ -617,6 +617,8 @@ pub fn find_files_without_conflict(ancestor_working_tree: HashMap<String, String
         files_without_conflict.insert(file_name, file_hash);
     }
 
+    StagingArea::new().change_index_file(files_without_conflict.clone(), files_with_conflict.clone())?;
+
     if !files_with_conflict.is_empty() {
         println!("Automatic merge failed; fix conflicts and then commit the result");
         return Err(Box::new(io::Error::new(
@@ -631,7 +633,6 @@ pub fn find_files_without_conflict(ancestor_working_tree: HashMap<String, String
 pub fn find_conflict_in_file(file_name: String, ancestor_hash: String, first_object_hash: String, second_object_hash: String) -> Result<String, Box<dyn Error>> {
     let changes_in_first_object = find_changes_in_file(file_name.clone(), ancestor_hash.clone(), first_object_hash.clone())?;
     let changes_in_second_object = find_changes_in_file(file_name.clone(), ancestor_hash, second_object_hash.clone())?;
-
     let max_len = changes_in_first_object.len().max(changes_in_second_object.len());
 
     let mut final_merged_content: Vec<String> = Vec::new();
@@ -640,7 +641,7 @@ pub fn find_conflict_in_file(file_name: String, ancestor_hash: String, first_obj
     let mut first_object_conflict_lines: Vec<String> = Vec::new(); // Store consecutive conflicting lines
     let mut second_object_conflict_lines: Vec<String> = Vec::new();
 
-    for i in 0..max_len {
+    for i in 0..max_len + 1 {
         match (changes_in_first_object.get(i), changes_in_second_object.get(i)) {
             (Some(LineChange::Modified(_, _)), Some(LineChange::Modified(_, _)))
             | (Some(LineChange::Modified(_, _)), Some(LineChange::Deleted(_, _)))
@@ -654,42 +655,52 @@ pub fn find_conflict_in_file(file_name: String, ancestor_hash: String, first_obj
                     second_object_conflict_lines.push(line.to_string());
                 }
             }
-            (Some(LineChange::Same(_, line)), Some(LineChange::Same(_, _)))
+            (Some(LineChange::Added(_, line1)), Some(LineChange::Added(_, line2))) => {
+                final_merged_content.push(line1.to_string());
+                final_merged_content.push(line2.to_string());
+            }
+            (Some(LineChange::Modified(_, line)), _)
             | (_, Some(LineChange::Modified(_, line)))
-            | (Some(LineChange::Modified(_, line)), _) => {
+            | (_, Some(LineChange::Same(_, line)))
+            | (Some(LineChange::Same(_, line)), _) => {
                 if !first_object_conflict_lines.is_empty() {
-                    final_merged_content.push("<<<<<<< HEAD".to_string());
-                    final_merged_content.extend(first_object_conflict_lines.clone());
-                    final_merged_content.push("=======".to_string());
-                    final_merged_content.extend(second_object_conflict_lines.clone());
-                    final_merged_content.push(">>>>>>>".to_string());
+                    final_merged_content.extend(generate_marked_conflict_lines(first_object_conflict_lines.clone(), second_object_conflict_lines.clone()));
                     first_object_conflict_lines.clear();
                     second_object_conflict_lines.clear();
                 }
                 final_merged_content.push(line.to_string());
             }
-            (Some(LineChange::Added(_, line1)), Some(LineChange::Added(_, line2))) => {
-                final_merged_content.push(line1.to_string());
-                final_merged_content.push(line2.to_string());
+            _ => {
+                if !first_object_conflict_lines.is_empty() {
+                    final_merged_content.extend(generate_marked_conflict_lines(first_object_conflict_lines.clone(), second_object_conflict_lines.clone()));
+                    first_object_conflict_lines.clear();
+                    second_object_conflict_lines.clear();
+                }
             }
-            (_, Some(LineChange::Added(_, line))) => {
-                final_merged_content.push(line.to_string());
-            }
-            (Some(LineChange::Added(_, line)), _) => {
-                final_merged_content.push(line.to_string());
-            }
-            _ => {}
         }
     }
     let merged_content_joined = final_merged_content.join("\n");
+    
     if conflict_was_found {
         let mut file_with_conflicts = fs::File::create(PathHandler::get_relative_path(&file_name))?;
         file_with_conflicts.write_all(merged_content_joined.as_bytes())?;
         return Ok(String::new());
     }
-
+    
     let new_object_hash = HashObjectCreator::write_object_file(merged_content_joined.clone(), ObjectType::Blob, merged_content_joined.len() as u64)?;
     Ok(new_object_hash)
+}
+
+fn generate_marked_conflict_lines(first_branch_conflict_lines: Vec<String>, second_branch_conflict_lines: Vec<String>) -> Vec<String> {
+    let mut conflict_lines: Vec<String> = Vec::new();
+    
+    conflict_lines.push(CONFLICT_START.to_string());
+    conflict_lines.extend(first_branch_conflict_lines);
+    conflict_lines.push(CONFLICT_BRANCH_CHANGE.to_string());
+    conflict_lines.extend(second_branch_conflict_lines);
+    conflict_lines.push(CONFLICT_END.to_string());
+
+    conflict_lines
 }
 
 pub fn find_changes_in_file(_file_name: String, ancestor_hash: String, branch_hash: String) -> Result<Vec<LineChange>, Box<dyn Error>> {
@@ -848,8 +859,8 @@ pub fn determine_new_working_tree(commit_merging_into: String, commit_to_merge: 
     let current_working_tree = reconstruct_working_tree(commit_merging_into)?;
     let merging_working_tree = reconstruct_working_tree(commit_to_merge.clone())?;
     let files_without_conflict = find_files_without_conflict(ancestor_working_tree, current_working_tree, merging_working_tree)?;
+
     WorkingDirectory::clean_working_directory()?;
-    StagingArea::new().change_index_file(files_without_conflict)?;
 
     Ok(())
 }
@@ -874,6 +885,35 @@ pub fn change_commit_object_parent(commit_object_to_change: String, new_parent: 
     let mut commit_file = fs::File::create(get_object_path(&commit_object_to_change))?;
     commit_file.write_all(new_file_content.join("\n").as_bytes())?;
 
+    Ok(())
+}
+
+pub fn create_merged_working_tree(head_commit: String, merging_commit: String) -> Result<String, Box<dyn Error>> {
+    StagingArea::new().stage_index_file()?;
+    let new_commit_hash = HashObjectCreator::create_commit_object(None, vec![head_commit, merging_commit])?;
+    
+    update_branch_hash(&Head::get_current_branch_name()?, &new_commit_hash)?;
+
+    let commit_tree = get_commit_tree(&new_commit_hash)?;
+    WorkingDirectory::update_working_directory_to(&commit_tree)?;
+
+    Ok(new_commit_hash)
+}
+
+pub fn check_if_conflict_has_been_solved() -> Result<(), Box<dyn Error>> {
+    let index_file_content = read_file_content(&PathHandler::get_relative_path(INDEX_FILE))?;
+
+    let index_lines: Vec<String> = index_file_content.lines().map(|s| s.to_string()).collect();
+
+    for line in index_lines {
+        let split_line: Vec<&str> = line.split(';').collect();
+        if split_line[2] == &IndexFileEntryState::Conflicted.to_string() {
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "Conflict in file has not been solved.",
+            ))) 
+        }
+    }
     Ok(())
 }
 

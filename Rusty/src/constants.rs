@@ -13,6 +13,7 @@ pub const SIZE_FLAG: &str = "-s";
 pub const MESSAGE_FLAG: &str = "-m";
 pub const VERIFY_FLAG: &str = "-v";
 pub const LIST_FLAG: &str = "-l";
+pub const CONTINUE_FLAG: &str = "--continue";
 
 // flags for ls-files. also DELETE_FLAG is being used
 pub const CACHED_FLAG: &str = "-c";
@@ -68,3 +69,9 @@ pub const NAK_RESPONSE: &str = "NAK\n";
 pub const WANT_REQUEST: &str = "want";
 pub const UNPACK_CONFIRMATION: &str = "unpack ok\n";
 pub const ALL_BRANCHES_LOCK: &str = "all_branches_lock";
+
+// consts for marking conflicts in file
+pub const CONFLICT_START: &str = "<<<<<<< HEAD";
+pub const CONFLICT_BRANCH_CHANGE: &str = "=======";
+pub const CONFLICT_END: &str = ">>>>>>>";
+pub const MERGE_HEAD: &str = ".git/MERGE_HEAD";
