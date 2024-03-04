@@ -8,8 +8,6 @@ use std::{error::Error, fs::File, io, io::Read, io::Write, net::TcpListener, net
 use std::borrow::Cow;
 use std::fs::OpenOptions;
 use std::io::BufRead;
-use rocket_okapi::okapi::merge;
-use rocket_okapi::okapi::openapi3::RequestBody;
 
 const RECEIVE_PACK: &str = "git-receive-pack";
 const UPLOAD_PACK: &str = "git-upload-pack";
