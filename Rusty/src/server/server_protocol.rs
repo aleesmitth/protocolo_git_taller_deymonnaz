@@ -28,6 +28,7 @@ pub struct PullRequest {
     body: String,
     head: String,
     base: String,
+    repo: String,
     commit_after_merge: String,
 
 }
@@ -181,6 +182,7 @@ impl ServerProtocol {
     }
 
     pub fn add_pull_request(request: Cow<str>, pull_request_path: &str, request_url: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
+        println!("testestest");
         let mut file = match OpenOptions::new()
             .append(true)
             .create(true)
@@ -195,6 +197,7 @@ impl ServerProtocol {
                 )));
             }
         };
+        println!("testestest");
 
         match file.write_all(format!("{}{}", ServerProtocol::get_body(request)?, SEPARATOR_PULL_REQUEST_FILE).as_bytes()) {
             Ok(_) => println!("Content written to file successfully."),
