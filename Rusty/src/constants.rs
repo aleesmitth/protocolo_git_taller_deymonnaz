@@ -75,9 +75,12 @@ pub const UNPACK_CONFIRMATION: &str = "unpack ok\n";
 pub const ALL_BRANCHES_LOCK: &str = "all_branches_lock";
 pub const HTTP_RESPONSE_SUCCESFUL: &str = "HTTP/1.1 200 OK";
 pub const HTTP_RESPONSE_ERROR: &str = "HTTP/1.1 404 Not Found";
+pub const RECEIVE_PACK: &str = "git-receive-pack";
+pub const UPLOAD_PACK: &str = "git-upload-pack";
 
 // consts for marking conflicts in file
 pub const CONFLICT_START: &str = "<<<<<<< HEAD";
 pub const CONFLICT_BRANCH_CHANGE: &str = "=======";
 pub const CONFLICT_END: &str = ">>>>>>>";
 pub const MERGE_HEAD: &str = ".git/MERGE_HEAD";
+

@@ -2,16 +2,16 @@ use std::collections::HashSet;
 use std::sync::{Mutex, Arc, Condvar};
 use rusty::server::server_protocol::ServerProtocol;
 use std::thread;
-
 use rusty::commands::git_commands::PathHandler;
 use rusty::constants::SERVER_BASE_PATH;
+use rusty::server::http_requests::HttpRequestHandler;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let locked_branches = Arc::new((Mutex::new(HashSet::new()), Condvar::new()));
 
     let cloned_locked_branches_api = Arc::clone(&locked_branches);
     thread::spawn(move || {
-        if let Err(err) = ServerProtocol::handle_api_requests(&cloned_locked_branches_api) {
+        if let Err(err) = HttpRequestHandler::handle_api_requests(&cloned_locked_branches_api) {
             println!("Error: starting api handler thread {:?}", err);
         }
     });

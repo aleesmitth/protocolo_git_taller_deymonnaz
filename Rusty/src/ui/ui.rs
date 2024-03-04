@@ -19,6 +19,7 @@ const WIDTH_BUTTON: i32 = 108;
 
 
 fn main() {
+
     let application = Application::builder()
         .application_id("com.example.FirstGtkApp")
         .build();
@@ -232,6 +233,7 @@ fn main() {
             let actual_command_ref = Rc::clone(&actual_command_ref);
             let output_label_ref = Rc::clone(&output_label_ref);
             move |_| {
+                let path_handler = PathHandler::new("".to_string());
                 let actual_command_mut = actual_command_ref.borrow_mut();
                 let text = entry_buffer.text();
 
@@ -239,13 +241,13 @@ fn main() {
                 let args: Option<Vec<&str>> = Option::from(my_vec);
 
                 let result = match *actual_command_mut {
-                    CHECKOUT_COMMAND_NAME => Checkout::new().execute(args),
-                    ADD_COMMAND_NAME => Add::new().execute(args),
-                    REMOVE_COMMAND_NAME => Rm::new().execute(args),
+                    CHECKOUT_COMMAND_NAME => Checkout::new().execute(args, &path_handler),
+                    ADD_COMMAND_NAME => Add::new().execute(args, &path_handler),
+                    REMOVE_COMMAND_NAME => Rm::new().execute(args, &path_handler),
                     COMMIT_COMMAND_NAME => {
                         let commit_vec: Vec<&str> = vec!["-m", &text];
                         let commit_args: Option<Vec<&str>> = Option::from(commit_vec);
-                        Commit::new().execute(commit_args)
+                        Commit::new().execute(commit_args, &path_handler)
                     }
                     LOG_COMMAND_NAME => {
                         let mut log_args: Option<Vec<&str>> = None;
@@ -253,12 +255,12 @@ fn main() {
                         if !log_vec.is_empty() {
                             log_args = Some(log_vec);
                         }
-                        Log::new().execute(log_args)
+                        Log::new().execute(log_args, &path_handler)
                     }
-                    BRANCH_COMMAND_NAME => Branch::new().execute(None),
-                    STATUS_COMMAND_NAME => Status::new().execute(None),
-                    PULL_COMMAND_NAME => Pull::new().execute(None),
-                    PUSH_COMMAND_NAME => Push::new().execute(None),
+                    BRANCH_COMMAND_NAME => Branch::new().execute(None, &path_handler),
+                    STATUS_COMMAND_NAME => Status::new().execute(None, &path_handler),
+                    PULL_COMMAND_NAME => Pull::new().execute(None, &path_handler),
+                    PUSH_COMMAND_NAME => Push::new().execute(None, &path_handler),
                     _ => return,
                 };
                 // Handle the result if needed
