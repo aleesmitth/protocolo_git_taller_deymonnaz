@@ -137,6 +137,15 @@ impl ServerProtocol {
                 "Error: @@@@@@@@@@@@",
             )))
     }
+    pub fn merge_pull_request(request: Cow<str>, pull_request_path: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
+        // spliteas url
+        // tenes repo tenes id de PR
+        // lees archivo, encontras ese id
+        // pasas a PR
+        // llamas a merge
+return Ok(())
+    }
+
     pub fn add_pull_request(request: Cow<str>, pull_request_path: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
         let mut file = match OpenOptions::new()
             .append(true)
@@ -153,17 +162,18 @@ impl ServerProtocol {
             }
         };
 
-        match file.write_all(format!("{}{}", ServerProtocol::get_body(request)?, SEPARATOR_PULL_REQUEST_FILE).as_bytes()?) {
+        match file.write_all(format!("{}{}", ServerProtocol::get_body(request)?, SEPARATOR_PULL_REQUEST_FILE).as_bytes()) {
             Ok(_) => println!("Content written to file successfully."),
             Err(e) => eprintln!("Error writing to file: {}", e),
         }
-
+Ok(())
     }
 
     pub fn handle_http(request: Cow<str>, request_type: HttpRequestType, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
         match request_type {
             HttpRequestType::GET => {
                 // TODO
+
             },
             HttpRequestType::POST => {
                 // TODO leer parametros para saber en q repo va
@@ -171,6 +181,7 @@ impl ServerProtocol {
             },
             HttpRequestType::PUT => {
                 // TODO
+                ServerProtocol::merge_pull_request(request, PULL_REQUEST_FILE, path_handler)?
             },
         }
         return Ok(())
@@ -191,6 +202,7 @@ impl ServerProtocol {
         let request_type: &str = request.split_whitespace().next().unwrap_or("");
         println!("req_type: -{}-", request_type);
         let http_request_type = HttpRequestType::new(request_type);
+        println!("req: @{}@", request);
         ServerProtocol::handle_http(request, http_request_type, path_handler);
 
         //println!("req: @{}@", request);
