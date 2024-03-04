@@ -1,5 +1,5 @@
 extern crate rocket;
-use rusty::{server::models::AppState};
+use rusty::server::models::AppState;
 use std::collections::HashSet;
 use std::sync::{Mutex, Arc, Condvar};
 //use rusty::server::server_protocol::ServerProtocol;

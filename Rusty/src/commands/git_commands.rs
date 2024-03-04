@@ -674,6 +674,8 @@ impl Command for Status {
     /// status of files in the working directory, indicating whether they are
     /// modified, staged, or unstaged.
     fn execute(&self, _args: Option<Vec<&str>>, path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
+        println!("On branch {}", Head::get_current_branch_name(path_handler)?);
+        
         let last_commit_hash: String = Head::get_head_commit(path_handler)?;
         let mut tree_content: Vec<(String, String, String)> = Vec::new();
         if !last_commit_hash.is_empty() {
@@ -1524,7 +1526,6 @@ impl Log {
         } else {
             base_commit
         };
-        println!("{}", current_commit);
         if entries.iter().any(|(key, _)| key == &current_commit) {
             // don't process it again
             return Ok(String::new());
@@ -1979,7 +1980,6 @@ impl Command for Tag {
 
         match (verify_flag, delete_flag, list_flag, name) {
             (false, false, false, Some(name)) => self.add_new_lightweight_tag(name, path_handler)?,
-            // (true, _, _, Some(name)) => self.verify_tag(name),
             (_, true, _, Some(name)) => self.delete_tag(name, path_handler)?,
             (_, _, true, _) => self.list_all_tags()?,
             _ => {}
@@ -2134,7 +2134,13 @@ impl Command for Rebase {
         
         match args {
             Some(arg) => {
-                if arg[0] == CONTINUE_FLAG && helpers::check_if_file_exists(REBASE_HEAD, path_handler) {
+                if arg[0] == CONTINUE_FLAG {
+                    if !helpers::check_if_file_exists(REBASE_HEAD, path_handler) {
+                        return Err(Box::new(io::Error::new(
+                            io::ErrorKind::Other,
+                            "Error: No rebase to continue.",
+                        )))
+                    }
                     rebasing_commit = helpers::read_file_content(REBASE_HEAD)?;
 
                 } else {
@@ -2152,10 +2158,7 @@ impl Command for Rebase {
         let mut rebasing_commit_log: Vec<(String, String)> = Vec::new();
         Log::generate_log_entries(&mut rebasing_commit_log, rebasing_commit, path_handler)?;
         let mut first_commit = true;
-        println!("head: {}", Head::get_head_commit(path_handler)?);
         for (commit, _message) in rebasing_commit_log.iter().rev() {
-            println!("commit: {}", commit);
-            // para el primer commit a rebasear: change parent commit a head
             if first_commit {
                 let _ = helpers::change_commit_object_parent(commit.clone(), Head::get_head_commit(path_handler)?);
                 first_commit = false;
@@ -2169,6 +2172,10 @@ impl Command for Rebase {
                 Ok(_) => {
                     let _ = Branch::new().execute(Some(vec![DELETE_FLAG, &branch_name]), path_handler)?;
                     helpers::update_branch_hash(&Head::get_current_branch_name(path_handler)?, commit, path_handler)?;
+                    
+                    // StagingArea::new().stage_index_file(path_handler)?;
+                    // let commit_tree = get_commit_tree(&Head::get_head_commit(path_handler)?, path_handler)?;
+                    // WorkingDirectory::update_working_directory_to(&commit_tree, path_handler)?;
                 }
                 Err(_) => {
                     let mut rebase_head = fs::File::create(path_handler.get_relative_path(REBASE_HEAD))?;

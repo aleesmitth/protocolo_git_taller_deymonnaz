@@ -76,10 +76,9 @@ impl HashObjectCreator {
         path_handler: &PathHandler
     ) -> Result<String, Box<dyn Error>> {
         let data = format!("{} {}\0{}", obj_type, file_len, content);
-        // println!("data: {:?}", data);
+
         let hashed_data =
             Self::generate_object_hash(obj_type, content.as_bytes().len() as u64, &content);
-        // println!("hash for: {} ; {}", obj_type, hashed_data);
         let compressed_content = helpers::compress_content(&data)?;
         let obj_directory_path = format!("{}/{}", OBJECT, &hashed_data[0..2]);
         let _ = fs::create_dir(path_handler.get_relative_path(&obj_directory_path));
@@ -263,7 +262,6 @@ impl HashObjectCreator {
             return Ok(String::new())
         }
         let commit_content = Self::generate_commit_content(tree_hash, message, parents)?;
-        println!("commit content: {}", commit_content);
         let commit_object_hash = HashObjectCreator::write_object_file(
             commit_content.clone(),
             ObjectType::Commit,
@@ -507,7 +505,6 @@ impl StagingArea {
         let new_index_content = new_index_lines.join("\n");
         let mut index_file = fs::File::create(path_handler.get_relative_path(INDEX_FILE))?;
         index_file.write_all(new_index_content.as_bytes())?;
-        println!("new content:\n{}", new_index_content);
         Ok(())
     }
 }
@@ -568,7 +565,6 @@ impl WorkingDirectory {
         let mut current_dir = file_path.parent();
 
         while let Some(parent) = current_dir {
-            println!("{:?}", parent);
             if parent == Path::new("") {
                 break;
             }
@@ -592,7 +588,6 @@ impl WorkingDirectory {
         for line in lines.iter() {
             let split_line: Vec<String> = line.split(';').map(String::from).collect();
             let file_path_str = path_handler.get_relative_path(&split_line[0].clone());
-            println!("path to delete: {}", file_path_str);
             let file_path = PathBuf::from(file_path_str);
             Self::remove_file_and_empty_parent_directories(&file_path)?;
         }
