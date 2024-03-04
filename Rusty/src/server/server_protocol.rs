@@ -1,4 +1,4 @@
-use crate::commands::git_commands::{Command, Merge, PackObjects, PathHandler, UnpackObjects};
+use crate::commands::git_commands::{Command, Log, Merge, PackObjects, PathHandler, UnpackObjects};
 use crate::commands::helpers;
 use crate::commands::protocol_utils;
 use crate::server::locked_branches_manager::{self, *};
@@ -21,6 +21,8 @@ impl Default for ServerProtocol {
 }
 
 use serde::{Serialize, Deserialize};
+use crate::commands::helpers::{get_branch_last_commit, get_branch_path};
+
 #[derive(Debug, Serialize,Deserialize)]
 pub struct PullRequest {
     id: String,
@@ -207,7 +209,7 @@ impl ServerProtocol {
         let file_content = helpers::read_file_content(&path_handler.get_relative_path(pull_request_path))?;
         // tenes repo tenes id de PR
         //let mut merge_hash = String::new();
-        let mut new_file_content_lines = Vec::new();
+        let mut pull_requests_response = Vec::new();
 
         let file_content_lines: Vec<&str> = file_content.split('\n').collect();
         for line in file_content_lines {
@@ -220,21 +222,74 @@ impl ServerProtocol {
                 pull_request.unwrap_or("")
             } else { &pr.id };
             if pr.id == pull_request_id && pr.repo == repo_name {
-                new_file_content_lines.push(serde_json::to_string(&pr)?);
+                pull_requests_response.push(serde_json::to_string(&pr)?);
             }
         }
 
         /*let mut file = File::create(&path_handler.get_relative_path(pull_request_path))?;
         file.write_all(new_file_content_lines.join("\n").as_bytes())?;*/
 
-        Ok(new_file_content_lines.join("\n"))
+        Ok(pull_requests_response.join("\n"))
     }
 
     pub fn get_pull_request_logs(repo_name: &str, pull_request: Option<&str>, pull_request_path: &str, path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
         // TODO find pull request by repo + id, if it has merged log the merge commit,
         // TODO otherwise log the head and the base separately
         println!("log_pull_request repo {} id {:?}", repo_name, pull_request);
-        Ok("logs".to_string())
+        let file_content = helpers::read_file_content(&path_handler.get_relative_path(pull_request_path))?;
+        // tenes repo tenes id de PR
+        //let mut merge_hash = String::new();
+        let mut new_file_content_lines = Vec::new();
+
+        let file_content_lines: Vec<&str> = file_content.split('\n').collect();
+        for line in file_content_lines {
+            if line.is_empty() {
+                continue;
+            }
+            println!("line in file: {}", line);
+            let mut pr: PullRequest = ServerProtocol::deserialize_pull_request(line.to_string())?;
+            let pull_request_id = match pull_request {
+                Ok(id) => id,
+                Err(_) =>
+                    return Err(Box::new(io::Error::new(
+                        io::ErrorKind::Other,
+                        "Error: can't log pull request with empty id",
+                    )))
+            };
+            if pr.id == pull_request_id && pr.repo == repo_name {
+                //new_file_content_lines.push(serde_json::to_string(&pr)?);
+                if pr.commit_after_merge.is_empty() {
+                    let head_last_commit = match get_branch_last_commit(&get_branch_path(&pr.head), &path_handler) {
+                        Ok(commit) => commit,
+                        Err(e) => {
+                            return Err(Box::new(io::Error::new(
+                                io::ErrorKind::Other,
+                                format!("Error finding last commit of branch {}, {}", &pr.head, e),
+                            )));
+                        }
+                    };
+                    let base_last_commit = match get_branch_last_commit(&get_branch_path(&pr.base), &path_handler) {
+                        Ok(commit) => commit,
+                        Err(e) => {
+                            return Err(Box::new(io::Error::new(
+                                io::ErrorKind::Other,
+                                format!("Error finding last commit of branch {}, {}", &pr.base, e),
+                            )));
+                        }
+                    };
+                    let logs_head = Log::new().execute(Some(vec![&pr.head]), path_handler)?;
+                    let logs_base = Log::new().execute(Some(vec![&pr.base]), path_handler)?;
+                    return Ok(format!("-- PullRequest Head '{}' Log --\n{}\n\n-- PullRequest Base '{}' Log --\n{}", &pr.head,  logs_head, &pr.base,  logs_base));
+                } else {
+                    return Log::new().execute(Some(vec![&pr.commit_after_merge]), path_handler);
+                }
+            }
+        }
+
+        return Err(Box::new(io::Error::new(
+            io::ErrorKind::Other,
+            "Error: Error generating logs",
+        )));
     }
 
     pub fn handle_get_request(request: Cow<str>, pull_request_path: &str, request_url: &str, path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
