@@ -2,9 +2,11 @@ use crate::commands::git_commands::{Command, PackObjects, PathHandler, UnpackObj
 use crate::commands::helpers;
 use crate::commands::protocol_utils;
 use crate::server::locked_branches_manager::*;
-use std::{collections::HashSet, sync::{Mutex, Arc, Condvar}};
-use crate::constants::{REQUEST_LENGTH_CERO, REQUEST_DELIMITER_DONE, WANT_REQUEST, NAK_RESPONSE, UNPACK_CONFIRMATION, ALL_BRANCHES_LOCK};
+use std::{collections::HashSet, sync::{Mutex, Arc, Condvar}, thread};
+use crate::constants::{REQUEST_LENGTH_CERO, REQUEST_DELIMITER_DONE, WANT_REQUEST, NAK_RESPONSE, UNPACK_CONFIRMATION, ALL_BRANCHES_LOCK, SERVER_BASE_PATH};
 use std::{error::Error, fs::File, io, io::Read, io::Write, net::TcpListener, net::TcpStream};
+use std::io::BufRead;
+
 const RECEIVE_PACK: &str = "git-receive-pack";
 const UPLOAD_PACK: &str = "git-upload-pack";
 
@@ -14,6 +16,12 @@ impl Default for ServerProtocol {
     fn default() -> Self {
         Self::new()
     }
+}
+
+use serde::{Serialize, Deserialize};
+#[derive(Debug, Serialize,Deserialize)]
+struct PullRequest {
+    name: String,
 }
 
 impl ServerProtocol {
@@ -26,7 +34,78 @@ impl ServerProtocol {
         Ok(TcpListener::bind(address)?)
     }
 
-    
+    pub fn handle_api_requests(locked_branches: &Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
+        let listener = ServerProtocol::bind("127.0.0.1:8081")?; // Default Git port
+        println!("bind api complete");
+
+        // Create a HashSet to store locked branch names
+        //let locked_branches = Arc::new((Mutex::new(HashSet::new()), Condvar::new()));
+
+        for stream in listener.incoming() {
+            match stream {
+                Ok(stream) => {
+                    let cloned_locked_branches = Arc::clone(&locked_branches);
+                    let mut cloned_stream = stream.try_clone()?;
+                    let mut path_handler = PathHandler::new(SERVER_BASE_PATH.to_string());
+                    thread::spawn(move || {
+                        if let Err(err) = ServerProtocol::endpoint_handler(&mut cloned_stream, &mut path_handler, cloned_locked_branches) {
+                            println!("Error: {:?}", err);
+                        }
+                    });
+                }
+                Err(e) => {
+                    eprintln!("Error accepting connection: {}", e);
+                }
+            }
+        }
+        Ok(())
+    }
+    pub fn endpoint_handler(stream: &mut TcpStream, path_handler: &mut PathHandler, locked_branches: Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
+        // read client request
+
+        // split it
+        // act
+        let stream_clone = stream.try_clone()?;
+        let mut reader = std::io::BufReader::new(stream_clone);
+        let mut buffer = [0; 1024];
+        stream.read(&mut buffer).expect("Failed to read");
+
+        let request = String::from_utf8_lossy(&buffer[..]);
+
+        if let Some(body_index) = request.find("\r\n\r\n") {
+            let body = &request[body_index + 4..];
+
+            if let Some(json_start) = body.find('{') {
+                let json_body = &body[json_start..];
+
+                // Trim the JSON string to remove leading and trailing whitespaces, newlines, etc.
+                let trimmed_json = json_body.trim();
+
+                println!("Received JSON body: .{}.", trimmed_json);
+                let trimmed_json_2 = &trimmed_json[..trimmed_json.len() - 1];
+
+                // Deserialize the JSON data into a PullRequest object
+                let result: Result<PullRequest, serde_json::Error> = serde_json::from_str(trimmed_json_2);
+                match result {
+                    Ok(ok) => println!("{:?}", ok),
+                    Err(e) => {
+                        return Err(Box::new(io::Error::new(
+                            io::ErrorKind::Other,
+                            e.to_string(),
+                        )))
+                    }
+                };
+            }
+        }
+
+
+
+
+        return Err(Box::new(io::Error::new(
+            io::ErrorKind::Other,
+            "Error: @@@@@@@@@@@@",
+        )));
+    }
 
     pub fn handle_client_connection(stream: &mut TcpStream, path_handler: &mut PathHandler, locked_branches: Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
         let stream_clone = stream.try_clone()?;

@@ -21,7 +21,7 @@ use rusty::constants::SERVER_BASE_PATH;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //env::set_var(RELATIVE_PATH, "src/server/");
 
-    let database = Database::new();
+    /*let database = Database::new();
 
     let db_pool = database.run().await?;
 
@@ -30,13 +30,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Err(e) = run_rocket(db_pool).await {
             eprintln!("Rocket error: {}", e);
         }
+    });*/
+    // Create a HashSet to store locked branch names
+    let locked_branches = Arc::new((Mutex::new(HashSet::new()), Condvar::new()));
+
+    let cloned_locked_branches_api = Arc::clone(&locked_branches);
+    thread::spawn(move || {
+        if let Err(err) = ServerProtocol::handle_api_requests(&cloned_locked_branches_api) {
+            println!("Error: starting api handler thread {:?}", err);
+        }
     });
 
     let listener = ServerProtocol::bind("127.0.0.1:9418")?; // Default Git port
     println!("bind complete");
 
-    // Create a HashSet to store locked branch names
-    let locked_branches = Arc::new((Mutex::new(HashSet::new()), Condvar::new()));
 
     for stream in listener.incoming() {
         match stream {
