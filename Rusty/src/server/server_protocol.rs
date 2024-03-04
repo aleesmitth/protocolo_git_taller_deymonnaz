@@ -139,7 +139,7 @@ impl ServerProtocol {
             )))
     }
 
-    pub fn merge_pull_request(request: Cow<str>, pull_request_path: &str, request_url: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
+    pub fn merge_pull_request(request: Cow<str>, pull_request_path: &str, request_url: &str, path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
         let split_request: Vec<&str> = request.split_whitespace().collect();
         let url = split_request[1];
         println!("my url: {}", url);
@@ -165,7 +165,8 @@ impl ServerProtocol {
 
             if pr.id == pull_request_id {
                 merge_hash = Merge::new().execute(Some(vec![&pr.head, &pr.base]), path_handler)?;
-                pr.commit_after_merge = merge_hash;
+                println!("Aca");
+                pr.commit_after_merge = merge_hash.clone();
                 new_file_content_lines.push(serde_json::to_string(&pr)?);
             } else {
                 new_file_content_lines.push(line.to_string());
@@ -175,10 +176,11 @@ impl ServerProtocol {
         let mut file = File::create(&path_handler.get_relative_path(pull_request_path))?;
         file.write_all(new_file_content_lines.join("\n").as_bytes())?;
 
-        Ok(())
+        Ok(merge_hash)
     }
 
-    pub fn add_pull_request(request: Cow<str>, pull_request_path: &str, request_url: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
+    pub fn add_pull_request(request: Cow<str>, pull_request_path: &str, request_url: &str, path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
+        println!("testestest");
         let mut file = match OpenOptions::new()
             .append(true)
             .create(true)
@@ -199,25 +201,46 @@ impl ServerProtocol {
             Ok(_) => println!("Content written to file successfully."),
             Err(e) => eprintln!("Error writing to file: {}", e),
         }
-        Ok(())
+        Ok("Pull Request added.".to_string())
     }
 
-    pub fn get_pull_request(repo_name: &str, pull_request: Option<&str>, pull_request_path: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
+    pub fn get_pull_request(repo_name: &str, pull_request: Option<&str>, pull_request_path: &str, path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
         // TODO read file of PR, search by repo + id, but if id is empty search by repo only
         println!("get_pull_request repo {} id {:?}", repo_name, pull_request);
-        Ok(())
+        let file_content = helpers::read_file_content(&path_handler.get_relative_path(pull_request_path))?;
+        // tenes repo tenes id de PR
+        //let mut merge_hash = String::new();
+        let mut new_file_content_lines = Vec::new();
 
+        let file_content_lines: Vec<&str> = file_content.split('\n').collect();
+        for line in file_content_lines {
+            if line.is_empty() {
+                continue;
+            }
+            println!("line in file: {}", line);
+            let mut pr: PullRequest = ServerProtocol::deserialize_pull_request(line.to_string())?;
+            let pull_request_id: &str = if pull_request.is_some() {
+                pull_request.unwrap_or("")
+            } else { &pr.id };
+            if pr.id == pull_request_id && pr.repo == repo_name {
+                new_file_content_lines.push(serde_json::to_string(&pr)?);
+            }
+        }
+
+        /*let mut file = File::create(&path_handler.get_relative_path(pull_request_path))?;
+        file.write_all(new_file_content_lines.join("\n").as_bytes())?;*/
+
+        Ok(new_file_content_lines.join("\n"))
     }
 
-    pub fn get_pull_request_logs(repo_name: &str, pull_request: Option<&str>, pull_request_path: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
+    pub fn get_pull_request_logs(repo_name: &str, pull_request: Option<&str>, pull_request_path: &str, path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
         // TODO find pull request by repo + id, if it has merged log the merge commit,
         // TODO otherwise log the head and the base separately
         println!("log_pull_request repo {} id {:?}", repo_name, pull_request);
-        Ok(())
-
+        Ok("logs".to_string())
     }
 
-    pub fn handle_get_request(request: Cow<str>, pull_request_path: &str, request_url: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
+    pub fn handle_get_request(request: Cow<str>, pull_request_path: &str, request_url: &str, path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
         // Split the string by "/"
         let params: Vec<&str> = request_url.split('/').collect();
 
@@ -305,27 +328,25 @@ impl ServerProtocol {
                 )));
             }
         }
-        Ok(())
     }
 
     // TODO change return to http response
-    pub fn handle_http(request: Cow<str>, request_type: HttpRequestType, request_url: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
+    pub fn handle_http(request: Cow<str>, request_type: HttpRequestType, request_url: &str, path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
         match request_type {
             HttpRequestType::GET => {
                 // TODO make it so that it returns the http response
-                ServerProtocol::handle_get_request(request, PULL_REQUEST_FILE, request_url, path_handler)?
+                return ServerProtocol::handle_get_request(request, PULL_REQUEST_FILE, request_url, path_handler)
 
             },
             HttpRequestType::POST => {
                 // TODO leer parametros para saber en q repo va
-                ServerProtocol::add_pull_request(request, PULL_REQUEST_FILE, request_url, path_handler)?
+                return ServerProtocol::add_pull_request(request, PULL_REQUEST_FILE, request_url, path_handler)
             },
             HttpRequestType::PUT => {
                 // TODO usar el repo name tambien
-                ServerProtocol::merge_pull_request(request, PULL_REQUEST_FILE, request_url, path_handler)?
+                return ServerProtocol::merge_pull_request(request, PULL_REQUEST_FILE, request_url, path_handler)
             },
         }
-        Ok(())
     }
 
     pub fn endpoint_handler(stream: &mut TcpStream, path_handler: &mut PathHandler, locked_branches: Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
