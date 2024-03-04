@@ -164,10 +164,7 @@ impl ServerProtocol {
             let mut pr: PullRequest = ServerProtocol::deserialize_pull_request(line.to_string())?;
 
             if pr.id == pull_request_id {
-                println!("Aca");
-                // merge_hash = Merge::new().execute(Some(vec![&pr.head, &pr.base]), path_handler)?;
-                merge_hash = "martin".to_string();
-                println!("merge {}", merge_hash);
+                merge_hash = Merge::new().execute(Some(vec![&pr.head, &pr.base]), path_handler)?;
                 pr.commit_after_merge = merge_hash;
                 new_file_content_lines.push(serde_json::to_string(&pr)?);
             } else {
@@ -182,7 +179,6 @@ impl ServerProtocol {
     }
 
     pub fn add_pull_request(request: Cow<str>, pull_request_path: &str, request_url: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
-        println!("testestest");
         let mut file = match OpenOptions::new()
             .append(true)
             .create(true)
