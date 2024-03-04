@@ -376,6 +376,7 @@ impl Command for Checkout {
                     let working_tree = helpers::reconstruct_working_tree(head_commit, path_handler)?;
                     StagingArea::new().change_index_file(working_tree, Vec::new(), path_handler)?;
                 }
+                println!("Switched to branch {}", branch_name);
             }
             None => {
                 return Err(Box::new(io::Error::new(
@@ -384,6 +385,7 @@ impl Command for Checkout {
                 )))
             }
         }
+        
         Ok(String::new())
     }
 }
