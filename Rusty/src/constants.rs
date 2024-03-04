@@ -68,6 +68,7 @@ pub const LENGTH_BYTES: usize = 4;
 pub const PULL_REQUEST_FILE: &str = "pull_requests.txt";
 pub const REQUEST_DELIMITER_DONE: &str = "done\n";
 pub const REQUEST_LENGTH_CERO: &str = "0000";
+pub const SEPARATOR_PULL_REQUEST_FILE: &str = "\n";
 pub const NAK_RESPONSE: &str = "NAK\n";
 pub const WANT_REQUEST: &str = "want";
 pub const UNPACK_CONFIRMATION: &str = "unpack ok\n";

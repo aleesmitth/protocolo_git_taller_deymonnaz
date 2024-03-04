@@ -3,9 +3,10 @@ use crate::commands::helpers;
 use crate::commands::protocol_utils;
 use crate::server::locked_branches_manager::*;
 use std::{collections::HashSet, sync::{Mutex, Arc, Condvar}, thread};
-use crate::constants::{REQUEST_LENGTH_CERO, REQUEST_DELIMITER_DONE, WANT_REQUEST, NAK_RESPONSE, UNPACK_CONFIRMATION, ALL_BRANCHES_LOCK, SERVER_BASE_PATH, PULL_REQUEST_FILE};
+use crate::constants::{REQUEST_LENGTH_CERO, REQUEST_DELIMITER_DONE, WANT_REQUEST, NAK_RESPONSE, UNPACK_CONFIRMATION, ALL_BRANCHES_LOCK, SERVER_BASE_PATH, PULL_REQUEST_FILE, SEPARATOR_PULL_REQUEST_FILE};
 use std::{error::Error, fs::File, io, io::Read, io::Write, net::TcpListener, net::TcpStream};
 use std::borrow::Cow;
+use std::fs::OpenOptions;
 use std::io::BufRead;
 use rocket_okapi::okapi::openapi3::RequestBody;
 
@@ -87,7 +88,24 @@ impl ServerProtocol {
         Ok(())
     }
 
-    pub fn get_body(request: Cow<str>) -> Result<PullRequest, Box<dyn Error>> {
+    pub fn deserialize_pull_request(json: String) -> Result<PullRequest, Box<dyn Error>> {
+        // Deserialize the JSON data into a PullRequest object
+        match serde_json::from_str::<PullRequest>(&json) {
+            Ok(pull_request) => {
+                println!("Parsed PullRequest: {:?}", pull_request);
+                return Ok(pull_request)
+            }
+            Err(e) => {
+                eprintln!("Error deserializing JSON: {}", e);
+                return Err(Box::new(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Error: @@@@@@@@@@@@",
+                )))
+            }
+        }
+    }
+
+    pub fn get_body(request: Cow<str>) -> Result<String, Box<dyn Error>> {
         if let Some(body_index) = request.find("\r\n\r\n") {
             let body = &request[body_index + 4..];
 
@@ -104,21 +122,7 @@ impl ServerProtocol {
                 if let (Some(start), Some(end)) = (start_index, end_index) {
                     // Extract the JSON substring
                     let json_str = &trimmed_json[start..=end];
-
-                    // Deserialize the JSON data into a PullRequest object
-                    match serde_json::from_str::<PullRequest>(json_str) {
-                        Ok(pull_request) => {
-                            println!("Parsed PullRequest: {:?}", pull_request);
-                            return Ok(pull_request)
-                        }
-                        Err(e) => {
-                            eprintln!("Error deserializing JSON: {}", e);
-                            return Err(Box::new(io::Error::new(
-                                io::ErrorKind::Other,
-                                "Error: @@@@@@@@@@@@",
-                            )))
-                        }
-                    }
+                    return Ok(json_str.to_string());
                 } else {
                     eprintln!("JSON object not found in the received data.");
                     return Err(Box::new(io::Error::new(
@@ -133,33 +137,43 @@ impl ServerProtocol {
                 "Error: @@@@@@@@@@@@",
             )))
     }
-    pub fn add_pull_request(request: &str, request_type: &PathHandler, path_handler: Cow<str>) {
-        let mut file = match File::create("example.txt") {
+    pub fn add_pull_request(request: Cow<str>, pull_request_path: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
+        let mut file = match OpenOptions::new()
+            .append(true)
+            .create(true)
+            .write(true)
+            .open(path_handler.get_relative_path(pull_request_path)) {
             Ok(file) => file,
             Err(e) => {
                 eprintln!("Error creating file: {}", e);
-                return;
+                return Err(Box::new(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Error: Can't open pull request file",
+                )));
             }
         };
 
-        match file.write_all(content.as_bytes()) {
+        match file.write_all(format!("{}{}", ServerProtocol::get_body(request)?, SEPARATOR_PULL_REQUEST_FILE).as_bytes()?) {
             Ok(_) => println!("Content written to file successfully."),
             Err(e) => eprintln!("Error writing to file: {}", e),
         }
+
     }
 
-    pub fn handle_http(request: Cow<str>, request_type: HttpRequestType, path_handler: &PathHandler) {
+    pub fn handle_http(request: Cow<str>, request_type: HttpRequestType, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
         match request_type {
             HttpRequestType::GET => {
                 // TODO
             },
             HttpRequestType::POST => {
-                ServerProtocol::add_pull_request(PULL_REQUEST_FILE, path_handler, request);
+                // TODO leer parametros para saber en q repo va
+                ServerProtocol::add_pull_request(request, PULL_REQUEST_FILE, path_handler)?
             },
             HttpRequestType::PUT => {
                 // TODO
             },
         }
+        return Ok(())
     }
 
     pub fn endpoint_handler(stream: &mut TcpStream, path_handler: &mut PathHandler, locked_branches: Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
