@@ -73,6 +73,8 @@ pub const NAK_RESPONSE: &str = "NAK\n";
 pub const WANT_REQUEST: &str = "want";
 pub const UNPACK_CONFIRMATION: &str = "unpack ok\n";
 pub const ALL_BRANCHES_LOCK: &str = "all_branches_lock";
+pub const HTTP_RESPONSE_SUCCESFUL: &str = "HTTP/1.1 200 OK";
+pub const HTTP_RESPONSE_ERROR: &str = "HTTP/1.1 404 Not Found";
 
 // consts for marking conflicts in file
 pub const CONFLICT_START: &str = "<<<<<<< HEAD";

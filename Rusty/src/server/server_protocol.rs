@@ -3,7 +3,7 @@ use crate::commands::helpers;
 use crate::commands::protocol_utils;
 use crate::server::locked_branches_manager::{self, *};
 use std::{collections::HashSet, sync::{Mutex, Arc, Condvar}, thread};
-use crate::constants::{REQUEST_LENGTH_CERO, REQUEST_DELIMITER_DONE, WANT_REQUEST, NAK_RESPONSE, UNPACK_CONFIRMATION, ALL_BRANCHES_LOCK, SERVER_BASE_PATH, PULL_REQUEST_FILE, SEPARATOR_PULL_REQUEST_FILE};
+use crate::constants::{REQUEST_LENGTH_CERO, REQUEST_DELIMITER_DONE, WANT_REQUEST, NAK_RESPONSE, UNPACK_CONFIRMATION, ALL_BRANCHES_LOCK, SERVER_BASE_PATH, PULL_REQUEST_FILE, SEPARATOR_PULL_REQUEST_FILE, HTTP_RESPONSE_ERROR, HTTP_RESPONSE_SUCCESFUL};
 use std::{error::Error, fs::File, io, io::Read, io::Write, net::TcpListener, net::TcpStream};
 use std::borrow::Cow;
 use std::fs::OpenOptions;
@@ -151,7 +151,7 @@ impl ServerProtocol {
         println!("body: {}", body);
 
         let file_content = helpers::read_file_content(&path_handler.get_relative_path(pull_request_path))?;
-        // tenes repo tenes id de PR
+
         let mut merge_hash = String::new();
         let mut new_file_content_lines = Vec::new();
 
@@ -165,7 +165,6 @@ impl ServerProtocol {
 
             if pr.id == pull_request_id {
                 merge_hash = Merge::new().execute(Some(vec![&pr.head, &pr.base]), path_handler)?;
-                println!("Aca");
                 pr.commit_after_merge = merge_hash.clone();
                 new_file_content_lines.push(serde_json::to_string(&pr)?);
             } else {
@@ -180,7 +179,6 @@ impl ServerProtocol {
     }
 
     pub fn add_pull_request(request: Cow<str>, pull_request_path: &str, request_url: &str, path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
-        println!("testestest");
         let mut file = match OpenOptions::new()
             .append(true)
             .create(true)
@@ -195,7 +193,6 @@ impl ServerProtocol {
                 )));
             }
         };
-        println!("testestest");
 
         match file.write_all(format!("{}{}", ServerProtocol::get_body(request)?, SEPARATOR_PULL_REQUEST_FILE).as_bytes()) {
             Ok(_) => println!("Content written to file successfully."),
@@ -335,16 +332,16 @@ impl ServerProtocol {
         match request_type {
             HttpRequestType::GET => {
                 // TODO make it so that it returns the http response
-                return ServerProtocol::handle_get_request(request, PULL_REQUEST_FILE, request_url, path_handler)
+                ServerProtocol::handle_get_request(request, PULL_REQUEST_FILE, request_url, path_handler)
 
             },
             HttpRequestType::POST => {
                 // TODO leer parametros para saber en q repo va
-                return ServerProtocol::add_pull_request(request, PULL_REQUEST_FILE, request_url, path_handler)
+                ServerProtocol::add_pull_request(request, PULL_REQUEST_FILE, request_url, path_handler)
             },
             HttpRequestType::PUT => {
                 // TODO usar el repo name tambien
-                return ServerProtocol::merge_pull_request(request, PULL_REQUEST_FILE, request_url, path_handler)
+                ServerProtocol::merge_pull_request(request, PULL_REQUEST_FILE, request_url, path_handler)
             },
         }
     }
@@ -368,11 +365,14 @@ impl ServerProtocol {
         println!("req_url: -{}-", request_url);
         let http_request_type = HttpRequestType::new(request_type);
         println!("req: @{}@", request.clone());
-        ServerProtocol::handle_http(request.clone(), http_request_type, request_url, path_handler)?;
+        let final_response = match ServerProtocol::handle_http(request.clone(), http_request_type, request_url, path_handler) {
+            Ok(http_response) => format!("{}\n{}", HTTP_RESPONSE_SUCCESFUL, http_response),
+            Err(http_response) => format!("{}\n{}", HTTP_RESPONSE_ERROR, http_response),
+        };
+        println!("sending response to client: {}", final_response);
 
-        //println!("req: @{}@", request);
-
-        //ServerProtocol::get_body(request);
+        stream.write(final_response.as_bytes());
+        stream.flush();
 
         drop(locked_branches_lifetime);
 
