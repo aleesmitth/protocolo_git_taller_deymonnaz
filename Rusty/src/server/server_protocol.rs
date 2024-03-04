@@ -3,9 +3,11 @@ use crate::commands::helpers;
 use crate::commands::protocol_utils;
 use crate::server::locked_branches_manager::*;
 use std::{collections::HashSet, sync::{Mutex, Arc, Condvar}, thread};
-use crate::constants::{REQUEST_LENGTH_CERO, REQUEST_DELIMITER_DONE, WANT_REQUEST, NAK_RESPONSE, UNPACK_CONFIRMATION, ALL_BRANCHES_LOCK, SERVER_BASE_PATH};
+use crate::constants::{REQUEST_LENGTH_CERO, REQUEST_DELIMITER_DONE, WANT_REQUEST, NAK_RESPONSE, UNPACK_CONFIRMATION, ALL_BRANCHES_LOCK, SERVER_BASE_PATH, PULL_REQUEST_FILE};
 use std::{error::Error, fs::File, io, io::Read, io::Write, net::TcpListener, net::TcpStream};
+use std::borrow::Cow;
 use std::io::BufRead;
+use rocket_okapi::okapi::openapi3::RequestBody;
 
 const RECEIVE_PACK: &str = "git-receive-pack";
 const UPLOAD_PACK: &str = "git-upload-pack";
@@ -20,8 +22,32 @@ impl Default for ServerProtocol {
 
 use serde::{Serialize, Deserialize};
 #[derive(Debug, Serialize,Deserialize)]
-struct PullRequest {
-    name: String,
+pub struct PullRequest {
+    title: String,
+    body: String,
+    head: String,
+    base: String,
+    commit_after_merge: String,
+
+}
+
+pub enum HttpRequestType {
+    POST,
+    PUT,
+    GET,
+}
+impl HttpRequestType {
+    fn new(method: &str) -> Self {
+        match method {
+            "POST" => HttpRequestType::POST,
+            "PUT" => HttpRequestType::PUT,
+            "GET" => HttpRequestType::GET,
+            _ => {
+                eprintln!("Unexpected string: {}", method);
+                HttpRequestType::GET
+            }
+        }
+    }
 }
 
 impl ServerProtocol {
@@ -60,18 +86,8 @@ impl ServerProtocol {
         }
         Ok(())
     }
-    pub fn endpoint_handler(stream: &mut TcpStream, path_handler: &mut PathHandler, locked_branches: Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
-        // read client request
 
-        // split it
-        // act
-        let stream_clone = stream.try_clone()?;
-        let mut reader = std::io::BufReader::new(stream_clone);
-        let mut buffer = [0; 1024];
-        stream.read(&mut buffer).expect("Failed to read");
-
-        let request = String::from_utf8_lossy(&buffer[..]);
-
+    pub fn get_body(request: Cow<str>) -> Result<PullRequest, Box<dyn Error>> {
         if let Some(body_index) = request.find("\r\n\r\n") {
             let body = &request[body_index + 4..];
 
@@ -82,21 +98,90 @@ impl ServerProtocol {
                 let trimmed_json = json_body.trim();
 
                 println!("Received JSON body: .{}.", trimmed_json);
-                let trimmed_json_2 = &trimmed_json[..trimmed_json.len() - 1];
+                let start_index = trimmed_json.find('{');
+                let end_index = trimmed_json.rfind('}');
 
-                // Deserialize the JSON data into a PullRequest object
-                let result: Result<PullRequest, serde_json::Error> = serde_json::from_str(trimmed_json_2);
-                match result {
-                    Ok(ok) => println!("{:?}", ok),
-                    Err(e) => {
-                        return Err(Box::new(io::Error::new(
-                            io::ErrorKind::Other,
-                            e.to_string(),
-                        )))
+                if let (Some(start), Some(end)) = (start_index, end_index) {
+                    // Extract the JSON substring
+                    let json_str = &trimmed_json[start..=end];
+
+                    // Deserialize the JSON data into a PullRequest object
+                    match serde_json::from_str::<PullRequest>(json_str) {
+                        Ok(pull_request) => {
+                            println!("Parsed PullRequest: {:?}", pull_request);
+                            return Ok(pull_request)
+                        }
+                        Err(e) => {
+                            eprintln!("Error deserializing JSON: {}", e);
+                            return Err(Box::new(io::Error::new(
+                                io::ErrorKind::Other,
+                                "Error: @@@@@@@@@@@@",
+                            )))
+                        }
                     }
-                };
+                } else {
+                    eprintln!("JSON object not found in the received data.");
+                    return Err(Box::new(io::Error::new(
+                        io::ErrorKind::Other,
+                        "Error: @@@@@@@@@@@@",
+                    )))
+                }
             }
         }
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "Error: @@@@@@@@@@@@",
+            )))
+    }
+    pub fn add_pull_request(request: &str, request_type: &PathHandler, path_handler: Cow<str>) {
+        let mut file = match File::create("example.txt") {
+            Ok(file) => file,
+            Err(e) => {
+                eprintln!("Error creating file: {}", e);
+                return;
+            }
+        };
+
+        match file.write_all(content.as_bytes()) {
+            Ok(_) => println!("Content written to file successfully."),
+            Err(e) => eprintln!("Error writing to file: {}", e),
+        }
+    }
+
+    pub fn handle_http(request: Cow<str>, request_type: HttpRequestType, path_handler: &PathHandler) {
+        match request_type {
+            HttpRequestType::GET => {
+                // TODO
+            },
+            HttpRequestType::POST => {
+                ServerProtocol::add_pull_request(PULL_REQUEST_FILE, path_handler, request);
+            },
+            HttpRequestType::PUT => {
+                // TODO
+            },
+        }
+    }
+
+    pub fn endpoint_handler(stream: &mut TcpStream, path_handler: &mut PathHandler, locked_branches: Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
+        // read client request
+
+        // split it
+        // act
+        let stream_clone = stream.try_clone()?;
+        //let mut reader = std::io::BufReader::new(stream_clone);
+        let mut buffer = [0; 1024];
+        stream.read(&mut buffer).expect("Failed to read");
+        println!("buffer header:{:?}", buffer);
+
+        let request = String::from_utf8_lossy(&buffer[..]);
+        let request_type: &str = request.split_whitespace().next().unwrap_or("");
+        println!("req_type: -{}-", request_type);
+        let http_request_type = HttpRequestType::new(request_type);
+        ServerProtocol::handle_http(request, http_request_type, path_handler);
+
+        //println!("req: @{}@", request);
+
+        //ServerProtocol::get_body(request);
 
 
 
