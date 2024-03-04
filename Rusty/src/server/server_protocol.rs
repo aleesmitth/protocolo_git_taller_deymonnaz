@@ -1,4 +1,4 @@
-use crate::commands::git_commands::{Command, PackObjects, PathHandler, UnpackObjects};
+use crate::commands::git_commands::{Command, Merge, PackObjects, PathHandler, UnpackObjects};
 use crate::commands::helpers;
 use crate::commands::protocol_utils;
 use crate::server::locked_branches_manager::*;
@@ -8,6 +8,7 @@ use std::{error::Error, fs::File, io, io::Read, io::Write, net::TcpListener, net
 use std::borrow::Cow;
 use std::fs::OpenOptions;
 use std::io::BufRead;
+use rocket_okapi::okapi::merge;
 use rocket_okapi::okapi::openapi3::RequestBody;
 
 const RECEIVE_PACK: &str = "git-receive-pack";
@@ -24,6 +25,7 @@ impl Default for ServerProtocol {
 use serde::{Serialize, Deserialize};
 #[derive(Debug, Serialize,Deserialize)]
 pub struct PullRequest {
+    id: String,
     title: String,
     body: String,
     head: String,
@@ -137,13 +139,47 @@ impl ServerProtocol {
                 "Error: @@@@@@@@@@@@",
             )))
     }
+
     pub fn merge_pull_request(request: Cow<str>, pull_request_path: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
-        // spliteas url
+        let split_request: Vec<&str> = request.split_whitespace().collect();
+        let url = split_request[1];
+        println!("my url: {}", url);
+
+        let split_url: Vec<&str> = url.split('/').collect();
+        let pull_request_id = split_url[4];
+
+        let body = ServerProtocol::get_body(request.clone())?;
+        println!("body: {}", body);
+
+        let file_content = helpers::read_file_content(&path_handler.get_relative_path(pull_request_path))?;
         // tenes repo tenes id de PR
-        // lees archivo, encontras ese id
-        // pasas a PR
-        // llamas a merge
-return Ok(())
+        let mut merge_hash = String::new();
+        let mut new_file_content_lines = Vec::new();
+
+        let file_content_lines: Vec<&str> = file_content.split('\n').collect();
+        for line in file_content_lines {
+            if line.is_empty() {
+                continue;
+            }
+            println!("line in file: {}", line);
+            let mut pr: PullRequest = ServerProtocol::deserialize_pull_request(line.to_string())?;
+
+            if pr.id == pull_request_id {
+                println!("Aca");
+                // merge_hash = Merge::new().execute(Some(vec![&pr.head, &pr.base]), path_handler)?;
+                merge_hash = "martin".to_string();
+                println!("merge {}", merge_hash);
+                pr.commit_after_merge = merge_hash;
+                new_file_content_lines.push(serde_json::to_string(&pr)?);
+            } else {
+                new_file_content_lines.push(line.to_string());
+            }
+        }
+
+        let mut file = File::create(&path_handler.get_relative_path(pull_request_path))?;
+        file.write_all(new_file_content_lines.join("\n").as_bytes())?;
+
+        Ok(())
     }
 
     pub fn add_pull_request(request: Cow<str>, pull_request_path: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
@@ -166,7 +202,7 @@ return Ok(())
             Ok(_) => println!("Content written to file successfully."),
             Err(e) => eprintln!("Error writing to file: {}", e),
         }
-Ok(())
+        Ok(())
     }
 
     pub fn handle_http(request: Cow<str>, request_type: HttpRequestType, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
@@ -184,7 +220,7 @@ Ok(())
                 ServerProtocol::merge_pull_request(request, PULL_REQUEST_FILE, path_handler)?
             },
         }
-        return Ok(())
+        Ok(())
     }
 
     pub fn endpoint_handler(stream: &mut TcpStream, path_handler: &mut PathHandler, locked_branches: Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
@@ -212,10 +248,7 @@ Ok(())
 
 
 
-        return Err(Box::new(io::Error::new(
-            io::ErrorKind::Other,
-            "Error: @@@@@@@@@@@@",
-        )));
+        Ok(())
     }
 
     pub fn handle_client_connection(stream: &mut TcpStream, path_handler: &mut PathHandler, locked_branches: Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {

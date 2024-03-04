@@ -2157,12 +2157,8 @@ impl Command for Rebase {
 
         let mut rebasing_commit_log: Vec<(String, String)> = Vec::new();
         Log::generate_log_entries(&mut rebasing_commit_log, rebasing_commit, path_handler)?;
-        let mut first_commit = true;
+        let mut previous_commit = Head::get_head_commit(path_handler)?;
         for (commit, _message) in rebasing_commit_log.iter().rev() {
-            if first_commit {
-                let _ = helpers::change_commit_object_parent(commit.clone(), Head::get_head_commit(path_handler)?);
-                first_commit = false;
-            }
             println!("{}Applying:{} {}", COLOR_RED_CODE, COLOR_RESET_CODE, commit);
             let branch_name = format!("rebase_{}", rebasing_branch_name);
             let _ = Branch::new().create_new_branch(&branch_name, path_handler);
@@ -2171,11 +2167,11 @@ impl Command for Rebase {
             match helpers::determine_new_working_tree(Head::get_head_commit(path_handler)?, commit.clone(), path_handler) {
                 Ok(_) => {
                     let _ = Branch::new().execute(Some(vec![DELETE_FLAG, &branch_name]), path_handler)?;
-                    helpers::update_branch_hash(&Head::get_current_branch_name(path_handler)?, commit, path_handler)?;
-                    
-                    // StagingArea::new().stage_index_file(path_handler)?;
-                    // let commit_tree = get_commit_tree(&Head::get_head_commit(path_handler)?, path_handler)?;
-                    // WorkingDirectory::update_working_directory_to(&commit_tree, path_handler)?;
+                    let new_commit = HashObjectCreator::create_commit_object(None, vec![previous_commit], path_handler)?;
+                    let new_tree = helpers::get_commit_tree(&new_commit, path_handler)?;
+                    helpers::update_branch_hash(&Head::get_current_branch_name(path_handler)?, &new_commit, path_handler)?;
+                    WorkingDirectory::update_working_directory_to(&new_tree, path_handler)?;
+                    previous_commit = new_commit;
                 }
                 Err(_) => {
                     let mut rebase_head = fs::File::create(path_handler.get_relative_path(REBASE_HEAD))?;
