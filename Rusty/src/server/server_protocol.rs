@@ -206,7 +206,7 @@ impl ServerProtocol {
     }
 
     pub fn get_pull_request(repo_name: &str, pull_request: Option<&str>, pull_request_path: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
-        // TODO read file of PR, search by repo + id, but if id is empty, search by repo only return
+        // TODO read file of PR, search by repo + id, but if id is empty search by repo only
         println!("get_pull_request repo {} id {:?}", repo_name, pull_request);
         Ok(())
 
@@ -226,10 +226,20 @@ impl ServerProtocol {
 
         match params.len() {
             4..=5 => {
-                let repo_name = params[2];
+                if params.len() < 2 {
+                    return Err(Box::new(io::Error::new(
+                        io::ErrorKind::Other,
+                        "Error: Invalid params in url",
+                    )));
+                }
+                if params[1] != "repos" {
+                    return Err(Box::new(io::Error::new(
+                        io::ErrorKind::Other,
+                        "Error: Invalid params in url",
+                    )));
+                }
+                let repo_name = if params.len() > 2 { Some(params[2]) } else { None };
                 let pull_request = if params.len() > 3 { Some(params[4]) } else { None };
-                let extra_param = if params.len() == 5 { Some(params[5]) } else { None };
-                println!("Repo Name: {}, Pull Request: {:?}, Extra Param: {:?}", repo_name, pull_request, extra_param);
 
                 if repo_name.is_none() {
                     return Err(Box::new(io::Error::new(
@@ -237,6 +247,17 @@ impl ServerProtocol {
                         "Error: Invalid params in url",
                     )));
                 }
+
+                let repo_name = repo_name.unwrap_or("");
+
+                if params[3] != "pulls" {
+                    return Err(Box::new(io::Error::new(
+                        io::ErrorKind::Other,
+                        "Error: Invalid params in url",
+                    )));
+                }
+                let extra_param = if params.len() == 5 { Some(params[5]) } else { None };
+                println!("Repo Name: {}, Pull Request: {:?}, Extra Param: {:?}", repo_name, pull_request, extra_param);
 
                 if params.len() == 3 {
                     return ServerProtocol::get_pull_request(repo_name, None, pull_request_path, path_handler);
@@ -254,14 +275,28 @@ impl ServerProtocol {
                 }
 
                 if params.len() == 5 {
-                    if extra_param.is_none() || extra_param != "commit" {
+                    if extra_param.is_none() {
                         return Err(Box::new(io::Error::new(
                             io::ErrorKind::Other,
                             "Error: Invalid params in url",
                         )));
                     }
-                    return ServerProtocol::get_pull_request_logs(repo_name, pull_request, pull_request_path, path_handler);
+                    if let Some(extra_param) = extra_param {
+                        if extra_param != "commit" {
+                            return Err(Box::new(io::Error::new(
+                                io::ErrorKind::Other,
+                                "Error: Invalid params in url",
+                            )));
+
+                        }
+                        return ServerProtocol::get_pull_request_logs(repo_name, pull_request, pull_request_path, path_handler);
+
+                    }
                 }
+                return Err(Box::new(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Error: Invalid params in url",
+                )));
 
 
 
@@ -314,8 +349,8 @@ impl ServerProtocol {
         println!("req_type: -{}-", request_type);
         println!("req_url: -{}-", request_url);
         let http_request_type = HttpRequestType::new(request_type);
-        println!("req: @{}@", request);
-        ServerProtocol::handle_http(request, http_request_type, request_url, path_handler)?;
+        println!("req: @{}@", request.clone());
+        ServerProtocol::handle_http(request.clone(), http_request_type, request_url, path_handler)?;
 
         //println!("req: @{}@", request);
 
