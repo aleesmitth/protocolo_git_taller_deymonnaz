@@ -65,15 +65,22 @@ pub const DEFAULT_HEAD_LINE: &str = "ref: refs/heads/";
 // consts used for server/client protocol
 pub const ZERO_HASH: &str = "0000000000000000000000000000000000000000";
 pub const LENGTH_BYTES: usize = 4;
+pub const PULL_REQUEST_FILE: &str = "pull_requests.txt";
 pub const REQUEST_DELIMITER_DONE: &str = "done\n";
 pub const REQUEST_LENGTH_CERO: &str = "0000";
+pub const SEPARATOR_PULL_REQUEST_FILE: &str = "\n";
 pub const NAK_RESPONSE: &str = "NAK\n";
 pub const WANT_REQUEST: &str = "want";
 pub const UNPACK_CONFIRMATION: &str = "unpack ok\n";
 pub const ALL_BRANCHES_LOCK: &str = "all_branches_lock";
+pub const HTTP_RESPONSE_SUCCESFUL: &str = "HTTP/1.1 200 OK";
+pub const HTTP_RESPONSE_ERROR: &str = "HTTP/1.1 404 Not Found";
+pub const RECEIVE_PACK: &str = "git-receive-pack";
+pub const UPLOAD_PACK: &str = "git-upload-pack";
 
 // consts for marking conflicts in file
 pub const CONFLICT_START: &str = "<<<<<<< HEAD";
 pub const CONFLICT_BRANCH_CHANGE: &str = "=======";
 pub const CONFLICT_END: &str = ">>>>>>>";
 pub const MERGE_HEAD: &str = ".git/MERGE_HEAD";
+

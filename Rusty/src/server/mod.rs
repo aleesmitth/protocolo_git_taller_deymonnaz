@@ -1,5 +1,3 @@
 pub mod server_protocol;
-pub mod controller;
-pub mod models;
-pub mod database;
 pub mod locked_branches_manager;
+pub mod http_requests;

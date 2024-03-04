@@ -865,28 +865,30 @@ pub fn determine_new_working_tree(commit_merging_into: String, commit_to_merge: 
     Ok(())
 }
 
-/// Given a commits hash and a new parent commit hash, it updates the first's one parent commit to 
-/// the one provided by parameter
-pub fn change_commit_object_parent(commit_object_to_change: String, new_parent: String) -> Result<(), Box<dyn Error>> {
-    let commit_file_content = read_file_content(&get_object_path(&commit_object_to_change))?;
-    let split_commit_content: Vec<String> = commit_file_content.split('\n').map(String::from).collect();
-    let mut new_file_content: Vec<String> = Vec::new();
+// pub fn change_commit_object_field(commit_object_to_change: String, field_to_change: ObjectType, new_hash: String) -> Result<(), Box<dyn Error>> {
+//     println!("commit: {}", commit_object_to_change);
+//     let commit_file_content = read_file_content(&get_object_path(&commit_object_to_change))?;
+//     println!("content: {}", commit_file_content);
+//     let split_commit_content: Vec<String> = commit_file_content.split('\n').map(String::from).collect();
+//     let mut new_file_content: Vec<String> = Vec::new();
 
-    for line in split_commit_content {
-        let split_line: Vec<String> = line.split(' ').map(String::from).collect();
-        if split_line[1] == "parent" {
-            let new_line = format!("parent {}", new_parent);
-            new_file_content.push(new_line);
-        } else {
-            new_file_content.push(line)
-        }
-    }
+//     for line in split_commit_content {
+//         let split_line: Vec<String> = line.split(' ').map(String::from).collect();
+//         if split_line[1] == field_to_change.to_string() {
+//             let new_line = format!("{} {}", field_to_change, new_hash);
+//             new_file_content.push(new_line);
+//         } else {
+//             new_file_content.push(line)
+//         }
+//     }
 
-    let mut commit_file = fs::File::create(get_object_path(&commit_object_to_change))?;
-    commit_file.write_all(new_file_content.join("\n").as_bytes())?;
+//     HashObjectCreator::write_object_file(content, obj_type, file_len, path_handler);
 
-    Ok(())
-}
+//     let mut commit_file = fs::File::create(get_object_path(&commit_object_to_change))?;
+//     commit_file.write_all(new_file_content.join("\n").as_bytes())?;
+
+//     Ok(())
+// }
 
 pub fn create_merged_working_tree(head_commit: String, merging_commit: String, path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
     StagingArea::new().stage_index_file(path_handler)?;

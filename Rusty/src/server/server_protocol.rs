@@ -3,10 +3,8 @@ use crate::commands::helpers;
 use crate::commands::protocol_utils;
 use crate::server::locked_branches_manager::*;
 use std::{collections::HashSet, sync::{Mutex, Arc, Condvar}};
-use crate::constants::{REQUEST_LENGTH_CERO, REQUEST_DELIMITER_DONE, WANT_REQUEST, NAK_RESPONSE, UNPACK_CONFIRMATION, ALL_BRANCHES_LOCK};
+use crate::constants::{REQUEST_LENGTH_CERO, REQUEST_DELIMITER_DONE, WANT_REQUEST, NAK_RESPONSE, UNPACK_CONFIRMATION, ALL_BRANCHES_LOCK, RECEIVE_PACK, UPLOAD_PACK};
 use std::{error::Error, fs::File, io, io::Read, io::Write, net::TcpListener, net::TcpStream};
-const RECEIVE_PACK: &str = "git-receive-pack";
-const UPLOAD_PACK: &str = "git-upload-pack";
 
 pub struct ServerProtocol;
 
@@ -25,8 +23,6 @@ impl ServerProtocol {
         println!("binding to client...");
         Ok(TcpListener::bind(address)?)
     }
-
-    
 
     pub fn handle_client_connection(stream: &mut TcpStream, path_handler: &mut PathHandler, locked_branches: Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
         let stream_clone = stream.try_clone()?;
@@ -77,8 +73,6 @@ impl ServerProtocol {
         println!("end handling connection, relative path reseted.");
         Ok(())
     }
-
-    
 
     pub fn upload_pack(stream: &mut TcpStream, path_handler: &PathHandler, locked_branches: &Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
         println!("git-upload-pack");
