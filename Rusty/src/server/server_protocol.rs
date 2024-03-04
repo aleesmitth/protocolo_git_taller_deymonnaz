@@ -140,7 +140,7 @@ impl ServerProtocol {
             )))
     }
 
-    pub fn merge_pull_request(request: Cow<str>, pull_request_path: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
+    pub fn merge_pull_request(request: Cow<str>, pull_request_path: &str, request_url: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
         let split_request: Vec<&str> = request.split_whitespace().collect();
         let url = split_request[1];
         println!("my url: {}", url);
@@ -182,7 +182,7 @@ impl ServerProtocol {
         Ok(())
     }
 
-    pub fn add_pull_request(request: Cow<str>, pull_request_path: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
+    pub fn add_pull_request(request: Cow<str>, pull_request_path: &str, request_url: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
         let mut file = match OpenOptions::new()
             .append(true)
             .create(true)
@@ -205,19 +205,92 @@ impl ServerProtocol {
         Ok(())
     }
 
-    pub fn handle_http(request: Cow<str>, request_type: HttpRequestType, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
+    pub fn get_pull_request(repo_name: &str, pull_request: Option<&str>, pull_request_path: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
+        // TODO read file of PR, search by repo + id, but if id is empty, search by repo only return
+        println!("get_pull_request repo {} id {:?}", repo_name, pull_request);
+        Ok(())
+
+    }
+
+    pub fn get_pull_request_logs(repo_name: &str, pull_request: Option<&str>, pull_request_path: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
+        // TODO find pull request by repo + id, if it has merged log the merge commit,
+        // TODO otherwise log the head and the base separately
+        println!("log_pull_request repo {} id {:?}", repo_name, pull_request);
+        Ok(())
+
+    }
+
+    pub fn handle_get_request(request: Cow<str>, pull_request_path: &str, request_url: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
+        // Split the string by "/"
+        let params: Vec<&str> = request_url.split('/').collect();
+
+        match params.len() {
+            4..=5 => {
+                let repo_name = params[2];
+                let pull_request = if params.len() > 3 { Some(params[4]) } else { None };
+                let extra_param = if params.len() == 5 { Some(params[5]) } else { None };
+                println!("Repo Name: {}, Pull Request: {:?}, Extra Param: {:?}", repo_name, pull_request, extra_param);
+
+                if repo_name.is_none() {
+                    return Err(Box::new(io::Error::new(
+                        io::ErrorKind::Other,
+                        "Error: Invalid params in url",
+                    )));
+                }
+
+                if params.len() == 3 {
+                    return ServerProtocol::get_pull_request(repo_name, None, pull_request_path, path_handler);
+                }
+
+                if pull_request.is_none() {
+                    return Err(Box::new(io::Error::new(
+                        io::ErrorKind::Other,
+                        "Error: Invalid params in url",
+                    )));
+                }
+
+                if params.len() == 4 {
+                    return ServerProtocol::get_pull_request(repo_name, pull_request, pull_request_path, path_handler);
+                }
+
+                if params.len() == 5 {
+                    if extra_param.is_none() || extra_param != "commit" {
+                        return Err(Box::new(io::Error::new(
+                            io::ErrorKind::Other,
+                            "Error: Invalid params in url",
+                        )));
+                    }
+                    return ServerProtocol::get_pull_request_logs(repo_name, pull_request, pull_request_path, path_handler);
+                }
+
+
+
+            }
+            _ => {
+                return Err(Box::new(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Error: Invalid number of params in url",
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    // TODO change return to http response
+    pub fn handle_http(request: Cow<str>, request_type: HttpRequestType, request_url: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
         match request_type {
             HttpRequestType::GET => {
-                // TODO
+                // TODO make it so that it returns the http response
+                ServerProtocol::handle_get_request(request, request_url, PULL_REQUEST_FILE, path_handler)?
 
             },
             HttpRequestType::POST => {
                 // TODO leer parametros para saber en q repo va
-                ServerProtocol::add_pull_request(request, PULL_REQUEST_FILE, path_handler)?
+                ServerProtocol::add_pull_request(request, request_url, PULL_REQUEST_FILE, path_handler)?
             },
             HttpRequestType::PUT => {
-                // TODO
-                ServerProtocol::merge_pull_request(request, PULL_REQUEST_FILE, path_handler)?
+                // TODO usar el repo name tambien
+                ServerProtocol::merge_pull_request(request, request_url, PULL_REQUEST_FILE, path_handler)?
             },
         }
         Ok(())
@@ -236,10 +309,12 @@ impl ServerProtocol {
 
         let request = String::from_utf8_lossy(&buffer[..]);
         let request_type: &str = request.split_whitespace().next().unwrap_or("");
+        let request_url: &str = request.split_whitespace().nth(1).unwrap_or_default();
         println!("req_type: -{}-", request_type);
+        println!("req_url: -{}-", request_url);
         let http_request_type = HttpRequestType::new(request_type);
         println!("req: @{}@", request);
-        ServerProtocol::handle_http(request, http_request_type, path_handler);
+        ServerProtocol::handle_http(request, http_request_type, request_url, path_handler)?;
 
         //println!("req: @{}@", request);
 
