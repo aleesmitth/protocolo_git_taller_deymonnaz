@@ -187,7 +187,7 @@ impl ServerProtocol {
             .append(true)
             .create(true)
             .write(true)
-            .open(path_handler.get_relative_path(pull_request_path)) {
+            .open(path_handler.get_relative_path(pull_request_path.clone())) {
             Ok(file) => file,
             Err(e) => {
                 eprintln!("Error creating file: {}", e);
@@ -317,16 +317,16 @@ impl ServerProtocol {
         match request_type {
             HttpRequestType::GET => {
                 // TODO make it so that it returns the http response
-                ServerProtocol::handle_get_request(request, request_url, PULL_REQUEST_FILE, path_handler)?
+                ServerProtocol::handle_get_request(request, PULL_REQUEST_FILE, request_url, path_handler)?
 
             },
             HttpRequestType::POST => {
                 // TODO leer parametros para saber en q repo va
-                ServerProtocol::add_pull_request(request, request_url, PULL_REQUEST_FILE, path_handler)?
+                ServerProtocol::add_pull_request(request, PULL_REQUEST_FILE, request_url, path_handler)?
             },
             HttpRequestType::PUT => {
                 // TODO usar el repo name tambien
-                ServerProtocol::merge_pull_request(request, request_url, PULL_REQUEST_FILE, path_handler)?
+                ServerProtocol::merge_pull_request(request, PULL_REQUEST_FILE, request_url, path_handler)?
             },
         }
         Ok(())
