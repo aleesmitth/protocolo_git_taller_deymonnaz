@@ -1,16 +1,9 @@
-use std::{collections::HashMap, error::Error, fmt, fs, io, io::Write, path::Path, path::PathBuf};
-const OBJECT: &str = ".git/objects";
-const INDEX_FILE: &str = ".git/index";
-const TREE_SUBTREE_MODE: &str = "040000";
-const TREE_FILE_MODE: &str = "100644";
-const DEFAULT_HEAD_LINE: &str = "ref: refs/heads/";
-const HEAD_FILE: &str = ".git/HEAD";
-//const DEFAULT_REMOTE: &str = "origin";
+use std::{collections::HashMap, error::Error, fmt, fs, io, io::Write, path::Path, path::PathBuf, env};
 
-//use gtk::gdk::keys::constants::L;
+use crate::constants::{OBJECT, INDEX_FILE, TREE_SUBTREE_MODE, TREE_FILE_MODE, DEFAULT_HEAD_LINE, HEAD_FILE};
 
 use crate::commands::helpers;
-
+use chrono::{DateTime, Local};
 use super::{git_commands::PathHandler, helpers::get_file_length};
 
 /// Struct to interact with the HEAD file in the .git directory.
@@ -19,17 +12,17 @@ pub struct Head;
 
 impl Head {
     /// Changes the branch the HEAD file points to
-    pub fn change_head_branch(branch_name: &str) -> Result<(), Box<dyn Error>> {
-        let mut head_file = fs::File::create(PathHandler::get_relative_path(HEAD_FILE))?;
+    pub fn change_head_branch(branch_name: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
+        let mut head_file = fs::File::create(path_handler.get_relative_path(HEAD_FILE))?;
         let new_line = format!("{}{}", DEFAULT_HEAD_LINE, branch_name);
         head_file.write_all(new_line.as_bytes())?;
         Ok(())
     }
 
     /// Returns the ref the HEAD points to
-    pub fn get_current_branch_ref() -> Result<String, Box<dyn Error>> {
+    pub fn get_current_branch_ref(path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
         let head_file_content =
-            helpers::read_file_content(&PathHandler::get_relative_path(HEAD_FILE))?;
+            helpers::read_file_content(&path_handler.get_relative_path(HEAD_FILE))?;
         let split_head_content: Vec<String> = head_file_content
             .split_whitespace()
             .map(String::from)
@@ -41,8 +34,8 @@ impl Head {
     }
 
     /// Returns the name of the current branch
-    pub fn get_current_branch_name() -> Result<String, Box<dyn Error>> {
-        let current_branch_ref = Self::get_current_branch_ref()?;
+    pub fn get_current_branch_name(path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
+        let current_branch_ref = Self::get_current_branch_ref(path_handler)?;
         let split_ref_content: Vec<String> =
             current_branch_ref.split('/').map(String::from).collect();
 
@@ -52,16 +45,16 @@ impl Head {
     }
 
     /// Returns the path of the current branch
-    pub fn get_current_branch_path() -> Result<String, Box<dyn Error>> {
-        let current_branch_name = Self::get_current_branch_name()?;
+    pub fn get_current_branch_path(path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
+        let current_branch_name = Self::get_current_branch_name(path_handler)?;
         Ok(helpers::get_branch_path(&current_branch_name))
     }
 
     /// Returns the last commit of the current branch
-    pub fn get_head_commit() -> Result<String, Box<dyn Error>> {
-        let current_branch_path = Self::get_current_branch_path()?;
+    pub fn get_head_commit(path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
+        let current_branch_path = Self::get_current_branch_path(path_handler)?;
         let commit_hash =
-            helpers::read_file_content(&PathHandler::get_relative_path(&current_branch_path))?;
+            helpers::read_file_content(&path_handler.get_relative_path(&current_branch_path))?;
         Ok(commit_hash)
     }
 }
@@ -80,19 +73,19 @@ impl HashObjectCreator {
         content: String,
         obj_type: ObjectType,
         file_len: u64,
+        path_handler: &PathHandler
     ) -> Result<String, Box<dyn Error>> {
         let data = format!("{} {}\0{}", obj_type, file_len, content);
-        // println!("data: {:?}", data);
+
         let hashed_data =
             Self::generate_object_hash(obj_type, content.as_bytes().len() as u64, &content);
-        // println!("hash for: {} ; {}", obj_type, hashed_data);
         let compressed_content = helpers::compress_content(&data)?;
         let obj_directory_path = format!("{}/{}", OBJECT, &hashed_data[0..2]);
-        let _ = fs::create_dir(PathHandler::get_relative_path(&obj_directory_path));
+        let _ = fs::create_dir(path_handler.get_relative_path(&obj_directory_path));
 
         let object_file_path = format!(
             "{}/{}",
-            PathHandler::get_relative_path(&obj_directory_path),
+            path_handler.get_relative_path(&obj_directory_path),
             &hashed_data[2..]
         );
         if fs::metadata(object_file_path.clone()).is_ok() {
@@ -109,6 +102,7 @@ impl HashObjectCreator {
         content: &[u8],
         object_type: ObjectType,
         size: usize,
+        path_handler: &PathHandler
     ) -> Result<String, Box<dyn Error>> {
         let mut object_content = Vec::new();
         let header = format!("{} {}\0", object_type, size);
@@ -121,23 +115,14 @@ impl HashObjectCreator {
         // println!("hash: {}", hashed_data);
 
         let obj_directory_path = format!("{}/{}", OBJECT, &hashed_data[0..2]);
-        let _ = fs::create_dir(PathHandler::get_relative_path(&obj_directory_path));
+        let _ = fs::create_dir(path_handler.get_relative_path(&obj_directory_path));
 
         let object_file_path = format!(
             "{}/{}",
-            PathHandler::get_relative_path(&obj_directory_path),
+            path_handler.get_relative_path(&obj_directory_path),
             &hashed_data[2..]
         );
-
-        // println!("obj content: {}", String::from_utf8(object_content.clone())?);
-
         let compressed_data = helpers::compress_bytes(&object_content)?;
-
-        // let decompressed = helpers::decompress_file_content(compressed_data.clone())?;
-
-        // println!("test decompress: {}", decompressed);
-        // let test_hash = helpers::hex_string_to_bytes(&decompressed[16..]);
-
         let mut object_file = fs::File::create(object_file_path)?;
         object_file.write_all(&compressed_data)?;
 
@@ -150,23 +135,25 @@ impl HashObjectCreator {
         helpers::generate_sha1_string(data.as_str())
     }
 
-    pub fn create_tree_object() -> Result<String, Box<dyn Error>> {
+    pub fn create_tree_object(path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
         let index_file_content =
-            helpers::read_file_content(&PathHandler::get_relative_path(INDEX_FILE))?;
+            helpers::read_file_content(&path_handler.get_relative_path(INDEX_FILE))?;
         let mut subdirectories: HashMap<String, Vec<Vec<u8>>> = HashMap::new();
 
         let index_file_lines: Vec<&str> = index_file_content.split('\n').collect();
-        //println!("index_file_lines: {:?}", index_file_lines);
+        let mut staged_files = false;
 
         for line in index_file_lines {
             let split_line: Vec<&str> = line.split(';').collect();
-            // println!("split line: {:?}", split_line);
+            if split_line[2] == IndexFileEntryState::Cached.to_string() {
+                continue;
+            }
+            staged_files = true;
             let path = Path::new(split_line[0]);
             let hash = split_line[1];
 
             let mut current_dir = path.parent();
             let mut file_directory = String::new();
-            //println!("current_dir: {:?}", current_dir);
             if let Some(directory) = current_dir {
                 file_directory = directory.to_string_lossy().to_string();
             }
@@ -174,20 +161,15 @@ impl HashObjectCreator {
             let _split_path: Vec<&str> = index_file_content.split('/').collect();
             let mut file_name = String::new();
 
-            // println!("_split_path: {:?}", _split_path);
             if let Some(name) = path.file_name().and_then(|name| name.to_str()) {
-                // println!("File name: {}", name);
-                // println!("File path: {:?}", path);
                 file_name = name.to_string();
             }
             let hash = helpers::convert_hash_to_decimal_bytes(hash)?;
-            // let hash_string = String::from_utf8_lossy(&helpers::convert_hash_to_decimal_bytes(hash)?);
             let file_entry = format!("{} {}\0", TREE_FILE_MODE, file_name);
             let mut final_entry = Vec::new();
             final_entry.extend_from_slice(file_entry.as_bytes());
             final_entry.extend_from_slice(&hash);
-            // println!("tree entry: {}", file_entry);
-            //println!("file_entry: {:?}", file_entry);
+
             if let Some(_parent) = current_dir {
                 subdirectories
                     .entry(file_directory)
@@ -197,10 +179,8 @@ impl HashObjectCreator {
 
             while let Some(parent) = current_dir {
                 current_dir = parent.parent();
-                //println!("current_dir adentro del while: {:?}", current_dir);
                 let subdirectory_entry;
                 if let Some(directory) = current_dir {
-                    //println!("current_dir adentro del while , adentro del iflet: {:?}", directory);
                     subdirectory_entry = directory.to_string_lossy().to_string();
                     subdirectories
                         .entry(subdirectory_entry)
@@ -211,18 +191,20 @@ impl HashObjectCreator {
         }
         let mut super_tree_hash = String::new();
         for (parent_directory, entries) in &subdirectories {
-            // println!("[create_tree_object]parent_directory: {:?}", parent_directory);
             let sub_tree_content =
-                Self::process_files_and_subdirectories(&mut subdirectories.clone(), entries)?;
+                Self::process_files_and_subdirectories(&mut subdirectories.clone(), entries, path_handler)?;
             let tree_hash = Self::write_object_file_bytes(
                 &sub_tree_content,
                 ObjectType::Tree,
                 sub_tree_content.len(),
+                path_handler
             )?;
             if parent_directory == "/" || parent_directory.is_empty() {
-                // println!("[create_tree_object]inside if: {:?}", parent_directory);
                 super_tree_hash = tree_hash;
             }
+        }
+        if !staged_files {
+            return Ok(String::new())
         }
         Ok(super_tree_hash)
     }
@@ -230,6 +212,7 @@ impl HashObjectCreator {
     fn process_files_and_subdirectories(
         subdirectories: &mut HashMap<String, Vec<Vec<u8>>>,
         entries: &Vec<Vec<u8>>,
+        path_handler: &PathHandler
     ) -> Result<Vec<u8>, Box<dyn Error>> {
         let mut sub_tree_content = Vec::new();
         for entry in entries {
@@ -247,11 +230,12 @@ impl HashObjectCreator {
                         directory_name = file_name.to_string();
                     }
                     let tree_content =
-                        Self::process_files_and_subdirectories(subdirectories, &value)?;
+                        Self::process_files_and_subdirectories(subdirectories, &value, path_handler)?;
                     let tree_hash = Self::write_object_file_bytes(
                         &tree_content,
                         ObjectType::Tree,
                         tree_content.len(),
+                        path_handler
                     )?;
                     let hash_decimal = helpers::convert_hash_to_decimal_bytes(&tree_hash)?;
                     let tree_entry = format!("{} {}\0", TREE_SUBTREE_MODE, directory_name);
@@ -266,6 +250,64 @@ impl HashObjectCreator {
         }
         Ok(sub_tree_content)
     }
+
+    // aca podria hacer una funcion para crear un commit object con dos padres
+    // tal vez podria pasar lo de generar contenido del comando para aca, seria
+    // mejor division de tareas ahi
+    pub fn create_commit_object(message: Option<&str>, parents: Vec<String>, path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
+        let tree_hash = HashObjectCreator::create_tree_object(path_handler)?;
+        if tree_hash.is_empty() {
+            // This means there was nothing staged, so no commit should be created.
+            println!("no changes added to commit (use 'git add')");
+            return Ok(String::new())
+        }
+        let commit_content = Self::generate_commit_content(tree_hash, message, parents)?;
+        let commit_object_hash = HashObjectCreator::write_object_file(
+            commit_content.clone(),
+            ObjectType::Commit,
+            commit_content.as_bytes().len() as u64,
+            path_handler
+        )?;
+        
+        Ok(commit_object_hash)
+    }
+
+    fn generate_commit_content(
+        tree_hash: String,
+        message: Option<&str>,
+        parents: Vec<String>
+    ) -> Result<String, Box<dyn Error>> {
+        let username = env::var("USER")?;
+        let current_time: DateTime<Local> = Local::now();
+        let timestamp = current_time.timestamp();
+
+        let offset_minutes = current_time.offset().local_minus_utc();
+        let offset_hours = (offset_minutes / 60) / 60;
+
+        let offset_string = format!("{:03}{:02}", offset_hours, (offset_minutes % 60).abs());
+
+        let author_line = format!(
+            "author {} <{}@fi.uba.ar> {} {}",
+            username, username, timestamp, offset_string
+        );
+        let commiter_line = format!(
+            "committer {} <{}@fi.uba.ar> {} {}",
+            username, username, timestamp, offset_string
+        );
+        let mut content = format!("tree {}\n", tree_hash);
+        let mut parents_string = String::new();
+        if !parents.is_empty() {
+            for parent in parents {
+                parents_string = format!("{}parent {}\n", parents_string, parent)
+            }
+            content = format!("{}{}", content, parents_string);
+        }
+        content = format!("{}{}\n{}\n", content, author_line, commiter_line);
+        if let Some(message) = message {
+            content = format!("{}\n{}", content, message);
+        }
+        Ok(content)
+    }
 }
 
 pub enum IndexFileEntryState {
@@ -273,6 +315,7 @@ pub enum IndexFileEntryState {
     Staged,
     Modified,
     Deleted,
+    Conflicted,
 }
 
 impl IndexFileEntryState {
@@ -282,6 +325,7 @@ impl IndexFileEntryState {
             "1" => Some(IndexFileEntryState::Modified),
             "2" => Some(IndexFileEntryState::Staged),
             "3" => Some(IndexFileEntryState::Deleted),
+            "4" => Some(IndexFileEntryState::Conflicted),
             _ => None,
         }
     }
@@ -291,6 +335,7 @@ impl IndexFileEntryState {
             IndexFileEntryState::Modified => 1,
             IndexFileEntryState::Staged => 2,
             IndexFileEntryState::Deleted => 3,
+            IndexFileEntryState::Conflicted => 4,
         }
     }
 }
@@ -302,6 +347,7 @@ impl fmt::Display for IndexFileEntryState {
             IndexFileEntryState::Modified => "1",
             IndexFileEntryState::Staged => "2",
             IndexFileEntryState::Deleted => "3",
+            IndexFileEntryState::Conflicted => "4",
         };
         write!(f, "{}", string)
     }
@@ -325,27 +371,29 @@ impl StagingArea {
 
     /// Adds a file to the staging area. Creating a git object and saving the object's path, hash and state in the
     /// index file, following the format: file_path;hash;state.
-    pub fn add_file(&self, path: &str) -> Result<(), Box<dyn Error>> {
-        let relative_path = PathHandler::get_relative_path(path);
+    pub fn add_file(&self, path: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
+        let relative_path = path_handler.get_relative_path(path);
         let file_content = helpers::read_file_content(relative_path.as_str())?;
         let object_hash = HashObjectCreator::write_object_file(
             file_content,
             ObjectType::Blob,
             get_file_length(relative_path.as_str())?,
+            path_handler
         )?;
         helpers::update_file_with_hash(
             object_hash.as_str(),
             IndexFileEntryState::Staged.to_string().as_str(),
             path,
+            path_handler
         )?;
 
         Ok(())
     }
 
     /// Removes a file from the staging area.
-    pub fn remove_file(&self, path: &str) -> Result<(), Box<dyn Error>> {
+    pub fn remove_file(&self, path: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
         // Read the file into a vector of lines.
-        let file_contents = fs::read_to_string(PathHandler::get_relative_path(INDEX_FILE))?;
+        let file_contents = fs::read_to_string(path_handler.get_relative_path(INDEX_FILE))?;
 
         // Split the file contents into lines.
         let mut lines: Vec<String> = file_contents.lines().map(|s| s.to_string()).collect();
@@ -373,26 +421,42 @@ impl StagingArea {
         let updated_contents = lines.join("\n");
 
         // Write the updated contents back to the file.
-        fs::write(PathHandler::get_relative_path(INDEX_FILE), updated_contents)?;
+        fs::write(path_handler.get_relative_path(INDEX_FILE), updated_contents)?;
 
         Ok(())
     }
 
-    pub fn unstage_index_file(&self) -> Result<(), Box<dyn Error>> {
+    pub fn unstage_index_file(&self, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
         let index_file_content =
-            helpers::read_file_content(&PathHandler::get_relative_path(INDEX_FILE))?;
+            helpers::read_file_content(&path_handler.get_relative_path(INDEX_FILE))?;
         let mut lines: Vec<String> = index_file_content.lines().map(|s| s.to_string()).collect();
-        let mut new_index_file_content = String::new();
-
+        let mut new_index_file_content: Vec<String> = Vec::new();
+        
         for line in lines.iter_mut() {
             line.pop();
             line.push_str(IndexFileEntryState::Cached.to_string().as_str());
-            new_index_file_content.push_str(line);
-            new_index_file_content.push('\n'); // Add a newline between lines
+            new_index_file_content.push(line.to_string());
         }
 
-        let mut index_file = fs::File::create(PathHandler::get_relative_path(INDEX_FILE))?;
-        index_file.write_all(new_index_file_content.as_bytes())?;
+        let mut index_file = fs::File::create(path_handler.get_relative_path(INDEX_FILE))?;
+        index_file.write_all(new_index_file_content.join("\n").as_bytes())?;
+        Ok(())
+    }
+
+    pub fn stage_index_file(&self, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
+        let index_file_content =
+            helpers::read_file_content(&path_handler.get_relative_path(INDEX_FILE))?;
+        let mut lines: Vec<String> = index_file_content.lines().map(|s| s.to_string()).collect();
+        let mut new_index_file_content: Vec<String> = Vec::new();
+        
+        for line in lines.iter_mut() {
+            line.pop();
+            line.push_str(IndexFileEntryState::Staged.to_string().as_str());
+            new_index_file_content.push(line.to_string());
+        }
+
+        let mut index_file = fs::File::create(path_handler.get_relative_path(INDEX_FILE))?;
+        index_file.write_all(new_index_file_content.join("\n").as_bytes())?;
         Ok(())
     }
 
@@ -423,61 +487,24 @@ impl StagingArea {
                 }
             }
         }
-        // println!("state: {:?}, result: {:?}", state.to_string(), result);
 
         Ok(result)
     }
 
-    pub fn change_index_file(&self, commit_tree: String) -> Result<(), Box<dyn Error>> {
-        // println!("change index file for tree: {}", commit_tree);
-        let mut index_file = fs::File::create(PathHandler::get_relative_path(INDEX_FILE))?;
-        let mut new_index_content = String::new();
 
-        // println!("antes del tree content");
-
-        // el pull no lee bien el objeto. el tree se esta guardando con un hash distinto
-        let tree_content: Vec<(String, String, String)> = helpers::read_tree_content(&commit_tree)?;
-        // println!("tree content");
-
-        // let tree_lines: Vec<String> = tree_content.lines().map(|s| s.to_string()).collect();
-        // println!("tree lines: {:?}", tree_lines);
-        // let tree_split_line: Vec<String> = commit_file_lines[0].split_whitespace().map(String::from).collect();
-
-        // let tree_hash_trimmed = &tree_split_line[1];
-        StagingArea::create_index_content(&mut new_index_content, &tree_content, "")?;
-        // println!("new content: {}", new_index_content);
-        index_file.write_all(new_index_content.as_bytes())?;
-        Ok(())
-    }
-
-    fn create_index_content(
-        index_content: &mut String,
-        tree_data: &Vec<(String, String, String)>,
-        partial_path: &str,
-    ) -> Result<(), Box<dyn Error>> {
-        for (file_mode, file_name, file_hash) in tree_data {
-            if file_mode == TREE_SUBTREE_MODE {
-                let directory_path = format!("{}{}/", partial_path, file_name);
-                // println!("dir path: {}", directory_path);
-                let sub_tree_content = helpers::read_tree_content(file_hash)?;
-                // let sub_tree_lines: Vec<String> = sub_tree_content.lines().map(|s| s.to_string()).collect();
-                StagingArea::create_index_content(
-                    index_content,
-                    &sub_tree_content,
-                    &directory_path,
-                )?
-            } else {
-                let index_line = format!(
-                    "{}{};{};{}\n",
-                    partial_path,
-                    file_name,
-                    file_hash,
-                    IndexFileEntryState::Cached
-                );
-                // println!("index line: {}", index_line);
-                index_content.push_str(index_line.as_str());
-            }
+    pub fn change_index_file(&self, working_tree: HashMap<String, String>, conflicted_file: Vec<(String, String)>, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
+        let mut new_index_lines: Vec<String> = Vec::new();
+        for (file_name, file_hash) in working_tree {
+            let new_line = format!("{};{};{}", file_name, file_hash, IndexFileEntryState::Staged);
+            new_index_lines.push(new_line);
         }
+        for (file_name, file_hash) in conflicted_file {
+            let new_line = format!("{};{};{}", file_name, file_hash, IndexFileEntryState::Conflicted);
+            new_index_lines.push(new_line);
+        }
+        let new_index_content = new_index_lines.join("\n");
+        let mut index_file = fs::File::create(path_handler.get_relative_path(INDEX_FILE))?;
+        index_file.write_all(new_index_content.as_bytes())?;
         Ok(())
     }
 }
@@ -533,17 +560,16 @@ pub struct WorkingDirectory;
 
 impl WorkingDirectory {
     fn remove_file_and_empty_parent_directories(file_path: &Path) -> Result<(), Box<dyn Error>> {
-        fs::remove_file(file_path)?;
+        let _ = fs::remove_file(file_path);
 
         let mut current_dir = file_path.parent();
 
         while let Some(parent) = current_dir {
-            println!("{:?}", parent);
             if parent == Path::new("") {
                 break;
             }
             if fs::read_dir(parent)?.next().is_none() {
-                fs::remove_dir(parent)?;
+                let _ = fs::remove_dir(parent);
                 current_dir = parent.parent();
             } else {
                 break;
@@ -552,15 +578,16 @@ impl WorkingDirectory {
         Ok(())
     }
 
-    pub fn clean_working_directory() -> Result<(), Box<dyn Error>> {
+    /// Goes through the files in the index file and deletes them from the working directory.
+    /// These files will still be stored as blob objects, and can be created again if needed.
+    pub fn clean_working_directory(path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
         let index_file_content =
-            helpers::read_file_content(&PathHandler::get_relative_path(INDEX_FILE))?;
+            helpers::read_file_content(&path_handler.get_relative_path(INDEX_FILE))?;
         let lines: Vec<String> = index_file_content.lines().map(|s| s.to_string()).collect();
 
         for line in lines.iter() {
             let split_line: Vec<String> = line.split(';').map(String::from).collect();
-            let file_path_str = split_line[0].clone();
-            // println!("path to delete: {}", file_path_str);
+            let file_path_str = path_handler.get_relative_path(&split_line[0].clone());
             let file_path = PathBuf::from(file_path_str);
             Self::remove_file_and_empty_parent_directories(&file_path)?;
         }
@@ -568,8 +595,10 @@ impl WorkingDirectory {
         Ok(())
     }
 
-    pub fn update_working_directory_to(new_tree: &str) -> Result<(), Box<dyn Error>> {
-        let _ = Self::create_files_for_directory(new_tree, "");
+    /// Creates the files and directories corresponding to the working tree that a tree
+    /// object has saved.
+    pub fn update_working_directory_to(new_tree: &str, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
+        let _ = Self::create_files_for_directory(new_tree, &path_handler.get_relative_path(""), path_handler);
 
         Ok(())
     }
@@ -577,20 +606,15 @@ impl WorkingDirectory {
     fn create_files_for_directory(
         tree: &str,
         current_directory: &str,
+        path_handler: &PathHandler
     ) -> Result<(), Box<dyn Error>> {
-        let tree_content = helpers::read_tree_content(tree)?;
-        // println!("tree_content: {:?}", tree_content);
+        let tree_content = helpers::read_tree_content(tree, path_handler)?;
         for (file_mode, file_name, file_hash) in tree_content {
-            // println!("line to create: {} {} {}", file_mode, file_name, file_hash);
-            // let split_line: Vec<String> = line.split_whitespace().map(String::from).collect();
-            // let file_mode = split_line[0].as_str();
-            // let object_hash = split_line[2].clone();
-            // let file_path = &split_line[3];
             let relative_file_path = format!("{}{}", current_directory, file_name);
 
             match file_mode.as_str() {
                 TREE_FILE_MODE => {
-                    let (_, object_content, _) = helpers::read_object_to_string(file_hash)?;
+                    let (_, object_content, _) = helpers::read_object_to_string(file_hash, path_handler)?;
                     // println!("object to write content: {} in path: {}", object_content, relative_file_path);
                     let mut object_file = fs::File::create(relative_file_path)?;
                     object_file.write_all(object_content.as_bytes())?;
@@ -601,7 +625,7 @@ impl WorkingDirectory {
                         fs::create_dir(relative_file_path.clone())?;
                     }
                     let dir_path = format!("{}/", relative_file_path);
-                    return Self::create_files_for_directory(&file_hash, &dir_path);
+                    return Self::create_files_for_directory(&file_hash, &dir_path, path_handler);
                 }
                 _ => {}
             }

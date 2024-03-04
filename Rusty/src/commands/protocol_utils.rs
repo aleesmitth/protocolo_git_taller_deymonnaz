@@ -1,11 +1,12 @@
 use std::{error::Error, io, io::Read};
 
-const LENGTH_BYTES: usize = 4;
-pub const REQUEST_DELIMITER_DONE: &str = "done\n";
-pub const REQUEST_LENGTH_CERO: &str = "0000";
-pub const NAK_RESPONSE: &str = "NAK\n";
-pub const WANT_REQUEST: &str = "want";
-pub const UNPACK_CONFIRMATION: &str = "unpack ok\n";
+// const LENGTH_BYTES: usize = 4;
+// pub const REQUEST_DELIMITER_DONE: &str = "done\n";
+// pub const REQUEST_LENGTH_CERO: &str = "0000";
+// pub const NAK_RESPONSE: &str = "NAK\n";
+// pub const WANT_REQUEST: &str = "want";
+// pub const UNPACK_CONFIRMATION: &str = "unpack ok\n";
+use crate::constants::LENGTH_BYTES;
 
 pub fn format_line_to_send(line: String) -> String {
     format!("{:04x}{}", line.len() + 4, line)

@@ -1,15 +1,14 @@
-use crate::commands::git_commands::Command;
-use crate::commands::git_commands::PackObjects;
-use crate::commands::git_commands::PathHandler;
 use crate::commands::protocol_utils;
 use crate::commands::structs::Head;
-
-pub const ZERO_HASH: &str = "0000000000000000000000000000000000000000";
+use crate::commands::git_commands::{Command, PackObjects, PathHandler};
+use crate::constants::{ZERO_HASH, REQUEST_DELIMITER_DONE, REQUEST_LENGTH_CERO, WANT_REQUEST, NAK_RESPONSE};
 
 use std::{
     error::Error, fs, io::Read, io::Write, net::Shutdown, net::TcpStream, str, thread,
     time::Duration,
 };
+use crate::commands::helpers::get_client_current_working_repo;
+
 pub struct ClientProtocol;
 
 impl Default for ClientProtocol {
@@ -28,12 +27,12 @@ impl ClientProtocol {
         Ok(TcpStream::connect(address)?)
     }
 
-    pub fn receive_pack(&mut self, remote_url: String) -> Result<(), Box<dyn Error>> {
+    pub fn receive_pack(&mut self, remote_url: String, path_handler: &PathHandler) -> Result<(), Box<dyn Error>> {
         let mut stream = ClientProtocol::connect(&remote_url)?;
         // println!("connect complete");
-
+        let current_repo = get_client_current_working_repo()?;
         let request = protocol_utils::format_line_to_send(
-            "git-receive-pack /projects/.git\0host=127.0.0.1\0".to_string(),
+            format!("git-receive-pack /{}/.git\0host=127.0.0.1\0", current_repo).to_string(),
         );
         // println!("request {}", request);
 
@@ -46,7 +45,7 @@ impl ClientProtocol {
         let mut refs_in_remote: Vec<(String, String)> = Vec::new();
         let mut reader = std::io::BufReader::new(stream.try_clone()?);
         let response_received: Vec<String> =
-            protocol_utils::read_until(&mut reader, protocol_utils::REQUEST_DELIMITER_DONE, true)?;
+            protocol_utils::read_until(&mut reader, REQUEST_DELIMITER_DONE, true)?;
 
         // println!("response received {:?}", response_received);
         for line in response_received.clone() {
@@ -57,8 +56,8 @@ impl ClientProtocol {
             }
         }
 
-        let current_branch_ref = Head::get_current_branch_ref()?;
-        let last_commit_hash: String = Head::get_head_commit()?.replace('\n', "");
+        let current_branch_ref = Head::get_current_branch_ref(path_handler)?;
+        let last_commit_hash: String = Head::get_head_commit(path_handler)?.replace('\n', "");
         // println!("last_commit: {}", last_commit_hash);
         // println!("refs in remote: {:?}", refs_in_remote);
         let mut push_line = String::new();
@@ -85,10 +84,10 @@ impl ClientProtocol {
 
         stream.write_all(push_line.as_bytes())?;
 
-        let _ = stream.write_all(protocol_utils::REQUEST_LENGTH_CERO.as_bytes());
+        let _ = stream.write_all(REQUEST_LENGTH_CERO.as_bytes());
         // println!("sent 0000");
 
-        let pack_checksum = PackObjects::new().execute(Some(vec![&last_commit_hash]))?;
+        let pack_checksum = PackObjects::new().execute(Some(vec![&last_commit_hash]), path_handler)?;
         let pack_file_path = format!(".git/pack/pack-{}.pack", pack_checksum);
         // println!("{}", pack_file_path);
         let mut pack_file = fs::File::open(pack_file_path)?;
@@ -110,12 +109,13 @@ impl ClientProtocol {
     pub fn fetch_from_remote_with_our_server(
         &mut self,
         remote_url: String,
+        path_handler: &PathHandler,
     ) -> Result<Vec<(String, String)>, Box<dyn Error>> {
         let mut stream = ClientProtocol::connect(&remote_url)?;
 
-        // TODO a nuestro server no le importa el relative path por ahora, que pasa si tenemos mas de 1 repo en el sv? arreglar.
+        let current_repo = get_client_current_working_repo()?;
         let request = protocol_utils::format_line_to_send(
-            "git-upload-pack /projects/.git\0host=127.0.0.1\0".to_string(),
+            format!("git-upload-pack /{}/.git\0host=127.0.0.1\0", current_repo).to_string(),
         );
         // println!("{}", request);
 
@@ -127,7 +127,7 @@ impl ClientProtocol {
         let mut refs_in_remote: Vec<(String, String)> = Vec::new();
         let mut reader = std::io::BufReader::new(stream.try_clone()?);
         let response_received: Vec<String> =
-            protocol_utils::read_until(&mut reader, protocol_utils::REQUEST_DELIMITER_DONE, true)?;
+            protocol_utils::read_until(&mut reader, REQUEST_DELIMITER_DONE, true)?;
 
         // println!("response received {:?}", response_received);
         for line in response_received {
@@ -150,30 +150,30 @@ impl ClientProtocol {
         for (ref_hash, _ref_name) in &refs_in_remote {
             let want_request = protocol_utils::format_line_to_send(format!(
                 "{} {}\n",
-                protocol_utils::WANT_REQUEST,
+                WANT_REQUEST,
                 ref_hash
             ));
             // println!("want_request sent: {}\nfor ref: {}", want_request.clone(), ref_name);
             stream.write_all(want_request.as_bytes())?;
         }
-        let _ = stream.write_all(protocol_utils::REQUEST_LENGTH_CERO.as_bytes());
+        let _ = stream.write_all(REQUEST_LENGTH_CERO.as_bytes());
         // println!("sent 0000");
         let _ = stream.write_all(
-            protocol_utils::format_line_to_send(protocol_utils::REQUEST_DELIMITER_DONE.to_string())
+            protocol_utils::format_line_to_send(REQUEST_DELIMITER_DONE.to_string())
                 .as_bytes(),
         );
         // println!("sent done");
         stream.flush()?;
 
         let _read_lines: Vec<String> =
-            protocol_utils::read_until(&mut reader, protocol_utils::NAK_RESPONSE, false)?;
+            protocol_utils::read_until(&mut reader, NAK_RESPONSE, false)?;
         // println!("received NAK");
 
         let mut buffer = Vec::new();
         stream.read_to_end(&mut buffer)?;
         // println!("buffer received: {:?}", buffer);
         // ACA PODRIA HACER EL CHECKSUM: asi ya verifica apenas me llega que esta bien y sino lanzo error
-        let mut file = fs::File::create(PathHandler::get_relative_path(
+        let mut file = fs::File::create(path_handler.get_relative_path(
             ".git/pack/received_pack_file.pack",
         ))?;
         file.write_all(&buffer)?;
