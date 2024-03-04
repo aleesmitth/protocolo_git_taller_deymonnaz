@@ -1,6 +1,6 @@
 use gtk::prelude::*;
 use gtk::*;
-use rusty::commands::commands::*;
+use rusty::commands::git_commands::*;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -17,18 +17,26 @@ const STATUS_COMMAND_NAME: &str = "Status";
 const HEIGHT_BUTTON: i32 = 68;
 const WIDTH_BUTTON: i32 = 108;
 
+
 fn main() {
     let application = Application::builder()
         .application_id("com.example.FirstGtkApp")
         .build();
 
-    application.connect_activate(|app| {
-        let window = ApplicationWindow::builder()
-            .application(app)
-            .title("Rusty User Interface")
-            .default_width(1111)
-            .default_height(HEIGHT_BUTTON * 9)
-            .build();
+        application.connect_activate(|app| {
+            let window = ApplicationWindow::builder()
+                .application(app)
+                .title("RUSTY")
+                .default_width(1111)
+                .default_height(HEIGHT_BUTTON * 9)
+                .build();
+
+        // Load CSS file for styling
+        if let Some(screen) = gtk::prelude::GtkWindowExt::screen(&window) {
+            let css_provider = CssProvider::new();
+            CssProviderExt::load_from_path(&css_provider, "src/ui/style.css").ok();
+            StyleContext::add_provider_for_screen(&screen, &css_provider, STYLE_PROVIDER_PRIORITY_USER);
+        }
 
         let paned = Paned::new(gtk::Orientation::Horizontal);
 
@@ -41,6 +49,7 @@ fn main() {
         let output_label = Label::new(Some(" "));
         output_label.set_size_request(WIDTH_BUTTON, HEIGHT_BUTTON);
         output_label.set_halign(gtk::Align::Start);
+        output_label.style_context().add_class("output_label"); 
         let output_label_ref = Rc::new(RefCell::new(output_label.clone()));
 
         let actual_command = COMMIT_COMMAND_NAME;
@@ -258,7 +267,7 @@ fn main() {
                     Ok(mssg) => {
                         let output_label_mut = output_label_ref.borrow_mut();
                         let success_message = format!(
-                            "<span font_desc='20'>Command run successfully\n{}</span>",
+                            "<span>Command run successfully\n{}</span>",
                             mssg.replace('>', "&gt;")
                             .replace('<', "&lt;")
                             .replace('@', "&#64;")  

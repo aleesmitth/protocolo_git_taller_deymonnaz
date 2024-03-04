@@ -9,7 +9,7 @@ edition = "2021"
 rust-crypto = "0.2.36"
 libflate = "2"
 tempfile = "3.2"
-gtk = { git = "https://github.com/gtk-rs/gtk3-rs.git" }
+gtk = "0.18.1"
 chrono = { version = "0.4", features = ["serde"] }
 
 [[bin]]

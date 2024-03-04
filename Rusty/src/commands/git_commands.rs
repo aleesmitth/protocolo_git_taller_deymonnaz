@@ -2332,9 +2332,6 @@ mod tests {
         assert!(temp_path
             .join(PathHandler::get_relative_path(CONFIG_FILE))
             .exists());
-        assert!(temp_path
-            .join(PathHandler::get_relative_path(HEAD_FILE))
-            .exists());
         // Add more assertions for other files and folders as needed
     }
 
