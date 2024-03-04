@@ -233,8 +233,6 @@ impl ServerProtocol {
     }
 
     pub fn get_pull_request_logs(repo_name: &str, pull_request: Option<&str>, pull_request_path: &str, path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
-        // TODO find pull request by repo + id, if it has merged log the merge commit,
-        // TODO otherwise log the head and the base separately
         println!("log_pull_request repo {} id {:?}", repo_name, pull_request);
         let file_content = helpers::read_file_content(&path_handler.get_relative_path(pull_request_path))?;
         // tenes repo tenes id de PR
@@ -259,6 +257,8 @@ impl ServerProtocol {
             if pr.id == pull_request_id && pr.repo == repo_name {
                 //new_file_content_lines.push(serde_json::to_string(&pr)?);
                 if pr.commit_after_merge.is_empty() {
+                    println!("commit after merge is empty");
+                    println!("áth handler: {}", path_handler.get_relative_path(""));
                     let head_last_commit = match get_branch_last_commit(&get_branch_path(&pr.head), &path_handler) {
                         Ok(commit) => commit,
                         Err(e) => {
@@ -277,9 +277,9 @@ impl ServerProtocol {
                             )));
                         }
                     };
-                    let logs_head = Log::new().execute(Some(vec![&pr.head]), path_handler)?;
-                    let logs_base = Log::new().execute(Some(vec![&pr.base]), path_handler)?;
-                    return Ok(format!("-- PullRequest Head '{}' Log --\n{}\n\n-- PullRequest Base '{}' Log --\n{}", &pr.head,  logs_head, &pr.base,  logs_base));
+                    let logs_head = Log::new().execute(Some(vec![&head_last_commit]), path_handler)?;
+                    let logs_base = Log::new().execute(Some(vec![&base_last_commit]), path_handler)?;
+                    return Ok(format!("\n-- PullRequest Head '{}' Log --\n{}\n\n-- PullRequest Base '{}' Log --\n{}", &pr.head,  logs_head, &pr.base,  logs_base));
                 } else {
                     return Log::new().execute(Some(vec![&pr.commit_after_merge]), path_handler);
                 }
@@ -297,26 +297,26 @@ impl ServerProtocol {
         let params: Vec<&str> = request_url.split('/').collect();
 
         match params.len() {
-            4..=5 => {
+            5..=6 => {
                 if params.len() < 2 {
                     return Err(Box::new(io::Error::new(
                         io::ErrorKind::Other,
-                        "Error: Invalid params in url",
+                        "Error: Invalid params in url < 2",
                     )));
                 }
                 if params[1] != "repos" {
                     return Err(Box::new(io::Error::new(
                         io::ErrorKind::Other,
-                        "Error: Invalid params in url",
+                        "Error: Invalid params in url first param not repos",
                     )));
                 }
                 let repo_name = if params.len() > 2 { Some(params[2]) } else { None };
-                let pull_request = if params.len() > 3 { Some(params[3]) } else { None };
+                let pull_request = if params.len() > 4 { Some(params[4]) } else { None };
 
                 if repo_name.is_none() {
                     return Err(Box::new(io::Error::new(
                         io::ErrorKind::Other,
-                        "Error: Invalid params in url",
+                        "Error: Invalid params in url repo name is none",
                     )));
                 }
 
@@ -325,24 +325,24 @@ impl ServerProtocol {
                 if params[3] != "pulls" {
                     return Err(Box::new(io::Error::new(
                         io::ErrorKind::Other,
-                        "Error: Invalid params in url",
+                        "Error: Invalid params in url params 3 is not pulls",
                     )));
                 }
                 let extra_param = if params.len() == 6 { Some(params[5]) } else { None };
                 println!("Repo Name: {}, Pull Request: {:?}, Extra Param: {:?}", repo_name, pull_request, extra_param);
                 println!("param: {:?}", params);
-                if params.len() == 4 {
+                if params.len() == 5 {
                     return ServerProtocol::get_pull_request(repo_name, None, pull_request_path, path_handler);
                 }
 
                 if pull_request.is_none() {
                     return Err(Box::new(io::Error::new(
                         io::ErrorKind::Other,
-                        "Error: Invalid params in url",
+                        "Error: Invalid params in url pull_request id is none",
                     )));
                 }
 
-                if params.len() == 5 {
+                if params.len() == 4 {
                     return ServerProtocol::get_pull_request(repo_name, pull_request, pull_request_path, path_handler);
                 }
 
@@ -350,14 +350,14 @@ impl ServerProtocol {
                     if extra_param.is_none() {
                         return Err(Box::new(io::Error::new(
                             io::ErrorKind::Other,
-                            "Error: Invalid params in url",
+                            "Error: Invalid params in url extra param is none",
                         )));
                     }
                     if let Some(extra_param) = extra_param {
-                        if extra_param != "commit" {
+                        if extra_param != "commits" {
                             return Err(Box::new(io::Error::new(
                                 io::ErrorKind::Other,
-                                "Error: Invalid params in url",
+                                "Error: Invalid params in url extra param is not commits",
                             )));
 
                         }
@@ -367,7 +367,7 @@ impl ServerProtocol {
                 }
                 return Err(Box::new(io::Error::new(
                     io::ErrorKind::Other,
-                    "Error: Invalid params in url",
+                    "Error: Invalid params in url, no one handled request",
                 )));
 
 
@@ -383,7 +383,19 @@ impl ServerProtocol {
     }
 
     // TODO change return to http response
-    pub fn handle_http(request: Cow<str>, request_type: HttpRequestType, request_url: &str, path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
+    pub fn handle_http(request: Cow<str>, request_type: HttpRequestType, request_url: &str, path_handler: &mut PathHandler) -> Result<String, Box<dyn Error>> {
+
+        let params: Vec<&str> = request_url.split('/').collect();
+        let repo_name = if params.len() > 2 { Some(params[2]) } else { None };
+        let repo = match repo_name {
+            Some(repo) => repo,
+            _ =>
+                return Err(Box::new(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Error: Couldn't parse repo name from url",
+                ))),
+        };
+        path_handler.set_relative_path(path_handler.get_relative_path(repo));
         match request_type {
             HttpRequestType::GET => {
                 // TODO make it so that it returns the http response
