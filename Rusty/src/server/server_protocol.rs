@@ -185,7 +185,7 @@ impl ServerProtocol {
             .append(true)
             .create(true)
             .write(true)
-            .open(path_handler.get_relative_path(pull_request_path.clone())) {
+            .open(path_handler.get_relative_path(pull_request_path)) {
             Ok(file) => file,
             Err(e) => {
                 eprintln!("Error creating file: {}", e);
@@ -239,7 +239,7 @@ impl ServerProtocol {
         let file_content = helpers::read_file_content(&path_handler.get_relative_path(pull_request_path))?;
         // tenes repo tenes id de PR
         //let mut merge_hash = String::new();
-        let mut new_file_content_lines = Vec::new();
+        // let mut new_file_content_lines: Vec<String> = Vec::new();
 
         let file_content_lines: Vec<&str> = file_content.split('\n').collect();
         for line in file_content_lines {
@@ -247,10 +247,10 @@ impl ServerProtocol {
                 continue;
             }
             println!("line in file: {}", line);
-            let mut pr: PullRequest = ServerProtocol::deserialize_pull_request(line.to_string())?;
+            let pr: PullRequest = ServerProtocol::deserialize_pull_request(line.to_string())?;
             let pull_request_id = match pull_request {
-                Ok(id) => id,
-                Err(_) =>
+                Some(id) => id,
+                None =>
                     return Err(Box::new(io::Error::new(
                         io::ErrorKind::Other,
                         "Error: can't log pull request with empty id",
@@ -311,7 +311,7 @@ impl ServerProtocol {
                     )));
                 }
                 let repo_name = if params.len() > 2 { Some(params[2]) } else { None };
-                let pull_request = if params.len() > 3 { Some(params[4]) } else { None };
+                let pull_request = if params.len() > 3 { Some(params[3]) } else { None };
 
                 if repo_name.is_none() {
                     return Err(Box::new(io::Error::new(
@@ -328,10 +328,10 @@ impl ServerProtocol {
                         "Error: Invalid params in url",
                     )));
                 }
-                let extra_param = if params.len() == 5 { Some(params[5]) } else { None };
+                let extra_param = if params.len() == 6 { Some(params[5]) } else { None };
                 println!("Repo Name: {}, Pull Request: {:?}, Extra Param: {:?}", repo_name, pull_request, extra_param);
-
-                if params.len() == 3 {
+                println!("param: {:?}", params);
+                if params.len() == 4 {
                     return ServerProtocol::get_pull_request(repo_name, None, pull_request_path, path_handler);
                 }
 
@@ -342,11 +342,11 @@ impl ServerProtocol {
                     )));
                 }
 
-                if params.len() == 4 {
+                if params.len() == 5 {
                     return ServerProtocol::get_pull_request(repo_name, pull_request, pull_request_path, path_handler);
                 }
 
-                if params.len() == 5 {
+                if params.len() == 6 {
                     if extra_param.is_none() {
                         return Err(Box::new(io::Error::new(
                             io::ErrorKind::Other,
@@ -407,8 +407,6 @@ impl ServerProtocol {
         let mut locked_branches_lifetime = LockedBranches::new(&locked_branches);
         locked_branches_lifetime.lock_branch(ALL_BRANCHES_LOCK, false)?;
 
-        let stream_clone = stream.try_clone()?;
-        //let mut reader = std::io::BufReader::new(stream_clone);
         let mut buffer = [0; 1024];
         stream.read(&mut buffer).expect("Failed to read");
         println!("buffer header:{:?}", buffer);
@@ -426,8 +424,8 @@ impl ServerProtocol {
         };
         println!("sending response to client: {}", final_response);
 
-        stream.write(final_response.as_bytes());
-        stream.flush();
+        let _ = stream.write(final_response.as_bytes());
+        let _ = stream.flush();
 
         drop(locked_branches_lifetime);
 

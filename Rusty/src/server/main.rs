@@ -1,25 +1,12 @@
 use std::collections::HashSet;
 use std::sync::{Mutex, Arc, Condvar};
 use rusty::server::server_protocol::ServerProtocol;
-use std::{env, thread};
+use std::thread;
 
 use rusty::commands::git_commands::PathHandler;
 use rusty::constants::SERVER_BASE_PATH;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    //env::set_var(RELATIVE_PATH, "src/server/");
-
-    /*let database = Database::new();
-
-    let db_pool = database.run().await?;
-
-    // Spawn a new Tokio task to run the Rocket application
-    tokio::spawn(async {
-        if let Err(e) = run_rocket(db_pool).await {
-            eprintln!("Rocket error: {}", e);
-        }
-    });*/
-    // Create a HashSet to store locked branch names
     let locked_branches = Arc::new((Mutex::new(HashSet::new()), Condvar::new()));
 
     let cloned_locked_branches_api = Arc::clone(&locked_branches);

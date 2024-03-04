@@ -1,10 +1,2 @@
-{"id":"123","title":"Updated Title","body":"Updated Body","head":"updated_branch_name","base":"updated_hash_of_base_commit","commit_after_merge":"martin"}{"id": "your_id_value", "title": "your_title_value", "body": "your_body_value", "head": "your_head_value", "base": "your_base_value", "commit_after_merge": "your_commit_after_merge_value", "repo": "myrepo"}
-{"id": "your_id_value", "title": "your_title_value", "body": "your_body_value", "head": "your_head_value", "base": "your_base_value", "commit_after_merge": "your_commit_after_merge_value"}
-{"id": "your_id_value", "title": "your_title_value", "body": "your_body_value", "head": "your_head_value", "base": "your_base_value", "commit_after_merge": "your_commit_after_merge_value", "repo": "myrepo"}
-{"id": "your_id_value", "title": "your_title_value", "body": "your_body_value", "head": "your_head_value", "base": "your_base_value", "commit_after_merge": "your_commit_after_merge_value", "repo": "myrepo"}
-{"id": "your_id_value", "title": "your_title_value", "body": "your_body_value", "head": "your_head_value", "base": "your_base_value", "commit_after_merge": "your_commit_after_merge_value", "repo": "myrepo"}
-{"id": "your_id_value", "title": "your_title_value", "body": "your_body_value", "head": "your_head_value", "base": "your_base_value", "commit_after_merge": "your_commit_after_merge_value", "repo": "myrepo"}
-{"id": "your_id_value", "title": "your_title_value", "body": "your_body_value", "head": "your_head_value", "base": "your_base_value", "commit_after_merge": "your_commit_after_merge_value", "repo": "myrepo"}
-{"id": "your_id_value", "title": "your_title_value", "body": "your_body_value", "head": "your_head_value", "base": "your_base_value", "commit_after_merge": "your_commit_after_merge_value", "repo": "myrepo"}
-{"id": "your_id_value", "title": "your_title_value", "body": "your_body_value", "head": "your_head_value", "base": "your_base_value", "commit_after_merge": "your_commit_after_merge_value", "repo": "myrepo"}
-{"id": "your_id_value", "title": "your_title_value", "body": "your_body_value", "head": "your_head_value", "base": "your_base_value", "commit_after_merge": "your_commit_after_merge_value"}
+
+{"id": "0", "title": "pull", "body": "your_body_value", "head": "your_head_value", "base": "your_base_value", "commit_after_merge": "", "repo": "myrepo"}
