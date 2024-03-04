@@ -1,7 +1,7 @@
 use crate::commands::git_commands::{Command, Merge, PackObjects, PathHandler, UnpackObjects};
 use crate::commands::helpers;
 use crate::commands::protocol_utils;
-use crate::server::locked_branches_manager::*;
+use crate::server::locked_branches_manager::{self, *};
 use std::{collections::HashSet, sync::{Mutex, Arc, Condvar}, thread};
 use crate::constants::{REQUEST_LENGTH_CERO, REQUEST_DELIMITER_DONE, WANT_REQUEST, NAK_RESPONSE, UNPACK_CONFIRMATION, ALL_BRANCHES_LOCK, SERVER_BASE_PATH, PULL_REQUEST_FILE, SEPARATOR_PULL_REQUEST_FILE};
 use std::{error::Error, fs::File, io, io::Read, io::Write, net::TcpListener, net::TcpStream};
@@ -69,7 +69,7 @@ impl ServerProtocol {
 
         // Create a HashSet to store locked branch names
         //let locked_branches = Arc::new((Mutex::new(HashSet::new()), Condvar::new()));
-
+        
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
@@ -299,8 +299,9 @@ impl ServerProtocol {
     pub fn endpoint_handler(stream: &mut TcpStream, path_handler: &mut PathHandler, locked_branches: Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
         // read client request
 
-        // split it
-        // act
+        let mut locked_branches_lifetime = LockedBranches::new(&locked_branches);
+        locked_branches_lifetime.lock_branch(ALL_BRANCHES_LOCK, false)?;
+
         let stream_clone = stream.try_clone()?;
         //let mut reader = std::io::BufReader::new(stream_clone);
         let mut buffer = [0; 1024];
@@ -320,8 +321,7 @@ impl ServerProtocol {
 
         //ServerProtocol::get_body(request);
 
-
-
+        drop(locked_branches_lifetime);
 
         Ok(())
     }
