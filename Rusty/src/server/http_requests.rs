@@ -1,8 +1,9 @@
 use crate::server::server_protocol::ServerProtocol;
 use crate::commands::git_commands::{Command, Log, Merge, PathHandler};
 use crate::commands::helpers;
-use crate::constants::{HTTP_RESPONSE_ERROR, HTTP_RESPONSE_SUCCESFUL, ALL_BRANCHES_LOCK, SERVER_BASE_PATH, PULL_REQUEST_FILE, SEPARATOR_PULL_REQUEST_FILE};
-use std::{error::Error, fs::File, io, io::Read, io::Write, net::TcpStream, borrow::Cow, fs::OpenOptions};
+use crate::constants::{HTTP_RESPONSE_SUCCESFUL, ALL_BRANCHES_LOCK, SERVER_BASE_PATH, PULL_REQUEST_FILE, SEPARATOR_PULL_REQUEST_FILE};
+use std::fmt;
+use std::{error::Error, fs::File, io::Read, io::Write, net::TcpStream, borrow::Cow, fs::OpenOptions};
 use serde::{Serialize, Deserialize};
 use crate::commands::helpers::{get_branch_last_commit, get_branch_path};
 use crate::server::locked_branches_manager::*;
@@ -57,6 +58,33 @@ pub struct ResponseType {
     body: String
 }
 
+#[derive(Debug)]
+pub enum ResponseStatusCode {
+    Forbidden, // 403
+    ValidationFailed, // 422
+    NotFound, // 404
+    InternalError, // 500
+    MethodNotAllowed, // 405
+    ConflictingSha, // 409
+    BadRequest // 400
+}
+
+impl fmt::Display for ResponseStatusCode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let string = match self {
+            ResponseStatusCode::BadRequest => "400 Bad Request",
+            ResponseStatusCode::Forbidden => "403 Forbidden", 
+            ResponseStatusCode::NotFound => "404 Not Found",
+            ResponseStatusCode::MethodNotAllowed => "405 Method Not Allowed",
+            ResponseStatusCode::ConflictingSha => "409 Conflict",
+            ResponseStatusCode::ValidationFailed => "422 Unprocessable Content",
+            ResponseStatusCode::InternalError => "500 Internal Server Error"
+            
+        };
+        write!(f, "{}", string)
+    }
+}
+
 
 impl HttpRequestType {
     fn new(method: &str) -> Self {
@@ -77,7 +105,7 @@ pub struct HttpRequestHandler;
 impl HttpRequestHandler {
     pub fn handle_api_requests(locked_branches: &Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
         let listener = ServerProtocol::bind("127.0.0.1:8081")?; // Default Git port
-        println!("bind api complete");
+        println!("Bind API complete");
         
         for stream in listener.incoming() {
             match stream {
@@ -99,24 +127,21 @@ impl HttpRequestHandler {
         Ok(())
     }
 
-    pub fn deserialize_pull_request(json: String) -> Result<PullRequest, Box<dyn Error>> {
+    pub fn deserialize_pull_request(json: String) -> Result<PullRequest, ResponseStatusCode> {
         // Deserialize the JSON data into a PullRequest object
         match serde_json::from_str::<PullRequest>(&json) {
             Ok(pull_request) => {
                 println!("Parsed PullRequest: {:?}", pull_request);
                 Ok(pull_request)
             }
-            Err(e) => {
-                Err(Box::new(io::Error::new(
-                    io::ErrorKind::Other,
-                    format!("Error deserializing JSON: {}", e),
-                )))
+            Err(_) => {
+                Err(ResponseStatusCode::InternalError)
             }
         }
     }
 
-    pub fn get_body(request: Cow<str>) -> Result<String, Box<dyn Error>> {
-        println!("getting body from req: {:?}", request);
+    pub fn get_body(request: Cow<str>) -> Result<String, ResponseStatusCode> {
+        println!("Getting body from req: {:?}", request);
         if let Some(body_index) = request.find("\r\n\r\n") {
             let body = &request[body_index + 4..];
 
@@ -137,14 +162,15 @@ impl HttpRequestHandler {
                 }
             }
         }
-        println!("throwing error");
-        Err(Box::new(io::Error::new(
+        println!("Throwing error");
+        Err(ResponseStatusCode::BadRequest)
+        /*Err(Box::new(io::Error::new(
             io::ErrorKind::Other,
             "Error: JSON object not found in the received data.",
-        )))
+        )))*/
     }
 
-    pub fn merge_pull_request(request: Cow<str>, pull_request_path: &str, _request_url: &str, path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
+    pub fn merge_pull_request(request: Cow<str>, pull_request_path: &str, _request_url: &str, path_handler: &PathHandler) -> Result<String, ResponseStatusCode> {
         let split_request: Vec<&str> = request.split_whitespace().collect();
         let url = split_request[1];
 
@@ -152,15 +178,15 @@ impl HttpRequestHandler {
 
         let pull_request_id = match split_url.get(4) {
             Some(pr_id) => pr_id,
-            None => return Err(Box::new(io::Error::new(
-                io::ErrorKind::Other,
-                format!("Error: URL received was invalid. Can not parse pull request id."),
-            ))),
+            None => return Err(ResponseStatusCode::BadRequest),
         };
 
-        let file_content = helpers::read_file_content(&path_handler.get_relative_path(pull_request_path))?;
+        let file_content = match  helpers::read_file_content(&path_handler.get_relative_path(pull_request_path)){
+            Ok(file_content) => file_content,
+            Err(_) => return Err(ResponseStatusCode::InternalError)
+        }; 
         
-        let mut merge_hash = String::new();
+        let merge_hash = String::new();
         let mut new_file_content_lines = Vec::new();
 
         let file_content_lines: Vec<&str> = file_content.split('\n').collect();
@@ -172,28 +198,36 @@ impl HttpRequestHandler {
 
             if !pr.commit_after_merge.is_empty() {
                 eprintln!("Can not merge a pull request again.");
-                return Err(Box::new(io::Error::new(
-                    io::ErrorKind::Other,
-                    format!("Error: Can not merge pull request again."),
-                )))
+                return Err(ResponseStatusCode::MethodNotAllowed)
             }
 
             if pr.id == *pull_request_id {
-                merge_hash = Merge::new().execute(Some(vec![&pr.head, &pr.base]), path_handler)?;
+                let merge_hash = match Merge::new().execute(Some(vec![&pr.head, &pr.base]), path_handler){
+                    Ok(merge_hash) => merge_hash,
+                    Err(_) => return Err(ResponseStatusCode::InternalError)
+                };
                 pr.commit_after_merge = merge_hash.clone();
-                new_file_content_lines.push(serde_json::to_string(&pr)?);
+                if let Ok(seralized_pr) = serde_json::to_string(&pr){
+                    new_file_content_lines.push(seralized_pr)
+                }
+
             } else {
                 new_file_content_lines.push(line.to_string());
             }
         }
 
-        let mut file = File::create(path_handler.get_relative_path(pull_request_path))?;
-        file.write_all(new_file_content_lines.join("\n").as_bytes())?;
+        let mut file = match File::create(path_handler.get_relative_path(pull_request_path)){
+            Ok(file) => file,
+            Err(_) => return Err(ResponseStatusCode::InternalError)
+        };
+        if let Err(_) = file.write_all(new_file_content_lines.join("\n").as_bytes()){
+            return Err(ResponseStatusCode::InternalError)
+        }
 
         Ok(merge_hash)
     }
 
-    pub fn add_pull_request(request: Cow<str>, pull_request_path: &str, path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
+    pub fn add_pull_request(request: Cow<str>, pull_request_path: &str, path_handler: &PathHandler) -> Result<String, ResponseStatusCode> {
         let mut file = match OpenOptions::new()
             .append(true)
             .create(true)
@@ -202,22 +236,22 @@ impl HttpRequestHandler {
             Ok(file) => file,
             Err(e) => {
                 eprintln!("Error creating file: {}", e);
-                return Err(Box::new(io::Error::new(
-                    io::ErrorKind::Other,
-                    "Error: Can't open pull request file",
-                )));
+                return Err(ResponseStatusCode::InternalError);
             }
         };
 
-        match file.write_all(format!("{}{}", HttpRequestHandler::get_body(request)?, SEPARATOR_PULL_REQUEST_FILE).as_bytes()) {
+        match file.write_all(format!("{:?}{}", HttpRequestHandler::get_body(request), SEPARATOR_PULL_REQUEST_FILE).as_bytes()) {
             Ok(_) => println!("Content written to file successfully."),
             Err(e) => eprintln!("Error writing to file: {}", e),
         }
         Ok("Pull Request added.".to_string())
     }
 
-    pub fn get_pull_request(pull_request: Option<&str>, pull_request_path: &str, path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
-        let file_content = helpers::read_file_content(&path_handler.get_relative_path(pull_request_path))?;
+    pub fn get_pull_request(pull_request: Option<&str>, pull_request_path: &str, path_handler: &PathHandler) -> Result<String, ResponseStatusCode> {
+        let file_content = match helpers::read_file_content(&path_handler.get_relative_path(pull_request_path)){
+            Ok(file_content) => file_content,
+            Err(_) => return  Err(ResponseStatusCode::InternalError)
+        };
         let mut pull_requests_response = Vec::new();
 
         let file_content_lines: Vec<&str> = file_content.split('\n').collect();
@@ -230,16 +264,22 @@ impl HttpRequestHandler {
                 pull_request.unwrap_or("")
             } else { &pr.id };
             if pr.id == pull_request_id {
-                pull_requests_response.push(serde_json::to_string(&pr)?);
+                if let Ok(seralized_pr) = serde_json::to_string(&pr){
+                    pull_requests_response.push(seralized_pr)
+                }
             }
+            
         }
 
         Ok(pull_requests_response.join("\n"))
     }
 
-    pub fn get_pull_request_logs(pull_request: Option<&str>, pull_request_path: &str, path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
+    pub fn get_pull_request_logs(pull_request: Option<&str>, pull_request_path: &str, path_handler: &PathHandler) -> Result<String, ResponseStatusCode> {
         println!("log_pull_request id {:?}", pull_request);
-        let file_content = helpers::read_file_content(&path_handler.get_relative_path(pull_request_path))?;
+        let file_content = match helpers::read_file_content(&path_handler.get_relative_path(pull_request_path)){
+            Ok(file_content) => file_content,
+            Err(_) => return Err(ResponseStatusCode::InternalError)
+        };
 
         let file_content_lines: Vec<&str> = file_content.split('\n').collect();
         for line in file_content_lines {
@@ -250,48 +290,45 @@ impl HttpRequestHandler {
             let pull_request_id = match pull_request {
                 Some(id) => id,
                 None =>
-                    return Err(Box::new(io::Error::new(
-                        io::ErrorKind::Other,
-                        "Error: can't log pull request with empty id",
-                    )))
+                    return Err(ResponseStatusCode::ValidationFailed)
             };
             if pr.id == pull_request_id {
-                //new_file_content_lines.push(serde_json::to_string(&pr)?);
+                
                 if pr.commit_after_merge.is_empty() {
                     println!("commit after merge is empty");
                     let head_last_commit = match get_branch_last_commit(&get_branch_path(&pr.head), path_handler) {
                         Ok(commit) => commit,
-                        Err(e) => {
-                            return Err(Box::new(io::Error::new(
-                                io::ErrorKind::Other,
-                                format!("Error finding last commit of branch {}, {}", &pr.head, e),
-                            )));
+                        Err(_) => {
+                            return Err(ResponseStatusCode::InternalError);
                         }
                     };
                     let base_last_commit = match get_branch_last_commit(&get_branch_path(&pr.base), path_handler) {
                         Ok(commit) => commit,
-                        Err(e) => {
-                            return Err(Box::new(io::Error::new(
-                                io::ErrorKind::Other,
-                                format!("Error finding last commit of branch {}, {}", &pr.base, e),
-                            )));
+                        Err(_) => {
+                            return Err(ResponseStatusCode::InternalError);
                         }
                     };
-                    let logs_head = Log::new().execute(Some(vec![&head_last_commit]), path_handler)?;
-                    let logs_base = Log::new().execute(Some(vec![&base_last_commit]), path_handler)?;
+                    let logs_head = match Log::new().execute(Some(vec![&head_last_commit]), path_handler){
+                        Ok(logs_head) => logs_head,
+                        Err(_) => return Err(ResponseStatusCode::InternalError)
+                    };
+                    let logs_base = match Log::new().execute(Some(vec![&base_last_commit]), path_handler){
+                        Ok(logs_base) => logs_base,
+                        Err(_) => return Err(ResponseStatusCode::InternalError)
+                    };
                     return Ok(format!("\n-- PullRequest Head '{}' Log --\n{}\n\n-- PullRequest Base '{}' Log --\n{}", &pr.head,  logs_head, &pr.base,  logs_base));
                 } 
-                return Log::new().execute(Some(vec![&pr.commit_after_merge]), path_handler);
+                return match Log::new().execute(Some(vec![&pr.commit_after_merge]), path_handler) {
+                    Ok(log) => Ok(log),
+                    Err(_) => Err(ResponseStatusCode::InternalError)
+                }
             }
         }
 
-        Err(Box::new(io::Error::new(
-            io::ErrorKind::Other,
-            "Error: Error generating logs",
-        )))
+        Err(ResponseStatusCode::NotFound)
     }
 
-    pub fn handle_get_request(_request: Cow<str>, pull_request_path: &str, request_url: &str, path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
+    pub fn handle_get_request(_request: Cow<str>, pull_request_path: &str, request_url: &str, path_handler: &PathHandler) -> Result<String, ResponseStatusCode> {
         // Split the string by "/"
         let params: Vec<&str> = request_url.split('/').collect();
 
@@ -300,10 +337,7 @@ impl HttpRequestHandler {
                 let pull_request = if params.len() > 4 { Some(params[4]) } else { None };
 
                 if params[3] != "pulls" {
-                    return Err(Box::new(io::Error::new(
-                        io::ErrorKind::Other,
-                        "Error: Invalid params in url params 3 is not pulls",
-                    )));
+                    return Err(ResponseStatusCode::BadRequest);
                 }
                 let extra_param = if params.len() == 6 { Some(params[5]) } else { None };
                 println!("Pull Request: {:?}, Extra Param: {:?}", pull_request, extra_param);
@@ -312,10 +346,7 @@ impl HttpRequestHandler {
                 }
 
                 if pull_request.is_none() {
-                    return Err(Box::new(io::Error::new(
-                        io::ErrorKind::Other,
-                        "Error: Invalid params in url pull_request id is none",
-                    )))
+                    return Err(ResponseStatusCode::BadRequest)
                 }
 
                 if params.len() == 5 {
@@ -324,66 +355,40 @@ impl HttpRequestHandler {
 
                 if params.len() == 6 {
                     if extra_param.is_none() {
-                        return Err(Box::new(io::Error::new(
-                            io::ErrorKind::Other,
-                            "Error: Invalid params in url extra param is none",
-                        )))
+                        return Err(ResponseStatusCode::BadRequest)
                     }
                     if let Some(extra_param) = extra_param {
                         if extra_param != "commits" {
-                            return Err(Box::new(io::Error::new(
-                                io::ErrorKind::Other,
-                                "Error: Invalid params in url extra param is not commits",
-                            )))
+                            return Err(ResponseStatusCode::BadRequest)
 
                         }
                         return HttpRequestHandler::get_pull_request_logs(pull_request, pull_request_path, path_handler);
 
                     }
                 }
-                Err(Box::new(io::Error::new(
-                    io::ErrorKind::Other,
-                    "Error: Invalid params in url, no one handled request",
-                )))
-
-
+                Err(ResponseStatusCode::BadRequest)
 
             }
             _ => {
-                Err(Box::new(io::Error::new(
-                    io::ErrorKind::Other,
-                    "Error: Invalid number of params in url",
-                )))
+                Err(ResponseStatusCode::BadRequest)
             }
         }
     }
 
     // TODO change return to http response
-    pub fn handle_http(request: Cow<str>, request_type: HttpRequestType, request_url: &str, path_handler: &mut PathHandler) -> Result<String, Box<dyn Error>> {
+    pub fn handle_http(request: Cow<str>, request_type: HttpRequestType, request_url: &str, path_handler: &mut PathHandler) -> Result<String, ResponseStatusCode> {
 
         let params: Vec<&str> = request_url.split('/').collect();
 
-        if params.len() < 2 {
-            return Err(Box::new(io::Error::new(
-                io::ErrorKind::Other,
-                "Error: Invalid params in url < 2",
-            )));
-        }
-        if params[1] != "repos" {
-            return Err(Box::new(io::Error::new(
-                io::ErrorKind::Other,
-                "Error: Invalid params in url first param not repos",
-            )));
+        if params.len() < 2 || params[1] != "repos" {
+            return Err(ResponseStatusCode::BadRequest);
         }
 
         let repo_name = if params.len() > 2 { Some(params[2]) } else { None };
         let repo = match repo_name {
             Some(repo) => repo,
             _ =>
-                return Err(Box::new(io::Error::new(
-                    io::ErrorKind::Other,
-                    "Error: Couldn't parse repo name from url",
-                ))),
+                return Err(ResponseStatusCode::BadRequest),
         };
         path_handler.set_relative_path(path_handler.get_relative_path(repo));
         match request_type {
@@ -407,7 +412,7 @@ impl HttpRequestHandler {
         locked_branches_lifetime.lock_branch(ALL_BRANCHES_LOCK, false)?;
 
         let mut buffer = [0; 1024];
-        stream.read(&mut buffer).expect("Failed to read");
+        stream.read(&mut buffer)?;
 
         let request = String::from_utf8_lossy(&buffer[..]);
         let request_type: &str = request.split_whitespace().next().unwrap_or("");
@@ -417,9 +422,9 @@ impl HttpRequestHandler {
         let http_request_type = HttpRequestType::new(request_type);
         let final_response = match HttpRequestHandler::handle_http(request.clone(), http_request_type, request_url, path_handler) {
             Ok(http_response) => format!("{}\r\nContent-Length: {}\r\n\r\n{}", HTTP_RESPONSE_SUCCESFUL, http_response.len(), http_response),
-            Err(_) => format!("{}\r\n\r\n\r\n", HTTP_RESPONSE_ERROR),
+            Err(error) => format!("HTTP/1.1 {}\r\n\r\n\r\n", error),
         };
-        println!("sending response to client: {}", final_response);
+        println!("Sending response to client: {}", final_response);
 
         let _ = stream.write(final_response.as_bytes());
         let _ = stream.flush();
