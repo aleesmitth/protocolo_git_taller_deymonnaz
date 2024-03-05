@@ -3,6 +3,7 @@ use crate::commands::git_commands::{Command, Log, Merge, PathHandler};
 use crate::commands::helpers;
 use crate::constants::{HTTP_RESPONSE_ERROR, HTTP_RESPONSE_SUCCESFUL, ALL_BRANCHES_LOCK, SERVER_BASE_PATH, PULL_REQUEST_FILE, SEPARATOR_PULL_REQUEST_FILE};
 use std::{error::Error, fs::File, io, io::Read, io::Write, net::TcpStream, borrow::Cow, fs::OpenOptions};
+use gtk::glib::Slice;
 use serde::{Serialize, Deserialize};
 use crate::commands::helpers::{get_branch_last_commit, get_branch_path};
 use crate::server::locked_branches_manager::*;
@@ -18,7 +19,6 @@ pub struct PullRequest {
     base: String,
     repo: String,
     commit_after_merge: String,
-
 }
 
 pub enum HttpRequestType {
@@ -26,6 +26,37 @@ pub enum HttpRequestType {
     PUT,
     GET,
 }
+
+pub struct RepoResponse {
+    name: String,
+    default_branch: String
+}
+
+pub struct BranchResponse {
+    label: String,
+    sha: String,
+    repo: RepoResponse
+}
+
+pub struct MergeResponseType {
+    sha: String,
+    merged: bool,
+    messege: String
+}
+
+pub struct ResponseType {
+    url: String,
+    id: i32, // Pull Request Id
+    state: String, // Open, Close
+    title: String,
+    created_at: String,
+    merged_at: String,
+    merge_commit_sha: String,
+    head: BranchResponse,
+    base: BranchResponse,
+    body: String
+}
+
 impl HttpRequestType {
     fn new(method: &str) -> Self {
         match method {
@@ -39,6 +70,15 @@ impl HttpRequestType {
         }
     }
 }
+/* 
+impl ResponseType {
+    fn new(pr: PullRequest) -> Self {
+        ResponseType{
+
+        }
+    }
+}
+*/
 
 pub struct HttpRequestHandler;
 
@@ -211,7 +251,7 @@ impl HttpRequestHandler {
                     )))
             };
             if pr.id == pull_request_id {
-                //new_file_content_lines.push(serde_json::to_string(&pr)?);
+                
                 if pr.commit_after_merge.is_empty() {
                     println!("commit after merge is empty");
                     let head_last_commit = match get_branch_last_commit(&get_branch_path(&pr.head), path_handler) {
@@ -301,8 +341,6 @@ impl HttpRequestHandler {
                     "Error: Invalid params in url, no one handled request",
                 )))
 
-
-
             }
             _ => {
                 Err(Box::new(io::Error::new(
@@ -357,7 +395,6 @@ impl HttpRequestHandler {
 
     pub fn endpoint_handler(stream: &mut TcpStream, path_handler: &mut PathHandler, locked_branches: Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
         // read client request
-
         let mut locked_branches_lifetime = LockedBranches::new(&locked_branches);
         locked_branches_lifetime.lock_branch(ALL_BRANCHES_LOCK, false)?;
 

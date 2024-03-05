@@ -1,2 +1,0 @@
-
-{"id": "0", "title": "pull", "body": "your_body_value", "head": "your_head_value", "base": "your_base_value", "commit_after_merge": "", "repo": "myrepo"}
