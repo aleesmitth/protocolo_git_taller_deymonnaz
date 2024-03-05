@@ -84,6 +84,7 @@ impl HttpRequestHandler {
     }
 
     pub fn get_body(request: Cow<str>) -> Result<String, Box<dyn Error>> {
+        println!("getting body from req: {:?}", request);
         if let Some(body_index) = request.find("\r\n\r\n") {
             let body = &request[body_index + 4..];
 
@@ -104,6 +105,7 @@ impl HttpRequestHandler {
                 }
             }
         }
+        println!("throwing error");
         Err(Box::new(io::Error::new(
             io::ErrorKind::Other,
             "Error: JSON object not found in the received data.",
@@ -113,15 +115,19 @@ impl HttpRequestHandler {
     pub fn merge_pull_request(request: Cow<str>, pull_request_path: &str, _request_url: &str, path_handler: &PathHandler) -> Result<String, Box<dyn Error>> {
         let split_request: Vec<&str> = request.split_whitespace().collect();
         let url = split_request[1];
-        println!("my url: {}", url);
 
         let split_url: Vec<&str> = url.split('/').collect();
-        let pull_request_id = split_url[4];
 
-        let _body = HttpRequestHandler::get_body(request.clone())?;
+        let pull_request_id = match split_url.get(4) {
+            Some(pr_id) => pr_id,
+            None => return Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                format!("Error: URL received was invalid. Can not parse pull request id."),
+            ))),
+        };
 
         let file_content = helpers::read_file_content(&path_handler.get_relative_path(pull_request_path))?;
-
+        
         let mut merge_hash = String::new();
         let mut new_file_content_lines = Vec::new();
 
@@ -130,10 +136,17 @@ impl HttpRequestHandler {
             if line.is_empty() {
                 continue;
             }
-            println!("line in file: {}", line);
             let mut pr: PullRequest = HttpRequestHandler::deserialize_pull_request(line.to_string())?;
 
-            if pr.id == pull_request_id {
+            if !pr.commit_after_merge.is_empty() {
+                eprintln!("Can not merge a pull request again.");
+                return Err(Box::new(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("Error: Can not merge pull request again."),
+                )))
+            }
+
+            if pr.id == *pull_request_id {
                 merge_hash = Merge::new().execute(Some(vec![&pr.head, &pr.base]), path_handler)?;
                 pr.commit_after_merge = merge_hash.clone();
                 new_file_content_lines.push(serde_json::to_string(&pr)?);
@@ -362,7 +375,7 @@ impl HttpRequestHandler {
         locked_branches_lifetime.lock_branch(ALL_BRANCHES_LOCK, false)?;
 
         let mut buffer = [0; 1024];
-        stream.read_exact(&mut buffer).expect("Failed to read");
+        stream.read(&mut buffer).expect("Failed to read");
 
         let request = String::from_utf8_lossy(&buffer[..]);
         let request_type: &str = request.split_whitespace().next().unwrap_or("");
