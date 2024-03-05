@@ -26,6 +26,38 @@ pub enum HttpRequestType {
     PUT,
     GET,
 }
+
+pub struct RepoResponse {
+    name: String,
+    default_branch: String
+}
+
+pub struct BranchResponse {
+    label: String,
+    sha: String,
+    repo: RepoResponse
+}
+
+pub struct MergeResponseType {
+    sha: String,
+    merged: bool,
+    messege: String
+}
+
+pub struct ResponseType {
+    url: String,
+    id: i32, // Pull Request Id
+    state: String, // Open, Close
+    title: String,
+    created_at: String,
+    merged_at: String,
+    merge_commit_sha: String,
+    head: BranchResponse,
+    base: BranchResponse,
+    body: String
+}
+
+
 impl HttpRequestType {
     fn new(method: &str) -> Self {
         match method {
