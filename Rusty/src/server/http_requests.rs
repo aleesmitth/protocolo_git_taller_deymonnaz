@@ -174,12 +174,23 @@ impl HttpRequestHandler {
         let split_request: Vec<&str> = request.split_whitespace().collect();
         let url = split_request[1];
 
+        println!("url: {}", url);
+
         let split_url: Vec<&str> = url.split('/').collect();
+
+        match split_url.get(5) {
+            Some(merge) => {
+                if *merge != "merge" {
+                    return Err(ResponseStatusCode::BadRequest);
+                }
+            }
+            None => return Err(ResponseStatusCode::BadRequest)
+        }
 
         let pull_request_id = match split_url.get(4) {
             Some(pr_id) => pr_id,
             None => return Err(ResponseStatusCode::BadRequest),
-        };
+        };       
 
         let file_content = match  helpers::read_file_content(&path_handler.get_relative_path(pull_request_path)){
             Ok(file_content) => file_content,
