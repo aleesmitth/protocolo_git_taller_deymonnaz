@@ -1,9 +1,10 @@
 use crate::server::server_protocol::ServerProtocol;
 use crate::commands::git_commands::{Command, Log, Merge, PathHandler};
 use crate::commands::helpers;
-use crate::constants::{HTTP_RESPONSE_SUCCESFUL, ALL_BRANCHES_LOCK, SERVER_BASE_PATH, PULL_REQUEST_FILE, SEPARATOR_PULL_REQUEST_FILE};
+use crate::constants::{ALL_BRANCHES_LOCK, DEFAULT_BRANCH_NAME, HTTP_RESPONSE_SUCCESFUL, PULL_REQUEST_FILE, SEPARATOR_PULL_REQUEST_FILE, SERVER_BASE_PATH};
 use std::fmt;
 use std::{error::Error, fs::File, io::Read, io::Write, net::TcpStream, borrow::Cow, fs::OpenOptions};
+use gtk::glib::DateTime;
 use serde::{Serialize, Deserialize};
 use crate::commands::helpers::{get_branch_last_commit, get_branch_path};
 use crate::server::locked_branches_manager::*;
@@ -27,32 +28,30 @@ pub enum HttpRequestType {
     PUT,
     GET,
 }
-
+#[derive(Debug, Serialize,Deserialize)]
 pub struct RepoResponse {
     name: String,
     default_branch: String
 }
-
+#[derive(Debug, Serialize,Deserialize)]
 pub struct BranchResponse {
     label: String,
     sha: String,
     repo: RepoResponse
 }
-
+#[derive(Debug, Serialize,Deserialize)]
 pub struct MergeResponseType {
     sha: String,
     merged: bool,
     messege: String
 }
 
+#[derive(Debug, Serialize,Deserialize)]
 pub struct ResponseType {
     url: String,
-    id: i32, // Pull Request Id
-    state: String, // Open, Close
+    id: String, // Pull Request Ids
     title: String,
-    created_at: String,
-    merged_at: String,
-    merge_commit_sha: String,
+    merge_commit_sha: Option<String>,
     head: BranchResponse,
     base: BranchResponse,
     body: String
@@ -67,6 +66,71 @@ pub enum ResponseStatusCode {
     MethodNotAllowed, // 405
     ConflictingSha, // 409
     BadRequest // 400
+}
+
+pub enum SuccessResponseStatusCode {
+    Success, //200
+    Created //201
+}
+#[derive(Debug, Serialize,Deserialize)]
+pub struct SuccessResponse {
+    code: SuccessResponseStatusCode,
+    body: String,
+}
+
+impl RepoResponse {
+    pub fn new(name: String) -> Self {
+        RepoResponse{
+            name,
+            default_branch:DEFAULT_BRANCH_NAME.to_string()
+        }
+    }
+}
+
+impl BranchResponse {
+    pub fn new(label: String, sha: String,repo: RepoResponse) -> Self {
+        BranchResponse{
+            label,
+            sha,
+            repo
+        }
+    }
+}
+
+impl ResponseType {
+    pub fn new(url: String, id: String, title: String, head_name: String, head_sha: String, base_sha:String, base_name: String, body: String, repo_name: String) -> Result<Self, ResponseStatusCode> {
+        
+        let repo = RepoResponse::new(repo_name);
+
+        let head = BranchResponse::new(head_name, head_sha, repo);
+        let base = BranchResponse::new(base_name, base_sha, repo);
+
+        Ok(ResponseType{
+            url,
+            id, // Pull Request Id
+            title,
+            merge_commit_sha:None,
+            head,
+            base,
+            body
+        })
+    }
+}
+
+impl SuccessResponse {
+    pub fn new<T>(value: &T, code: SuccessResponseStatusCode) -> Result<Self, ResponseStatusCode>
+where
+    T: ?Sized + Serialize,
+{
+    let body = match serde_json::to_string(value){
+        Ok(body) => body,
+        Err(_) => return Err(ResponseStatusCode::InternalError)
+    };
+    Ok(SuccessResponse{
+        code,
+        body
+    })
+}
 }
 
 impl fmt::Display for ResponseStatusCode {
@@ -238,7 +302,7 @@ impl HttpRequestHandler {
         Ok(merge_hash)
     }
 
-    pub fn add_pull_request(request: Cow<str>, pull_request_path: &str, path_handler: &PathHandler) -> Result<String, ResponseStatusCode> {
+    pub fn add_pull_request(request: Cow<str>, pull_request_path: &str, request_url: &str, path_handler: &PathHandler, repo: String) -> Result<SuccessResponse, ResponseStatusCode> {
         let mut file = match OpenOptions::new()
             .append(true)
             .create(true)
@@ -250,12 +314,26 @@ impl HttpRequestHandler {
                 return Err(ResponseStatusCode::InternalError);
             }
         };
-
-        match file.write_all(format!("{:?}{}", HttpRequestHandler::get_body(request), SEPARATOR_PULL_REQUEST_FILE).as_bytes()) {
+        let body = HttpRequestHandler::get_body(request)?;
+        let pr: PullRequest = HttpRequestHandler::deserialize_pull_request(body)?;
+        match file.write_all(format!("{:?}{}", body, SEPARATOR_PULL_REQUEST_FILE).as_bytes()) {
             Ok(_) => println!("Content written to file successfully."),
             Err(e) => eprintln!("Error writing to file: {}", e),
         }
-        Ok("Pull Request added.".to_string())
+
+        let head_sha = match helpers::get_branch_last_commit(&helpers::get_branch_path(&pr.head), path_handler){
+            Ok(head_sha)  => head_sha,
+            Err(_) => return Err(ResponseStatusCode::InternalError)
+        };
+
+        let base_sha = match helpers::get_branch_last_commit(&helpers::get_branch_path(&pr.base), path_handler){
+            Ok(base_sha)  => base_sha,
+            Err(_) => return Err(ResponseStatusCode::InternalError)
+        };
+
+        let response = ResponseType::new(request_url.to_string(), pr.id, pr.title, pr.head, head_sha, pr.base, base_sha, pr.body, repo)?;
+        SuccessResponse::new(&response, SuccessResponseStatusCode::Created)
+        
     }
 
     pub fn get_pull_request(pull_request: Option<&str>, pull_request_path: &str, path_handler: &PathHandler) -> Result<String, ResponseStatusCode> {
@@ -387,7 +465,7 @@ impl HttpRequestHandler {
     }
 
     // TODO change return to http response
-    pub fn handle_http(request: Cow<str>, request_type: HttpRequestType, request_url: &str, path_handler: &mut PathHandler) -> Result<String, ResponseStatusCode> {
+    pub fn handle_http(request: Cow<str>, request_type: HttpRequestType, request_url: &str, path_handler: &mut PathHandler) -> Result<SuccessResponse, ResponseStatusCode> {
 
         let params: Vec<&str> = request_url.split('/').collect();
 
@@ -405,10 +483,9 @@ impl HttpRequestHandler {
         match request_type {
             HttpRequestType::GET => {
                 HttpRequestHandler::handle_get_request(request, PULL_REQUEST_FILE, request_url, path_handler)
-
             },
             HttpRequestType::POST => {
-                HttpRequestHandler::add_pull_request(request, PULL_REQUEST_FILE, path_handler)
+                HttpRequestHandler::add_pull_request(request, PULL_REQUEST_FILE, request_url, path_handler, repo.to_string())
             },
             HttpRequestType::PUT => {
                 HttpRequestHandler::merge_pull_request(request, PULL_REQUEST_FILE, request_url, path_handler)
@@ -444,4 +521,5 @@ impl HttpRequestHandler {
 
         Ok(())
     }
+
 }
