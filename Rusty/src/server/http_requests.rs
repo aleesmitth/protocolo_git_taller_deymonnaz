@@ -1,10 +1,10 @@
 use crate::server::server_protocol::ServerProtocol;
 use crate::commands::git_commands::{Command, Log, Merge, PathHandler};
 use crate::commands::helpers;
-use crate::constants::{ALL_BRANCHES_LOCK, DEFAULT_BRANCH_NAME, HTTP_RESPONSE_SUCCESFUL, PULL_REQUEST_FILE, SEPARATOR_PULL_REQUEST_FILE, SERVER_BASE_PATH};
+use crate::constants::{ALL_BRANCHES_LOCK, CONTENT_TYPE, DEFAULT_BRANCH_NAME, HTTP_VERSION, PULL_REQUEST_FILE, SEPARATOR_PULL_REQUEST_FILE, SERVER_BASE_PATH};
 use std::fmt;
+use chrono::{Utc, DateTime};
 use std::{error::Error, fs::File, io::Read, io::Write, net::TcpStream, borrow::Cow, fs::OpenOptions};
-use gtk::glib::DateTime;
 use serde::{Serialize, Deserialize};
 use crate::commands::helpers::{get_branch_last_commit, get_branch_path};
 use crate::server::locked_branches_manager::*;
@@ -68,11 +68,23 @@ pub enum ResponseStatusCode {
     BadRequest // 400
 }
 
+#[derive(Debug)]
 pub enum SuccessResponseStatusCode {
     Success, //200
     Created //201
 }
-#[derive(Debug, Serialize,Deserialize)]
+
+impl fmt::Display for SuccessResponseStatusCode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let string = match self {
+            SuccessResponseStatusCode::Success => "200 OK",
+            SuccessResponseStatusCode::Created => "201 Created",
+        };
+        write!(f, "{}", string)
+    }
+}
+
+#[derive(Debug)]
 pub struct SuccessResponse {
     code: SuccessResponseStatusCode,
     body: String,
@@ -88,7 +100,7 @@ impl RepoResponse {
 }
 
 impl BranchResponse {
-    pub fn new(label: String, sha: String,repo: RepoResponse) -> Self {
+    pub fn new(label: String, sha: String, repo: RepoResponse) -> Self {
         BranchResponse{
             label,
             sha,
@@ -100,10 +112,11 @@ impl BranchResponse {
 impl ResponseType {
     pub fn new(url: String, id: String, title: String, head_name: String, head_sha: String, base_sha:String, base_name: String, body: String, repo_name: String) -> Result<Self, ResponseStatusCode> {
         
-        let repo = RepoResponse::new(repo_name);
+        let repo_head = RepoResponse::new(repo_name.clone());
+        let repo_base = RepoResponse::new(repo_name);
 
-        let head = BranchResponse::new(head_name, head_sha, repo);
-        let base = BranchResponse::new(base_name, base_sha, repo);
+        let head = BranchResponse::new(head_name, head_sha, repo_head);
+        let base = BranchResponse::new(base_name, base_sha, repo_base);
 
         Ok(ResponseType{
             url,
@@ -315,7 +328,7 @@ impl HttpRequestHandler {
             }
         };
         let body = HttpRequestHandler::get_body(request)?;
-        let pr: PullRequest = HttpRequestHandler::deserialize_pull_request(body)?;
+        let pr: PullRequest = HttpRequestHandler::deserialize_pull_request(body.clone())?;
         match file.write_all(format!("{:?}{}", body, SEPARATOR_PULL_REQUEST_FILE).as_bytes()) {
             Ok(_) => println!("Content written to file successfully."),
             Err(e) => eprintln!("Error writing to file: {}", e),
@@ -482,15 +495,20 @@ impl HttpRequestHandler {
         path_handler.set_relative_path(path_handler.get_relative_path(repo));
         match request_type {
             HttpRequestType::GET => {
-                HttpRequestHandler::handle_get_request(request, PULL_REQUEST_FILE, request_url, path_handler)
+                println!("get")
+                // HttpRequestHandler::handle_get_request(request, PULL_REQUEST_FILE, request_url, path_handler)
             },
             HttpRequestType::POST => {
-                HttpRequestHandler::add_pull_request(request, PULL_REQUEST_FILE, request_url, path_handler, repo.to_string())
+                return HttpRequestHandler::add_pull_request(request, PULL_REQUEST_FILE, request_url, path_handler, repo.to_string())
             },
             HttpRequestType::PUT => {
-                HttpRequestHandler::merge_pull_request(request, PULL_REQUEST_FILE, request_url, path_handler)
+                println!("put")
+                // HttpRequestHandler::merge_pull_request(request, PULL_REQUEST_FILE, request_url, path_handler)
             },
         }
+
+        // SACAR ESTOOOOO
+        SuccessResponse::new("", SuccessResponseStatusCode::Created)
     }
 
     pub fn endpoint_handler(stream: &mut TcpStream, path_handler: &mut PathHandler, locked_branches: Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
@@ -509,8 +527,8 @@ impl HttpRequestHandler {
         println!("req_url: -{}-", request_url);
         let http_request_type = HttpRequestType::new(request_type);
         let final_response = match HttpRequestHandler::handle_http(request.clone(), http_request_type, request_url, path_handler) {
-            Ok(http_response) => format!("{}\r\nContent-Length: {}\r\n\r\n{}", HTTP_RESPONSE_SUCCESFUL, http_response.len(), http_response),
-            Err(error) => format!("HTTP/1.1 {}\r\n\r\n\r\n", error),
+            Ok(http_response) => generate_response(http_response.code.to_string(), Some(http_response.body)),
+            Err(error) => generate_response(error.to_string(), None),
         };
         println!("Sending response to client: {}", final_response);
 
@@ -523,3 +541,45 @@ impl HttpRequestHandler {
     }
 
 }
+
+pub fn generate_response(response_code: String, response_body: Option<String>) -> String {
+
+    let current_time: DateTime<Utc> = Utc::now();
+    let formatted_time = current_time.format("%a, %d %b %Y %H:%M:%S GMT");
+
+    let mut response = format!("{} {}\r\nDate: {}\r\n", HTTP_VERSION, response_code, formatted_time);
+
+    if let Some(body) = response_body {
+        response = format!("{}Content-Type: {}\r\nContent-Length: {}\r\n\r\n{}", response, CONTENT_TYPE, body.len(), body.clone())
+    }
+
+    response
+}
+
+
+/* 
+EJEMPLO DE ERROR
+    HTTP/1.1 400 Bad Request
+    Date: Thu, 03 Mar 2022 12:00:00 GMT
+    Content-Type: application/json
+    Content-Length: 56
+
+    {
+    "error": "Validation failed",
+    "message": "Invalid input data"
+    }
+*/
+
+/*
+EJEMPLO POST
+    HTTP/1.1 201 Created
+    Date: Thu, 03 Mar 2022 12:00:00 GMT
+    Content-Type: application/json
+    Content-Length: 45
+    Location: /api/resource/123
+
+    {
+        "id": 123,
+        "message": "Resource created successfully"
+    }
+*/
