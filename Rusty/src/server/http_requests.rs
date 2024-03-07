@@ -351,7 +351,7 @@ impl HttpRequestHandler {
             Err(_) => return Err(ResponseStatusCode::InternalError)
         }; 
         
-        let merge_hash = String::new();
+        let mut merge_hash = String::new();
         let mut new_file_content_lines = Vec::new();
 
         let file_content_lines: Vec<&str> = file_content.split('\n').collect();
@@ -367,7 +367,8 @@ impl HttpRequestHandler {
             }
 
             if pr.id == *pull_request_id {
-                let merge_hash = match Merge::new().execute(Some(vec![&pr.head, &pr.base]), path_handler){
+                println!("merging");
+                merge_hash = match Merge::new().execute(Some(vec![&pr.head, &pr.base]), path_handler){
                     Ok(merge_hash) => merge_hash,
                     Err(_) => return Err(ResponseStatusCode::InternalError)
                 };
@@ -428,7 +429,7 @@ impl HttpRequestHandler {
         let body = HttpRequestHandler::get_body(request)?;
         let pr: PullRequest = HttpRequestHandler::deserialize_pull_request(body.clone())?;
         
-        if let Ok(false) = HttpRequestHandler::pull_request_exists(&pr.id, pull_request_path, request_url, path_handler) {
+        if let Ok(true) = HttpRequestHandler::pull_request_exists(&pr.id, pull_request_path, request_url, path_handler) {
             return Err(ResponseStatusCode::InternalError);
         };
         match file.write_all(format!("{:?}{}", body, SEPARATOR_PULL_REQUEST_FILE).as_bytes()) {
@@ -536,14 +537,14 @@ impl HttpRequestHandler {
                     }
                     logs_head.extend(logs_base);
 
-                    let log_response = HttpRequestHandler::parse_log(logs_head);
+                    let log_response = HttpRequestHandler::parse_log(logs_head, path_handler)?;
                     return SuccessResponse::new(&log_response, SuccessResponseStatusCode::Success)
                 } 
                 let mut log = Vec::new();
                 if let Err(_) = Log::generate_log_entries(&mut log, pr.commit_after_merge, path_handler) {
                     return Err(ResponseStatusCode::InternalError)
                 }
-                let log_response = HttpRequestHandler::parse_log(log);
+                let log_response = HttpRequestHandler::parse_log(log, path_handler)?;
                 return SuccessResponse::new(&log_response, SuccessResponseStatusCode::Success) 
             }
         }
@@ -551,22 +552,23 @@ impl HttpRequestHandler {
         Err(ResponseStatusCode::NotFound)
     }
 
-    fn parse_log(log: Vec<(String, String)>) -> Vec<LogResponseType> {
+    fn parse_log(log: Vec<(String, String)>, path_handler: &PathHandler) -> Result<Vec<LogResponseType>, ResponseStatusCode> {
         
         let mut log_responses = Vec::new();
         for (commit_hash, log_body) in log {
             let log_lines: Vec<&str> = log_body.split("\n").collect();
             let mut parents = Vec::new();
-            let mut tree_sha = String::new();
             let mut author = UserResponse::default();
             let mut committer = UserResponse::default();
 
             for line in log_lines.clone() {
                 let split_line: Vec<&str> = line.split_whitespace().collect();
+                if line.is_empty() {
+                    continue
+                }
 
                 match split_line[0] {
                     "parent" => parents.push(ParentResponse::new(split_line[1].to_string())),
-                    "tree" =>  tree_sha = split_line[1].to_string(),
                     "author" => {
                         let author_name = split_line[1];
                         let author_email = split_line[2];
@@ -582,6 +584,11 @@ impl HttpRequestHandler {
                     _ => {}
                 }
             }
+            let tree_sha = match helpers::get_commit_tree(&commit_hash, path_handler) {
+                Ok(tree_sha) => tree_sha,
+                Err(_) => return Err(ResponseStatusCode::InternalError)
+            };
+
             let message = match log_lines.last() {
                 Some(message) => message.to_string(),
                 None => String::new(),
@@ -590,7 +597,7 @@ impl HttpRequestHandler {
             let commit_response = CommitResponse::new(author, committer, message, tree_sha);
             log_responses.push(LogResponseType::new(commit_hash, commit_response, parents));
         }
-    log_responses
+    Ok(log_responses)
     }
 
     pub fn handle_get_request(_request: Cow<str>, pull_request_path: &str, request_url: &str, path_handler: &PathHandler, repo_name: String) -> Result<SuccessResponse, ResponseStatusCode> {
