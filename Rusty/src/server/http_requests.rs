@@ -58,7 +58,7 @@ pub struct ParentResponse {
     sha: String,
 }
 
-#[derive(Debug, Serialize,Deserialize)]
+#[derive(Debug, Serialize,Deserialize, Default)]
 pub struct UserResponse {
     name: String,
     email: String,
@@ -181,32 +181,53 @@ impl UserResponse {
             date,
         }
     }
-    pub fn default() -> Self {
-        UserResponse {
-            name: String::new(),
-            email: String::new(),
-            date: String::new(),
-        }
-    }
 }
 
+// impl Default for UserResponse {
+//     fn default() -> Self {
+//         Self {
+//             name: String::new(),
+//             email: String::new(),
+//             date: String::new(),
+//         }
+//     }
+// }
+
 impl ResponseType {
-    pub fn new(url: String, id: String, title: String, head_name: String, head_sha: String, base_sha:String, base_name: String, body: String, repo_name: String) -> Result<Self, ResponseStatusCode> {
+    pub fn new(url: String, pr: PullRequest, repo_name: String, path_handler: &PathHandler) -> Result<Self, ResponseStatusCode> {
         
         let repo_head = RepoResponse::new(repo_name.clone());
         let repo_base = RepoResponse::new(repo_name);
 
-        let head = BranchResponse::new(head_name, head_sha, repo_head);
-        let base = BranchResponse::new(base_name, base_sha, repo_base);
+        let head_sha = match get_branch_last_commit(&get_branch_path(&pr.head), path_handler) {
+            Ok(commit) => commit,
+            Err(_) => {
+                return Err(ResponseStatusCode::InternalError);
+            }
+        };
+        let base_sha = match get_branch_last_commit(&get_branch_path(&pr.base), path_handler) {
+            Ok(commit) => commit,
+            Err(_) => {
+                return Err(ResponseStatusCode::InternalError);
+            }
+        };
+
+        let head = BranchResponse::new(pr.head, head_sha, repo_head);
+        let base = BranchResponse::new(pr.base, base_sha, repo_base);
+        let merge_commit = if pr.commit_after_merge.is_empty() {
+            None
+        } else {
+            Some(pr.commit_after_merge)
+        };
 
         Ok(ResponseType{
             url,
-            id, // Pull Request Id
-            title,
-            merge_commit_sha:None,
+            id: pr.id, // Pull Request Id
+            title: pr.title,
+            merge_commit_sha: merge_commit,
             head,
             base,
-            body
+            body: pr.body,
         })
     }
 }
@@ -309,7 +330,6 @@ impl HttpRequestHandler {
                 // Trim the JSON string to remove leading and trailing whitespaces, newlines, etc.
                 let trimmed_json = json_body.trim();
 
-                println!("Received JSON body: .{}.", trimmed_json);
                 let start_index = trimmed_json.find('{');
                 let end_index = trimmed_json.rfind('}');
 
@@ -324,11 +344,9 @@ impl HttpRequestHandler {
         Err(ResponseStatusCode::BadRequest)
     }
 
-    pub fn merge_pull_request(request: Cow<str>, pull_request_path: &str, request_url: &str, path_handler: &PathHandler) -> Result<SuccessResponse, ResponseStatusCode> {
+    pub fn merge_pull_request(request: Cow<str>, pull_request_path: &str, _request_url: &str, path_handler: &PathHandler) -> Result<SuccessResponse, ResponseStatusCode> {
         let split_request: Vec<&str> = request.split_whitespace().collect();
         let url = split_request[1];
-
-        println!("url: {}", url);
 
         let split_url: Vec<&str> = url.split('/').collect();
 
@@ -367,7 +385,6 @@ impl HttpRequestHandler {
             }
 
             if pr.id == *pull_request_id {
-                println!("merging");
                 merge_hash = match Merge::new().execute(Some(vec![&pr.head, &pr.base]), path_handler){
                     Ok(merge_hash) => merge_hash,
                     Err(_) => return Err(ResponseStatusCode::InternalError)
@@ -386,7 +403,7 @@ impl HttpRequestHandler {
             Ok(file) => file,
             Err(_) => return Err(ResponseStatusCode::InternalError)
         };
-        if let Err(_) = file.write_all(new_file_content_lines.join("\n").as_bytes()){
+        if file.write_all(new_file_content_lines.join("\n").as_bytes()).is_err() {
             return Err(ResponseStatusCode::InternalError)
         }
 
@@ -395,7 +412,7 @@ impl HttpRequestHandler {
         SuccessResponse::new(&merge_response, SuccessResponseStatusCode::Success)
     }
 
-    fn pull_request_exists(pull_request_id: &str, pull_request_path: &str, request_url: &str, path_handler: &PathHandler) -> Result<bool, ResponseStatusCode> {
+    fn pull_request_exists(pull_request_id: &str, pull_request_path: &str, _request_url: &str, path_handler: &PathHandler) -> Result<bool, ResponseStatusCode> {
         let file_content = match helpers::read_file_content(&path_handler.get_relative_path(pull_request_path)){
             Ok(file_content) => file_content,
             Err(_) => return Err(ResponseStatusCode::InternalError)
@@ -437,17 +454,7 @@ impl HttpRequestHandler {
             Err(e) => eprintln!("Error writing to file: {}", e),
         }
 
-        let head_sha = match helpers::get_branch_last_commit(&helpers::get_branch_path(&pr.head), path_handler){
-            Ok(head_sha)  => head_sha,
-            Err(_) => return Err(ResponseStatusCode::InternalError)
-        };
-
-        let base_sha = match helpers::get_branch_last_commit(&helpers::get_branch_path(&pr.base), path_handler){
-            Ok(base_sha)  => base_sha,
-            Err(_) => return Err(ResponseStatusCode::InternalError)
-        };
-
-        let response = ResponseType::new(request_url.to_string(), pr.id, pr.title, pr.head, head_sha, pr.base, base_sha, pr.body, repo)?;
+        let response = ResponseType::new(request_url.to_string(), pr, repo, path_handler)?;
         SuccessResponse::new(&response, SuccessResponseStatusCode::Created)
         
     }
@@ -469,26 +476,16 @@ impl HttpRequestHandler {
                 pull_request.unwrap_or("")
             } else { &pr.id };
             if pr.id == pull_request_id {
-                
-                let head_sha = match helpers::get_branch_last_commit(&helpers::get_branch_path(&pr.head), path_handler){
-                    Ok(head_sha)  => head_sha,
-                    Err(_) => return Err(ResponseStatusCode::InternalError)
-                };
-                let base_sha = match helpers::get_branch_last_commit(&helpers::get_branch_path(&pr.base), path_handler){
-                    Ok(base_sha)  => base_sha,
-                    Err(_) => return Err(ResponseStatusCode::InternalError)
-                };
 
-                let response = ResponseType::new(request_url.to_string(), pr.id, pr.title, pr.head, head_sha, pr.base, base_sha, pr.body, repo_name.clone())?;
+                let response = ResponseType::new(request_url.to_string(), pr, repo_name.clone(), path_handler)?;
                 pull_requests_response.push(response)
             }
         }
 
-        if pull_requests_response.len() == 1 {
-            return SuccessResponse::new(&pull_requests_response[0], SuccessResponseStatusCode::Success)
+        if pull_request.is_none() {
+            return SuccessResponse::new(&pull_requests_response, SuccessResponseStatusCode::Success)
         }
-
-        SuccessResponse::new(&pull_requests_response, SuccessResponseStatusCode::Success)
+        SuccessResponse::new(&pull_requests_response[0], SuccessResponseStatusCode::Success)
     }
 
     pub fn get_pull_request_logs(pull_request: Option<&str>, pull_request_path: &str, path_handler: &PathHandler) -> Result<SuccessResponse, ResponseStatusCode> {
@@ -513,6 +510,7 @@ impl HttpRequestHandler {
                 
                 if pr.commit_after_merge.is_empty() {
                     println!("commit after merge is empty");
+                    
                     let head_last_commit = match get_branch_last_commit(&get_branch_path(&pr.head), path_handler) {
                         Ok(commit) => commit,
                         Err(_) => {
@@ -527,12 +525,12 @@ impl HttpRequestHandler {
                     };
 
                     let mut logs_head = Vec::new();
-                    if let Err(_) = Log::generate_log_entries(&mut logs_head, head_last_commit, path_handler) {
+                    if Log::generate_log_entries(&mut logs_head, head_last_commit, path_handler).is_err() {
                         return Err(ResponseStatusCode::InternalError)
                     }
 
                     let mut logs_base = Vec::new();
-                    if let Err(_) = Log::generate_log_entries(&mut logs_base, base_last_commit, path_handler) {
+                    if Log::generate_log_entries(&mut logs_base, base_last_commit, path_handler).is_err() {
                         return Err(ResponseStatusCode::InternalError)
                     }
                     logs_head.extend(logs_base);
@@ -541,7 +539,7 @@ impl HttpRequestHandler {
                     return SuccessResponse::new(&log_response, SuccessResponseStatusCode::Success)
                 } 
                 let mut log = Vec::new();
-                if let Err(_) = Log::generate_log_entries(&mut log, pr.commit_after_merge, path_handler) {
+                if Log::generate_log_entries(&mut log, pr.commit_after_merge, path_handler).is_err() {
                     return Err(ResponseStatusCode::InternalError)
                 }
                 let log_response = HttpRequestHandler::parse_log(log, path_handler)?;
@@ -556,7 +554,7 @@ impl HttpRequestHandler {
         
         let mut log_responses = Vec::new();
         for (commit_hash, log_body) in log {
-            let log_lines: Vec<&str> = log_body.split("\n").collect();
+            let log_lines: Vec<&str> = log_body.split('\n').collect();
             let mut parents = Vec::new();
             let mut author = UserResponse::default();
             let mut committer = UserResponse::default();
@@ -718,31 +716,3 @@ pub fn generate_response(response_code: String, response_body: Option<String>) -
 
     response
 }
-
-
-/* 
-EJEMPLO DE ERROR
-    HTTP/1.1 400 Bad Request
-    Date: Thu, 03 Mar 2022 12:00:00 GMT
-    Content-Type: application/json
-    Content-Length: 56
-
-    {
-    "error": "Validation failed",
-    "message": "Invalid input data"
-    }
-*/
-
-/*
-EJEMPLO POST
-    HTTP/1.1 201 Created
-    Date: Thu, 03 Mar 2022 12:00:00 GMT
-    Content-Type: application/json
-    Content-Length: 45
-    Location: /api/resource/123
-
-    {
-        "id": 123,
-        "message": "Resource created successfully"
-    }
-*/
