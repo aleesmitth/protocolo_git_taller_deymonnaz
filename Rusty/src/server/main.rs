@@ -3,7 +3,7 @@ use std::sync::{Mutex, Arc, Condvar};
 use rusty::server::server_protocol::ServerProtocol;
 use std::thread;
 use rusty::commands::git_commands::PathHandler;
-use rusty::constants::SERVER_BASE_PATH;
+use rusty::constants::{IP_LOCALHOST, SERVER_BASE_PATH, OUR_GIT_PORT};
 use rusty::server::http_requests::HttpRequestHandler;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -16,7 +16,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    let listener = ServerProtocol::bind("127.0.0.1:9418")?; // Default Git port
+    let listener = ServerProtocol::bind(&format!("{}:{}", IP_LOCALHOST, OUR_GIT_PORT))?; // Default Git port
     println!("bind complete");
 
 

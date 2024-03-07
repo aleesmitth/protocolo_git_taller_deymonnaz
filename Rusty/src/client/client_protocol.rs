@@ -1,7 +1,7 @@
 use crate::commands::protocol_utils;
 use crate::commands::structs::Head;
 use crate::commands::git_commands::{Command, PackObjects, PathHandler};
-use crate::constants::{ZERO_HASH, REQUEST_DELIMITER_DONE, REQUEST_LENGTH_CERO, WANT_REQUEST, NAK_RESPONSE};
+use crate::constants::{IP_LOCALHOST, NAK_RESPONSE, REQUEST_DELIMITER_DONE, REQUEST_LENGTH_CERO, WANT_REQUEST, ZERO_HASH};
 
 use std::{
     error::Error, fs, io::Read, io::Write, net::Shutdown, net::TcpStream, str, thread,
@@ -32,7 +32,7 @@ impl ClientProtocol {
         // println!("connect complete");
         let current_repo = get_client_current_working_repo()?;
         let request = protocol_utils::format_line_to_send(
-            format!("git-receive-pack /{}/.git\0host=127.0.0.1\0", current_repo).to_string(),
+            format!("git-receive-pack /{}/.git\0host={}\0", current_repo, IP_LOCALHOST).to_string(),
         );
         // println!("request {}", request);
 
@@ -115,7 +115,7 @@ impl ClientProtocol {
 
         let current_repo = get_client_current_working_repo()?;
         let request = protocol_utils::format_line_to_send(
-            format!("git-upload-pack /{}/.git\0host=127.0.0.1\0", current_repo).to_string(),
+            format!("git-upload-pack /{}/.git\0host={}\0", current_repo, IP_LOCALHOST).to_string(),
         );
         // println!("{}", request);
 
