@@ -96,9 +96,9 @@ impl ServerProtocol {
         let mut branches_used: HashSet<String> = HashSet::new();
         for request_received in requests_received.clone() {
             let request_array: Vec<&str> = request_received.split_whitespace().collect();
-            // println!("request in array: {:?}", request_array);
+
             if request_array[0] != WANT_REQUEST {
-                //TODO not want request, handle error gracefully
+                
                 println!(
                     "Error: expected want request but got: {:?}",
                     request_array[0]

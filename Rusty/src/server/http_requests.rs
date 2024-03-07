@@ -20,7 +20,6 @@ pub struct PullRequest {
     base: String,
     repo: String,
     commit_after_merge: String,
-
 }
 
 pub enum HttpRequestType {
@@ -28,17 +27,20 @@ pub enum HttpRequestType {
     PUT,
     GET,
 }
+
 #[derive(Debug, Serialize,Deserialize)]
 pub struct RepoResponse {
     name: String,
     default_branch: String
 }
+
 #[derive(Debug, Serialize,Deserialize)]
 pub struct BranchResponse {
     label: String,
     sha: String,
     repo: RepoResponse
 }
+
 #[derive(Debug, Serialize,Deserialize)]
 pub struct MergeResponseType {
     sha: String,
@@ -264,7 +266,6 @@ impl fmt::Display for ResponseStatusCode {
     }
 }
 
-
 impl HttpRequestType {
     fn new(method: &str) -> Self {
         match method {
@@ -278,6 +279,15 @@ impl HttpRequestType {
         }
     }
 }
+/* 
+impl ResponseType {
+    fn new(pr: PullRequest) -> Self {
+        ResponseType{
+
+        }
+    }
+}
+*/
 
 pub struct HttpRequestHandler;
 
@@ -674,7 +684,6 @@ impl HttpRequestHandler {
 
     pub fn endpoint_handler(stream: &mut TcpStream, path_handler: &mut PathHandler, locked_branches: Arc<(Mutex<HashSet<String>>, Condvar)>) -> Result<(), Box<dyn Error>> {
         // read client request
-
         let mut locked_branches_lifetime = LockedBranches::new(&locked_branches);
         locked_branches_lifetime.lock_branch(ALL_BRANCHES_LOCK, false)?;
 
