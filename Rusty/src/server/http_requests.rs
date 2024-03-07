@@ -1,7 +1,7 @@
 use crate::server::server_protocol::ServerProtocol;
 use crate::commands::git_commands::{Command, Log, Merge, PathHandler};
 use crate::commands::helpers;
-use crate::constants::{ALL_BRANCHES_LOCK, CONTENT_TYPE, DEFAULT_BRANCH_NAME, HTTP_VERSION, PULL_REQUEST_FILE, SEPARATOR_PULL_REQUEST_FILE, SERVER_BASE_PATH};
+use crate::constants::{ALL_BRANCHES_LOCK, CONTENT_TYPE, DEFAULT_BRANCH_NAME, HTTP_VERSION, PULL_REQUEST_FILE, SEPARATOR_PULL_REQUEST_FILE, SERVER_BASE_PATH, PR_MERGE_SUCCESS};
 use std::fmt;
 use chrono::{Utc, DateTime};
 use std::{error::Error, fs::File, io::Read, io::Write, net::TcpStream, borrow::Cow, fs::OpenOptions};
@@ -43,7 +43,7 @@ pub struct BranchResponse {
 pub struct MergeResponseType {
     sha: String,
     merged: bool,
-    messege: String
+    message: String
 }
 
 #[derive(Debug, Serialize,Deserialize)]
@@ -105,6 +105,16 @@ impl BranchResponse {
             label,
             sha,
             repo
+        }
+    }
+}
+
+impl MergeResponseType {
+    pub fn new(sha: String, message: String) -> Self {
+        MergeResponseType{
+            sha,
+            merged:true,
+            message
         }
     }
 }
@@ -241,13 +251,9 @@ impl HttpRequestHandler {
         }
         println!("Throwing error");
         Err(ResponseStatusCode::BadRequest)
-        /*Err(Box::new(io::Error::new(
-            io::ErrorKind::Other,
-            "Error: JSON object not found in the received data.",
-        )))*/
     }
 
-    pub fn merge_pull_request(request: Cow<str>, pull_request_path: &str, _request_url: &str, path_handler: &PathHandler) -> Result<String, ResponseStatusCode> {
+    pub fn merge_pull_request(request: Cow<str>, pull_request_path: &str, request_url: &str, path_handler: &PathHandler) -> Result<SuccessResponse, ResponseStatusCode> {
         let split_request: Vec<&str> = request.split_whitespace().collect();
         let url = split_request[1];
 
@@ -312,7 +318,9 @@ impl HttpRequestHandler {
             return Err(ResponseStatusCode::InternalError)
         }
 
-        Ok(merge_hash)
+        let merge_response = MergeResponseType::new(merge_hash, PR_MERGE_SUCCESS.to_string());
+
+        SuccessResponse::new(&merge_response, SuccessResponseStatusCode::Success)
     }
 
     pub fn add_pull_request(request: Cow<str>, pull_request_path: &str, request_url: &str, path_handler: &PathHandler, repo: String) -> Result<SuccessResponse, ResponseStatusCode> {
@@ -496,14 +504,13 @@ impl HttpRequestHandler {
         match request_type {
             HttpRequestType::GET => {
                 println!("get")
-                // HttpRequestHandler::handle_get_request(request, PULL_REQUEST_FILE, request_url, path_handler)
+                //HttpRequestHandler::handle_get_request(request, PULL_REQUEST_FILE, request_url, path_handler)
             },
             HttpRequestType::POST => {
                 return HttpRequestHandler::add_pull_request(request, PULL_REQUEST_FILE, request_url, path_handler, repo.to_string())
             },
             HttpRequestType::PUT => {
-                println!("put")
-                // HttpRequestHandler::merge_pull_request(request, PULL_REQUEST_FILE, request_url, path_handler)
+                return HttpRequestHandler::merge_pull_request(request, PULL_REQUEST_FILE, request_url, path_handler)
             },
         }
 

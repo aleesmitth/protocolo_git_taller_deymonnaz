@@ -78,6 +78,7 @@ pub const CONTENT_TYPE: &str = "application/json";
 pub const HTTP_RESPONSE_ERROR: &str = "HTTP/1.1 404 Not Found";
 pub const RECEIVE_PACK: &str = "git-receive-pack";
 pub const UPLOAD_PACK: &str = "git-upload-pack";
+pub const PR_MERGE_SUCCESS: &str = "Pull Request was successfully merged";
 
 // consts for marking conflicts in file
 pub const CONFLICT_START: &str = "<<<<<<< HEAD";
