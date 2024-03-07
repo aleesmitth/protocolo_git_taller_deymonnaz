@@ -86,3 +86,7 @@ pub const CONFLICT_BRANCH_CHANGE: &str = "=======";
 pub const CONFLICT_END: &str = ">>>>>>>";
 pub const MERGE_HEAD: &str = ".git/MERGE_HEAD";
 
+pub const IP_LOCALHOST: &str = "127.0.0.1";
+pub const API_PORT: &str = "8081";
+pub const OUR_GIT_PORT: &str = "9418";
+
