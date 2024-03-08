@@ -459,7 +459,7 @@ impl HttpRequestHandler {
         if let Ok(true) = HttpRequestHandler::pull_request_exists(&pr.id, pull_request_path, request_url, path_handler) {
             return Err(ResponseStatusCode::InternalError);
         };
-        match file.write_all(format!("{:?}{}", body, SEPARATOR_PULL_REQUEST_FILE).as_bytes()) {
+        match file.write_all(format!("{}{}", body, SEPARATOR_PULL_REQUEST_FILE).as_bytes()) {
             Ok(_) => println!("Content written to file successfully."),
             Err(e) => eprintln!("Error writing to file: {}", e),
         }
